@@ -1,0 +1,30 @@
+# Core Web Framework
+Flask[async]==2.3.3
+python-dotenv==1.0.0
+
+# LangChain and AI Dependencies
+langchain-core>=0.1.0
+langchain-google-genai>=1.0.0
+langgraph>=0.1.0
+
+# Database and Data
+sqlalchemy>=1.4.0
+pandas>=1.5.0
+Markdown>=3.6
+
+# Development and Testing
+pytest>=6.0.0
+black>=21.0.0
+flake8>=3.9.0
+
+# Additional Dependencies (uncomment if needed)
+# torch>=2.0.0
+# transformers>=4.0.0
+# numpy>=1.21.0
+
+# Production Dependencies (uncomment for deployment)
+# gunicorn>=20.1.0
+# waitress>=2.1.0
+
+# Utilities
+# (add any other utility libraries here) 

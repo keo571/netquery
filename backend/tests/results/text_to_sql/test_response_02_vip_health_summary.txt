@@ -1,0 +1,51 @@
+Test: VIP Health Summary
+Query: Which VIPs have unhealthy backend servers?
+Full Response:
+## Query Analysis
+**Your Question:** Which VIPs have unhealthy backend servers?
+**Complexity:** medium
+**Tables Used:** VIP, VIP_MEMBER
+
+## Results
+Found 8 results. Here are the first 5:
+```
+vip_id | vip_address | member_address | health_status
+--- | --- | --- | ---
+1 | 10.1.0.100 | 192.168.1.10 | healthy
+1 | 10.1.0.100 | 192.168.1.11 | healthy
+1 | 10.1.0.100 | 192.168.1.12 | degraded
+2 | 10.1.0.101 | 192.168.2.10 | healthy
+2 | 10.1.0.101 | 192.168.2.11 | healthy
+```
+
+## Query Details
+**SQL Generated:**
+```sql
+SELECT vip.vip_id, vip.vip_address, vip_member.member_address, vip_member.health_status FROM vip INNER JOIN vip_member ON vip.vip_id = vip_member.vip_id WHERE vip_member.health_status <> 'unknown' AND vip_member.health_status <> 'active' LIMIT 50;
+```
+
+**Execution Time:** 1.085042953491211ms
+**Confidence Score:** 0.85
+
+## Insights
+- Found 8 matching records
+- Numeric data available for analysis: vip_id
+
+## AI Analysis
+You asked which VIPs have unhealthy backend servers.  The query found 8 records related to VIPs and their backend server health.  Interestingly, while the query initially looked for unhealthy servers, the results show a mix of healthy and unhealthy statuses.
+
+Specifically, we found that VIP with ID 1 (located at 10.1.0.100) has some backend servers that are not healthy.  At least one of its backend servers (192.168.1.12) is in a "degraded" state.  Other backend servers associated with this VIP are healthy.  The full list of unhealthy servers was not displayed because the query only returned the first 50 results.  Since there are only 8 total results, this means we have the complete picture for this specific query.
+
+**Key Finding:**  At least one backend server associated with VIP ID 1 is unhealthy (degraded).
+
+**Notable Pattern:**  The data suggests that VIPs can have multiple backend servers, and the health status of these servers can vary.  This indicates a need for more granular monitoring of individual backend servers associated with each VIP.
+
+**Follow-up Questions:**
+
+* What does a "degraded" health status mean for VIP ID 1's server at 192.168.1.12?  What are the specific performance issues?
+* Are there any other VIPs with unhealthy backend servers?  The query only showed results for VIP ID 1.  We should expand the query to show all VIPs.
+* What is the overall health status of all backend servers across all VIPs?  A summary showing the percentage of healthy, degraded, and other unhealthy servers would be helpful.
+* What actions are being taken to address the degraded server (192.168.1.12)?
+
+
+By answering these questions, we can get a more complete understanding of the health of your VIP backend servers and take appropriate action.

@@ -1,0 +1,44 @@
+Test: Data Center Capacity
+Query: What's the total power usage across all data centers?
+Full Response:
+## Query Analysis
+**Your Question:** What's the total power usage across all data centers?
+**Complexity:** medium
+**Tables Used:** DATACENTERS
+
+## Results
+```
+total_power_usage
+---
+7601.6
+```
+
+## Query Details
+**SQL Generated:**
+```sql
+SELECT SUM(power_usage_kw) AS total_power_usage FROM datacenters LIMIT 50;
+```
+
+**Execution Time:** 1.0941028594970703ms
+**Confidence Score:** 0.85
+
+## Insights
+- Found exactly one matching record
+- Numeric data available for analysis: total_power_usage
+
+## AI Analysis
+The total power usage across all your data centers is 7601.6 kilowatts.
+
+This is a single, aggregate figure, meaning it represents the sum of power consumption from all data centers reported in the database.  There's no breakdown by individual data center or other factors in this result because the query only summed the total power usage.
+
+Because we only have the total, we can't see any patterns in power consumption across different data centers (e.g., are some using significantly more power than others?).  We also don't know the time period this data covers (is it an hourly, daily, or monthly total?).
+
+To get a more complete picture, it would be helpful to ask some follow-up questions, such as:
+
+* **What is the power usage of each individual data center?** This would allow for comparison and identification of potential outliers.
+* **What is the time period represented by this data?**  Knowing the timeframe (e.g., hourly average, daily peak, monthly total) is crucial for proper interpretation.
+* **Can we break down power usage by server type or other relevant factors?** This would help identify areas for potential energy efficiency improvements.
+* **How does this total power usage compare to previous periods?** This would reveal trends and help in capacity planning.
+
+
+By answering these questions, we can gain a much more detailed and actionable understanding of your data center power consumption.

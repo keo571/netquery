@@ -1,0 +1,36 @@
+Test: SSL Certificate Expiry
+Query: Which SSL certificates are expiring soon?
+Full Response:
+## Query Analysis
+**Your Question:** Which SSL certificates are expiring soon?
+**Complexity:** medium
+**Tables Used:** SSL_CERTIFICATES
+
+## Results
+No results found for your query.
+
+## Query Details
+**SQL Generated:**
+```sql
+SELECT common_name, valid_to FROM ssl_certificates WHERE STRFTIME('%Y-%m-%d', valid_to) BETWEEN STRFTIME('%Y-%m-%d', 'now') AND STRFTIME('%Y-%m-%d', 'now', '+7 days') LIMIT 50;
+```
+
+**Execution Time:** 1.088857650756836ms
+**Confidence Score:** 0.85
+
+## Insights
+No data found matching your criteria.
+
+## AI Analysis
+Great question!  I checked our records for SSL certificates expiring soon, and the good news is that none are expiring within the next 7 days.  The query looked specifically at certificates expiring between today and 7 days from now, and it returned zero results.
+
+This means all your currently active SSL certificates are up-to-date for at least the next week.  That's excellent for maintaining secure connections!
+
+However, it's important to remember that this is just a snapshot of the next 7 days.  To ensure ongoing security, we should consider:
+
+* **Checking for longer-term expirations:**  We should run a similar query, but extending the timeframe to, say, 30, 60, or even 90 days to identify certificates nearing expiration in the future.
+* **Regular monitoring:**  Setting up automated alerts for upcoming SSL certificate expirations would be beneficial to proactively manage renewals and prevent service disruptions.
+* **Certificate inventory:**  A comprehensive inventory of all SSL certificates, including their issuance date, expiry date, and associated services, would provide a better overview of our security posture.
+
+
+Let me know if you'd like me to run a query with a longer timeframe to check for certificates expiring further out.
