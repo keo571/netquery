@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Always use embedding-based schema analyzer
 try:
-    from .nodes.schema_analyzer_enhanced import schema_analyzer_node
+    from .nodes.schema_analyzer import schema_analyzer_node
     logger.info("Using embedding-based schema analyzer")
 except ImportError as e:
     logger.error(f"Cannot import embedding analyzer: {e}")
