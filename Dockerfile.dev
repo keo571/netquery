@@ -1,0 +1,58 @@
+# Development Dockerfile with additional tools
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    PIP_NO_CACHE_DIR=1
+
+# Install system dependencies and development tools
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    git \
+    vim \
+    curl \
+    make \
+    sqlite3 \
+    postgresql-client \
+    redis-tools \
+    iputils-ping \
+    net-tools \
+    htop \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && \
+    mkdir -p /app && \
+    chown -R appuser:appuser /app
+
+# Set working directory
+WORKDIR /app
+
+# Switch to non-root user
+USER appuser
+
+# Copy requirements as user
+COPY --chown=appuser:appuser requirements.txt requirements-dev.txt* ./
+
+# Install Python dependencies
+RUN pip install --user --no-cache-dir -r requirements.txt && \
+    if [ -f requirements-dev.txt ]; then pip install --user --no-cache-dir -r requirements-dev.txt; fi
+
+# Update PATH
+ENV PATH="/home/appuser/.local/bin:${PATH}"
+
+# Install additional development tools
+RUN pip install --user --no-cache-dir \
+    ipython \
+    ipdb \
+    pytest-watch \
+    pytest-cov \
+    mypy \
+    ruff \
+    pre-commit
+
+# Default command
+CMD ["/bin/bash"]

@@ -1,9 +1,0 @@
-Manager Agent Routing Test Summary
-==================================================
-
-Total tests: 10
-
-Routing Results:
-  text_to_sql: 4 queries (40.0%)
-  rag: 2 queries (20.0%)
-  unknown: 4 queries (40.0%)

@@ -1,0 +1,9 @@
+{
+    "dependencies": [
+        "."
+    ],
+    "graphs": {
+        "text_to_sql": "./src/text_to_sql/pipeline/graph.py:text_to_sql_graph"
+    },
+    "env": ".env"
+}

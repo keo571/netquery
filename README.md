@@ -1,45 +1,51 @@
-# Netbot: Network Engineering Multi-Agent System (Proof of Concept)
+# Universal Text-to-SQL System
 
-Netbot is an AI-powered assistant for network engineers, demonstrating the potential of multi-agent systems in network infrastructure management. This proof-of-concept (POC) showcases intelligent agent routing and specialized capabilities for infrastructure monitoring and network procedures.
+A domain-agnostic AI-powered assistant that converts natural language queries into SQL for any database. This system works automatically with any database schema through SQLAlchemy reflection and provides MCP (Model Context Protocol) server integration for AI assistants like Claude Desktop.
 
 ## Features
 
-- Manager Agent: Query routing and response synthesis
-- Text-to-SQL Agent: Natural language to database queries for infrastructure monitoring
-- Web Interface: Simple chat interface for interaction
+- **Domain-Agnostic**: Works with any database schema automatically through SQLAlchemy reflection
+- **Text-to-SQL Engine**: Converts natural language to SQL for any database
+- **MCP Server**: Standard Model Context Protocol server for AI assistant integration  
+- **Safety Validation**: Query validation and safety checks
+- **Cross-Database Support**: SQLite, PostgreSQL, MySQL, and more
 
 ## Planned Improvements
 
 **High Priority:**
-- Multi-shot RAG Agent: Enhanced retrieval-augmented generation for network documentation and procedures
-- Query Optimizer: Improve SQL query generation and execution efficiency
-- Confidence Scoring: Enhanced accuracy metrics for agent responses
-- State Management: Improved handling of conversation context and history
+- **Query Optimizer**: Improve SQL query generation and execution efficiency  
+- **Confidence Scoring**: Enhanced accuracy metrics for responses
+- **Enhanced Safety**: Advanced query safety validation
+- **Performance Optimization**: Better handling of large databases
 
 **Future Considerations:**
-- Additional Specialized Agents for specific network tasks
-- Agent Collaboration: Enhanced inter-agent communication
-- Plugin System: Extensible architecture for custom integrations
+- **Multi-modal support**: Schema diagram analysis
+- **Real-time data integration**: Live database monitoring
+- **Custom adapters**: Domain-specific optimizations
 
 ## Project Structure
 
-- backend/: Core backend logic, agents, and data
-- frontend/: Web interface (static files and templates)
-- requirements.txt: Python dependencies
-- run.py: Application entry point
+- **src/text_to_sql/**: Domain-agnostic text-to-SQL engine
+  - `models/`: Generic SQLAlchemy models using reflection
+  - `tools/`: Database toolkit, schema inspector, safety validator  
+  - `pipeline/`: LangGraph-based processing pipeline
+  - `create_sample_data.py`: Generic sample data generator
+  - `mcp_server.py`: MCP server implementation
+- **tests/**: Test files for the pipeline
+- **requirements.txt**: Python dependencies
 
 ## Prerequisites
 
 - Python 3.8 or higher
-- Google Gemini API key
-- SQLite database (included)
+- Google Gemini API key  
+- Any SQL database (SQLite, PostgreSQL, MySQL, etc.)
 
 ## Quick Start
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/netbot.git
-   cd netbot
+   git clone https://github.com/yourusername/text-to-sql.git
+   cd text-to-sql
    ```
 2. Create and activate a virtual environment:
    ```bash
@@ -52,62 +58,89 @@ Netbot is an AI-powered assistant for network engineers, demonstrating the poten
    ```
 4. Set up environment variables:
    ```bash
-   cp backend/.env.example backend/.env
-   # Edit backend/.env and add your GEMINI_API_KEY
+   cp .env.example .env
+   # Edit .env and add your GEMINI_API_KEY and DATABASE_URL
    ```
-5. Run the application:
+5. Configure your database:
    ```bash
-   python run.py
+   # For SQLite (default)
+   export DATABASE_URL="sqlite:///./database.db"
+   
+   # For PostgreSQL
+   export DATABASE_URL="postgresql://user:password@localhost/dbname"
+   
+   # For MySQL  
+   export DATABASE_URL="mysql://user:password@localhost/dbname"
    ```
-   The application will be available at http://localhost:5001
 
 ## Configuration
 
-Configure the following environment variables in `backend/.env`:
+Configure the following environment variables in `.env`:
 - `GEMINI_API_KEY`: Your Google Gemini API key
-- `PORT`: Server port (default: 5001)
-- `FLASK_DEBUG`: Debug mode (default: True)
-- `HOST`: Server host (default: 0.0.0.0)
+- `DATABASE_URL`: Your database connection string
+- `MAX_RESULT_ROWS`: Maximum rows to return (default: 1000)
 
-## Agents
+## Usage Options
 
-**Manager Agent**
-- Routes queries to specialized agents
-- Synthesizes responses
-- Performs initial query classification
+### MCP Server (Primary Interface)
+Use with Claude Desktop or other MCP-compatible clients:
+```bash
+# Run MCP server
+cd src/text_to_sql
+python mcp_server.py
 
-**Text-to-SQL Agent**
-- Converts natural language to SQL
-- Provides infrastructure monitoring
-- Performs initial confidence scoring
+# Or configure with Claude Desktop
+```
 
-## Database Schema
+### Testing
+Run tests to verify the pipeline works:
+```bash
+cd tests
+python test_text_to_sql_direct.py
+```
 
-The POC uses SQLite with the following main tables:
-- `network_devices`: Network infrastructure devices
-- `interfaces`: Network interfaces
-- `vlans`: VLAN configurations
-- `routing_tables`: Routing information
-- `monitoring_metrics`: Performance metrics
+## Core Engine
 
-## Sample Data Generation
+**Text-to-SQL Pipeline**
+- Natural language query understanding  
+- Automatic database schema discovery through SQLAlchemy reflection
+- SQL generation using Google Gemini
+- Safety validation and query execution
+- Result formatting and explanation
 
-Sample data simulating a real-world network infrastructure is automatically generated on first run.
+## Database Support
+
+The system works with any SQL database automatically:
+- **SQLite**: Perfect for development and small applications
+- **PostgreSQL**: Production-ready with advanced features  
+- **MySQL**: Wide compatibility and performance
+- **SQL Server**: Enterprise database support
+- **Oracle**: Large-scale enterprise systems
+
+## Sample Data Generation  
+
+Generic sample data can be generated for any database schema automatically.
 
 **How it works:**
-- The `InfrastructureDatabaseCreator` class (`backend/src/text_to_sql/create_sample_data.py`) creates the schema and populates tables with realistic data, including data centers, network zones, load balancers, VIPs, backend servers, SSL certificates, global traffic management, and more.
-- Analytical views are created for common monitoring queries (e.g., infrastructure health, SSL expiry, load balancer capacity, WIP performance, geographic distribution).
+- The `GenericSampleDataGenerator` class uses SQLAlchemy reflection to understand your schema
+- Generates realistic data based on column names and types
+- Handles foreign key relationships automatically
+- Works with any database structure
 
-**Manual regeneration:**
+**Manual generation:**
 ```bash
-cd backend/src/text_to_sql
+cd src/text_to_sql
 python create_sample_data.py
 ```
 
-**Data locations:**
-- Primary database: `backend/src/data/infrastructure.db`
-- Text-to-SQL database: `backend/text_to_sql/infrastructure.db`
-- Generation script: `backend/src/text_to_sql/create_sample_data.py`
+**Configuration:**
+```python
+# Generate data for specific tables
+create_sample_database(tables=['users', 'orders'], records_per_table=50)
+
+# Generate for all tables  
+create_sample_database(records_per_table=20)
+```
 
 ## Development
 
@@ -130,42 +163,56 @@ python create_sample_data.py
 
 ## Usage Examples
 
-Netbot can answer a variety of network engineering queries in natural language. Example queries:
+The system can answer natural language queries for any database domain:
 
-**Infrastructure Monitoring**
-- Show me the status of all load balancers
-- Check VIP health across all data centers
-- Which SSL certificates are expiring soon?
-- What's the geographic distribution of our web traffic?
+**E-commerce Database**
+- Show me the top 10 customers by total orders
+- Which products have the highest revenue this month?
+- Find all orders placed in the last 7 days
+- What's the average order value by category?
 
-**Performance Analysis**
-- Show load balancer capacity analysis
-- Which backend servers have the highest response times?
-- Give me a summary of WIP performance
-- What's the health status of our global traffic management?
+**CRM Database**
+- List all active customers with their contact information
+- Show sales performance by representative
+- Find customers who haven't been contacted in 30 days  
+- What's the conversion rate by lead source?
 
-**Network Configuration**
-- List all VIPs in the DMZ zone
-- Show network interfaces for lb-prod-1
-- What's the current routing configuration?
-- Display SSL certificate bindings
+**HR Database**
+- Show all employees in the engineering department
+- Find employees whose contracts expire this year
+- What's the average salary by department?
+- List all employees hired in the last 6 months
 
-**System Status**
-- Give me an infrastructure health summary
-- Show me data center capacity and power usage
-- Which services are currently in maintenance mode?
-- What's the overall system status?
+**Financial Database**
+- Show monthly revenue trends
+- Find all transactions above $10,000
+- What's the total expenses by category?
+- List all pending invoices
 
-The system automatically routes your queries to the appropriate agent and provides comprehensive infrastructure insights.
+The system automatically discovers your schema and processes natural language queries for any database domain.
+
+## Architecture
+
+### Current Architecture
+```
+# MCP Integration (Primary)
+Claude/AI Assistant → MCP Server → Text-to-SQL Pipeline → Any Database
+
+# Direct Usage
+Python Code → Text-to-SQL Pipeline → Database Results
+```
+
+### Pipeline Flow
+```
+Natural Language Query → Schema Analysis → SQL Generation → Safety Validation → Execution → Results
+```
 
 ## Limitations
 
-- Basic error handling and recovery
-- Limited scalability
-- Simple confidence scoring
-- Basic state management
-- Limited agent capabilities
-- No production-ready security features
+- Basic confidence scoring (improvements planned)
+- No advanced query optimization yet
+- Limited error recovery mechanisms
+- No production-ready security features for sensitive data
 
 ## License
 
@@ -173,6 +220,6 @@ This project is licensed under the MIT License. See the LICENSE file for details
 
 ## Acknowledgments
 
-- Google Gemini (AI capabilities)
-- LangChain (agent framework)
-- Flask (web framework)
+- Google Gemini (AI capabilities)  
+- SQLAlchemy (database ORM and reflection)
+- LangGraph (pipeline framework)

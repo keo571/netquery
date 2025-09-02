@@ -1,0 +1,113 @@
+version: '3.8'
+
+services:
+  # Text-to-SQL MCP Server
+  text-to-sql:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: netquery:latest
+    container_name: netquery-text-to-sql
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PYTHONPATH=/app
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/infrastructure.db}
+    volumes:
+      # Persistent data storage
+      - ./data:/app/data
+      # Configuration files
+      - ./config:/app/config:ro
+      # Logs
+      - ./logs:/app/logs
+      # Development: mount source code for hot-reloading
+      # Uncomment for development mode
+      # - ./src:/app/src:ro
+    ports:
+      # If you add a REST API server later
+      - "${API_PORT:-5001}:5001"
+    restart: unless-stopped
+    networks:
+      - netquery-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.path.insert(0, '/app'); from src.text_to_sql.tools.database_toolkit import db_toolkit; exit(0 if db_toolkit.test_connection() else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # PostgreSQL Database (optional - for production use)
+  postgres:
+    image: postgres:15-alpine
+    container_name: netquery-postgres
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-infrastructure}
+      - POSTGRES_USER=${POSTGRES_USER:-netquery}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Initialize database with schema
+      - ./scripts/init_postgres.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    restart: unless-stopped
+    networks:
+      - netquery-network
+    profiles:
+      - production
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-netquery}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache (optional - for caching)
+  redis:
+    image: redis:7-alpine
+    container_name: netquery-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    restart: unless-stopped
+    networks:
+      - netquery-network
+    profiles:
+      - cache
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Development Tools Container
+  dev-tools:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: netquery:dev
+    container_name: netquery-dev
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PYTHONPATH=/app
+      - FLASK_DEBUG=true
+    volumes:
+      - ./:/app
+      - ~/.ssh:/home/appuser/.ssh:ro
+    working_dir: /app
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+    networks:
+      - netquery-network
+    profiles:
+      - development
+
+networks:
+  netquery-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
