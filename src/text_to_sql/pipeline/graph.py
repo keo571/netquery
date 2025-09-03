@@ -11,14 +11,7 @@ from .state import TextToSQLState
 
 logger = logging.getLogger(__name__)
 
-# Always use embedding-based schema analyzer
-try:
-    from .nodes.schema_analyzer import schema_analyzer_node
-    logger.info("Using embedding-based schema analyzer")
-except ImportError as e:
-    logger.error(f"Cannot import embedding analyzer: {e}")
-    logger.error("Install sentence-transformers: pip install sentence-transformers")
-    raise ImportError("Embedding-based schema analyzer required but sentence-transformers not available")
+from .nodes.schema_analyzer import schema_analyzer_node
 from .nodes.query_planner import query_planner_node  
 from .nodes.sql_generator import sql_generator_node
 from .nodes.validator import validator_node
