@@ -23,7 +23,7 @@ netbot-v1/
 │       ├── config.py                         # Configuration
 │       ├── create_sample_data.py             # Database setup
 │       ├── infrastructure.db                 # Sample SQLite database
-│       ├── mcp_server_standard.py            # ✅ Standard MCP server
+│       ├── mcp_server.py            # ✅ MCP server
 │       ├── mcp_client_example.py             # Test client
 │       └── __init__.py                       # Package exports
 ├── 📁 tests/                                # Test suite
@@ -63,7 +63,7 @@ netbot-v1/
 ### 1. MCP Server (Primary Use Case)
 ```bash
 cd src/text_to_sql
-python mcp_server_standard.py
+python mcp_server.py
 ```
 - Works with Claude Desktop
 - Standard MCP protocol
@@ -96,7 +96,7 @@ python test_text_to_sql_direct.py
 
 ## Next Steps
 
-- **Learn MCP**: Study `mcp_server_standard.py` for standard patterns
+- **Learn MCP**: Study `mcp_server.py` for standard patterns
 - **Add Capabilities**: Create new MCP servers (RAG, config management)
 - **Integrate**: Connect with Claude Desktop or other MCP clients
 - **Test**: Use the test suite to validate functionality

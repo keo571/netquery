@@ -34,7 +34,7 @@ netbot-v1/
 │   │   ├── state.py                 # Pipeline state management
 │   │   └── nodes/                   # Processing nodes
 │   ├── tools/                       # Database tools (toolkit, validator, inspector)
-│   ├── mcp_server_standard.py       # ✅ Standard MCP server
+│   ├── mcp_server.py       # ✅ Standard MCP server
 │   ├── mcp_client_example.py        # ✅ Example client
 │   └── create_sample_data.py        # Database setup
 ├── tests/                           # Test files for text-to-SQL pipeline  
@@ -96,7 +96,7 @@ GEMINI_API_KEY=your_api_key_here
 
 ```bash
 cd src/text_to_sql
-python mcp_server_standard.py
+python mcp_server.py
 ```
 
 ### Testing with the Example Client
@@ -127,7 +127,7 @@ python test_text_to_sql_direct.py
     "netbot-text-to-sql": {
       "command": "python",
       "args": [
-        "/path/to/netbot-v1/src/text_to_sql/mcp_server_standard.py"
+        "/path/to/netbot-v1/src/text_to_sql/mcp_server.py"
       ],
       "env": {
         "PYTHONPATH": "/path/to/netbot-v1",
@@ -239,7 +239,7 @@ This implementation demonstrates:
 4. **Encapsulation pattern** for complex pipelines
 5. **Error handling** in MCP context
 
-Study `mcp_server_standard.py` to understand:
+Study `mcp_server.py` to understand:
 - How to initialize an MCP server
 - How to register handlers for tools and resources
 - How to handle tool calls with proper typing

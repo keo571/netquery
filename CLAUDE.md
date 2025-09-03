@@ -25,9 +25,8 @@ User Query → Schema Analysis → Query Planning → SQL Generation → Validat
    - `sqlalchemy_inspector.py` - SQLAlchemy-based schema reflection (recommended)
    - `safety_validator.py` - Query safety checks
 
-3. **MCP Servers** (`src/text_to_sql/`)
-   - `mcp_server_standard.py` - Basic MCP implementation
-   - `mcp_server_enhanced.py` - Advanced with streaming & batch support
+3. **MCP Server** (`src/text_to_sql/`)
+   - `mcp_server.py` - Standard MCP implementation
 
 ## Recent Improvements
 
@@ -227,7 +226,7 @@ make mcp-test     # Test MCP server
    - `src/text_to_sql/tools/schema_inspector.py` - Legacy approach
 
 4. **MCP Integration**
-   - `src/text_to_sql/mcp_server_enhanced.py` - Full-featured server
+   - `src/text_to_sql/mcp_server.py` - Standard MCP server
 
 ## Development Workflow
 
