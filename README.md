@@ -57,6 +57,12 @@ The included sample database contains network infrastructure entities for demons
 - **SSL Certificates** - TLS certificates, expiration tracking
 - **Monitoring Metrics** - Performance data, utilization statistics
 
+## Query Examples
+
+For comprehensive testing examples and query patterns organized by complexity level, see **[SAMPLE_QUERIES.md](SAMPLE_QUERIES.md)**.
+
+The sample database includes load balancers, servers, SSL certificates, VIP pools, and backend mappings with realistic data for testing various query types.
+
 ## Quick Start
 
 ### Prerequisites
@@ -116,11 +122,20 @@ python gemini_cli.py "Which SSL certificates expire soon?"
 python -m src.text_to_sql.mcp_server
 ```
 
-## Query Examples
+## Configuration
 
-For comprehensive testing examples and query patterns organized by complexity level, see **[SAMPLE_QUERIES.md](SAMPLE_QUERIES.md)**.
+Key environment variables:
 
-The sample database includes load balancers, servers, SSL certificates, VIP pools, and backend mappings with realistic data for testing various query types.
+```bash
+# Required
+GEMINI_API_KEY=your_api_key_here
+
+# Optional  
+DATABASE_URL=sqlite:///infrastructure.db
+LOG_LEVEL=INFO
+MAX_RESULT_ROWS=1000
+LLM_MODEL=gemini-2.5-flash
+```
 
 ## Project Structure
 
@@ -139,21 +154,6 @@ src/text_to_sql/
 ├── database/          # Database connection management
 ├── create_sample_data.py      # Network infrastructure sample data
 └── mcp_server.py             # MCP server implementation
-```
-
-## Configuration
-
-Key environment variables:
-
-```bash
-# Required
-GEMINI_API_KEY=your_api_key_here
-
-# Optional  
-DATABASE_URL=sqlite:///infrastructure.db
-LOG_LEVEL=INFO
-MAX_RESULT_ROWS=1000
-LLM_MODEL=gemini-2.5-flash
 ```
 
 ## Detailed Architecture
