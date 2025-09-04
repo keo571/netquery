@@ -5,6 +5,15 @@ from typing import Dict, Any, List
 import json
 
 
+# Common response guidelines
+_RESPONSE_GUIDELINES = """
+Guidelines:
+- Keep explanations non-technical and actionable
+- Make responses conversational and helpful
+- Focus on network infrastructure context (operational health, performance, capacity)
+- Provide direct answers first, then supporting details
+"""
+
 ERROR_ANALYSIS_PROMPT = """Analyze the following SQL execution error and provide user-friendly guidance.
 
 Original Query: {original_query}
@@ -16,9 +25,7 @@ Provide:
 2. Possible causes of the error
 3. Suggestions for fixing the issue
 4. Alternative approaches to get the desired data
-
-Keep explanations non-technical and actionable."""
-
+""" + _RESPONSE_GUIDELINES
 
 RESPONSE_FORMAT_TEMPLATE = """Format a comprehensive response for the user's query.
 
@@ -32,8 +39,7 @@ Include:
 2. Well-formatted data presentation
 3. Key insights from the results
 4. Brief explanation of how the answer was found
-
-Make the response conversational and helpful."""
+""" + _RESPONSE_GUIDELINES
 
 
 def create_result_interpretation_prompt(
@@ -65,13 +71,12 @@ def create_result_interpretation_prompt(
 ```
 
 **Instructions:**
-1. **Directly Answer the Question:** Start by providing a direct, concise answer to the user's original question.
-2. **Summarize Key Findings:** Briefly summarize the most important insights from the data. For example, "There is one degraded load balancer" or "All certificates are valid."
-3. **Do NOT Format a Table:** Do not attempt to create a markdown table or any other visual table format. The system will handle data formatting separately.
-4. **Keep it Concise:** Focus on the most important information that answers the user's question.
-5. **Use Network Infrastructure Context:** This is infrastructure monitoring data, so frame insights in terms of operational health, performance, and capacity.
+1. **Directly Answer the Question:** Start with a direct, concise answer to the user's original question
+2. **Summarize Key Findings:** Briefly summarize the most important insights from the data
+3. **Do NOT Format Tables:** Do not create markdown tables - the system handles data formatting separately
+4. **Keep it Concise:** Focus on the most important information (2-3 paragraphs maximum)
 
-Provide your interpretation in 2-3 paragraphs maximum."""
+{_RESPONSE_GUIDELINES.strip()}"""
 
 
 def format_pipeline_response(

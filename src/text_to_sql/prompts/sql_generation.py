@@ -2,16 +2,8 @@
 SQL generation prompt templates.
 """
 
-SQL_GENERATION_PROMPT = """You are an expert SQL query generator. Convert the natural language query to SQL using the provided database schema and query plan.
-
-Database Schema:
-{schema_context}
-
-Query Plan:
-{query_plan}
-
-Natural Language Query: {query}
-
+# Common instructions shared across SQL generation prompts
+_COMMON_SQL_INSTRUCTIONS = """
 Instructions:
 1. Generate a syntactically correct SQL query for SQLite database
 2. Use only the tables and columns shown in the schema
@@ -38,8 +30,18 @@ SELECT ...
 
 Explanation:
 Provide a brief explanation of what the query does and why you chose this approach.
+"""
 
-SQL Query:"""
+SQL_GENERATION_PROMPT = """You are an expert SQL query generator. Convert the natural language query to SQL using the provided database schema and query plan.
+
+Database Schema:
+{schema_context}
+
+Query Plan:
+{query_plan}
+
+Natural Language Query: {query}
+""" + _COMMON_SQL_INSTRUCTIONS
 
 SQL_GENERATION_WITH_EXAMPLES_PROMPT = """You are an expert SQL query generator. Convert the natural language query to SQL using the provided database schema and examples.
 
@@ -53,22 +55,7 @@ Example Queries:
 
 Natural Language Query: {query}
 
-Instructions:
-1. Study the examples to understand the query patterns for this database
-2. Generate a syntactically correct SQL query following similar patterns
-3. Use only the tables and columns shown in the schema
-4. Apply appropriate WHERE clauses, JOINs, and aggregations
-5. Include LIMIT clause to prevent large result sets (max {max_rows} rows)
-6. Use explicit JOIN syntax instead of implicit joins
-7. Ensure the query is safe (SELECT only, no data modification)
-
-Response Format:
-```sql
--- Your SQL query here
-SELECT ...
-```
-
-Explanation:
-Provide a brief explanation of what the query does and why you chose this approach.
-
-SQL Query:"""
+Additional Instruction:
+- Study the examples to understand the query patterns for this database
+- Generate a query following similar patterns from the examples
+""" + _COMMON_SQL_INSTRUCTIONS

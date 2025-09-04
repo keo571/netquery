@@ -83,6 +83,4 @@ Temporal query example:
 }}
 
 IMPORTANT: Always return valid JSON. Never include explanatory text outside the JSON object.
-
-Query to plan: {query}
 """
