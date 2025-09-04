@@ -1,6 +1,6 @@
 # Netquery - Network Infrastructure Text-to-SQL
 
-An AI-powered assistant that converts natural language queries into SQL for network infrastructure monitoring and management. Designed specifically for network engineers and operators who need to query complex infrastructure databases without SQL expertise.
+An AI-powered assistant that converts natural language queries into SQL. Currently includes sample network infrastructure data for demonstration, but can be adapted for various database schemas and domains.
 
 ## Architecture Overview
 
@@ -14,7 +14,7 @@ graph TD
     F --> G[Result Interpreter]
     G --> H[Formatted Response]
     
-    B --> I[(Database Schema)]
+    B --> I[(Database Schema<br/>Metadata)]
     D --> J[LLM - Gemini]
     E --> K[Safety Rules]
     F --> L[(Infrastructure DB)]
@@ -28,9 +28,9 @@ graph TD
 
 ## Why Netquery? Design Advantages
 
-### 🎯 **Domain-Specific Intelligence**
-- **Built for Network Ops**: Unlike generic text-to-SQL tools, Netquery understands network infrastructure terminology, relationships, and common query patterns
-- **Semantic Understanding**: Recognizes that "unhealthy load balancers" means checking status fields, not literal health metrics
+### 🎯 **Semantic Understanding**
+- **Schema Intelligence**: Uses semantic similarity to identify relevant tables based on natural language context
+- **Domain Adaptable**: Currently demonstrates network infrastructure concepts but can be adapted to other domains
 
 ### 🛡️ **Safety-First Architecture**
 - **Multi-Layer Validation**: Every query passes through safety checks before execution
@@ -49,16 +49,16 @@ graph TD
 
 ## Query Examples
 
-Transform natural language into precise SQL for network infrastructure:
+Transform natural language into SQL queries (using sample infrastructure data):
 
 - **"Show me all load balancers that are unhealthy"**
 - **"Which SSL certificates expire in the next 30 days?"** 
 - **"What's the average CPU utilization by datacenter?"**
 - **"List all VIP addresses in production environment"**
 
-## Network Infrastructure Entities
+## Sample Data Schema
 
-Netquery understands common network infrastructure components:
+The included sample database contains network infrastructure entities for demonstration:
 
 - **Load Balancers** - F5, HAProxy, Nginx configurations
 - **Backend Servers** - Pool members, real servers, health status
@@ -194,7 +194,7 @@ LLM_MODEL=gemini-2.5-flash
 
 ### Pipeline Stages
 
-1. **Schema Analyzer** - Uses semantic similarity to identify relevant database tables and relationships from natural language context
+1. **Schema Analyzer** - Reads database schema metadata (table names, columns, relationships) and uses semantic similarity to identify relevant tables from natural language context
 2. **Query Planner** - Analyzes query intent, determines required joins, filters, and aggregations needed
 3. **SQL Generator** - Leverages LLM to convert the planned query into syntactically correct, optimized SQL
 4. **Safety Validator** - Multi-layer security checks to prevent destructive operations and enforce business rules
