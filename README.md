@@ -46,15 +46,6 @@ flowchart TD
 - **Modular Design**: Each pipeline stage can be customized or replaced independently
 - **API Ready**: Easy to integrate into existing monitoring dashboards and tools
 
-## Query Examples
-
-Transform natural language into SQL queries (using sample infrastructure data):
-
-- **"Show me all load balancers that are unhealthy"**
-- **"Which SSL certificates expire in the next 30 days?"** 
-- **"What's the average CPU utilization by datacenter?"**
-- **"List all VIP addresses in production environment"**
-
 ## Sample Data Schema
 
 The included sample database contains network infrastructure entities for demonstration:
