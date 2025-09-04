@@ -6,25 +6,34 @@ An AI-powered assistant that converts natural language queries into SQL. Current
 
 ```mermaid
 flowchart TD
-    A[Natural Language Query] --> B[Schema Analysis<br/><small>semantic table matching</small>]
-    B --> C[Query Planning]
-    C --> D[SQL Generation]
-    D --> E[Safety Check]
-    E --> F[Execute Query]
-    F --> G[Format Results]
-    G --> H[Response]
+    subgraph main ["Processing Pipeline"]
+        direction TB
+        A([Natural Language Query]) --> B[Schema Analysis]
+        B --> C[Query Planning] 
+        C --> D[SQL Generation]
+        D --> E{Safety Check}
+        E -->|Pass| F[Execute Query]
+        E -->|Block| H
+        F --> G[Format Results]
+        G --> H([Response])
+    end
     
-    DB[(Database)] -.->|schema reflection<br/>once at startup| B
-    EMB[Table Embeddings<br/>Cache] -.-> B
-    DB -.-> F
-    LLM[Gemini LLM] -.-> D
+    subgraph external ["External Resources"]
+        DB[(Database)]
+        CACHE[(Embeddings Cache)]  
+        LLM[🤖 Gemini API]
+    end
     
-    E --> H
+    DB -.->|Schema| B
+    CACHE -.-> B
+    LLM -.-> D
+    DB -.->|Execute| F
     
-    style A fill:#e3f2fd
-    style H fill:#e8f5e8
-    style E fill:#fff3e0
-    style EMB fill:#f0f4c3
+    style A fill:#4FC3F7,color:#000
+    style H fill:#81C784,color:#000
+    style E fill:#FFB74D,color:#000
+    style main fill:#f8f9ff
+    style external fill:#fff8f0
 ```
 
 ## Why Netquery? Design Advantages
