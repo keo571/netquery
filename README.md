@@ -125,35 +125,11 @@ python gemini_cli.py "Which SSL certificates expire soon?"
 python -m src.text_to_sql.mcp_server
 ```
 
-## Common Query Patterns
+## Query Examples
 
-### Status Monitoring
-```
-"Show me all load balancers that are down"
-"Which backend servers are unhealthy?" 
-"List servers in maintenance mode"
-```
+For comprehensive testing examples and query patterns organized by complexity level, see **[SAMPLE_QUERIES.md](SAMPLE_QUERIES.md)**.
 
-### Performance Analysis
-```
-"What's the average response time by datacenter?"
-"Show bandwidth utilization trends"
-"Which servers have CPU usage above 80%?"
-```
-
-### Security & Compliance
-```
-"Which SSL certificates expire in the next 90 days?"
-"List all VIPs without valid certificates"
-"Show load balancers with weak SSL configurations"
-```
-
-### Capacity Planning
-```
-"What's the current load distribution across datacenters?"
-"Show server utilization by region"
-"Which load balancers are approaching capacity limits?"
-```
+The sample database includes load balancers, servers, SSL certificates, VIP pools, and backend mappings with realistic data for testing various query types.
 
 ## Project Structure
 
@@ -240,17 +216,6 @@ See `SAMPLE_QUERIES.md` for comprehensive test cases organized by complexity lev
 2. Add domain knowledge to prompts in `prompts/`
 3. Update schema analysis in `tools/semantic_table_finder.py`
 
-## Contributing
-
-1. Follow Python best practices and type hints
-2. Focus on network infrastructure use cases
-3. Ensure safety validation for all new query types
-4. Add appropriate logging and error handling
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-For network infrastructure-specific questions or feature requests, please open an issue describing your use case and the types of queries you need to support.
