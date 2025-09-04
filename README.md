@@ -16,7 +16,7 @@ Netquery helps network operations teams query their infrastructure databases usi
 - **🌐 Network Infrastructure Focus**: Optimized for load balancers, servers, VIPs, SSL certificates, and monitoring data
 - **🤖 Natural Language Queries**: Convert plain English to SQL automatically  
 - **🔒 Safety First**: Query validation prevents destructive operations
-- **🚀 MCP Server**: Integrates with Claude Desktop and other AI assistants
+- **🚀 MCP Server**: Integrates with AI assistants via Model Context Protocol
 - **📊 Smart Schema Analysis**: Automatically understands database relationships
 - **⚡ Performance Optimized**: Handles large infrastructure databases efficiently
 
@@ -84,7 +84,7 @@ python gemini_cli.py "Show me all load balancers"
 python gemini_cli.py "Which SSL certificates expire soon?"
 ```
 
-**MCP Server (for Claude Desktop):**
+**MCP Server (for AI assistants):**
 ```bash
 # Start the MCP server (requires sample data)
 python -m src.text_to_sql.mcp_server
