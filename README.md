@@ -213,7 +213,7 @@ See `SAMPLE_QUERIES.md` for comprehensive test cases organized by complexity lev
 
 ## Contributing
 
-1. Follow the coding standards in `CLAUDE.md`
+1. Follow Python best practices and type hints
 2. Focus on network infrastructure use cases
 3. Ensure safety validation for all new query types
 4. Add appropriate logging and error handling

@@ -284,6 +284,7 @@ site/
 # Claude Code specific
 .claude/
 .embeddings_cache/
+CLAUDE.md
 
 # Local development
 .local/
