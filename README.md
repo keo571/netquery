@@ -15,9 +15,10 @@ flowchart TD
     F --> G[Format Results]
     G --> H([Response])
     
-    DB[(Database)]
-    CACHE[(Embedding Cache)]
-    LLM[Gemini API]
+    DB[(Database)] --> B
+    CACHE[(Embedding Cache)] --> B
+    LLM[Gemini API] --> D
+    DB --> F
     
     style A fill:#4FC3F7,color:#000
     style H fill:#81C784,color:#000
