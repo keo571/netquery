@@ -231,12 +231,10 @@ $RECYCLE.BIN/
 .nfs*
 
 # Project-specific
-# Database files (keep sample data but ignore production databases)
+# Database files (generated locally, not committed)
 *.db
 *.sqlite
 *.sqlite3
-# Keep the main sample database
-!infrastructure.db
 
 # Log files
 *.log
