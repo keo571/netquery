@@ -2,11 +2,19 @@
 Prompt templates for Text-to-SQL pipeline.
 """
 from .sql_generation import SQL_GENERATION_PROMPT
-from .schema_analysis import SCHEMA_ANALYSIS_PROMPT
 from .query_planning import QUERY_PLANNING_PROMPT
+from .result_interpretation import (
+    ERROR_ANALYSIS_PROMPT,
+    RESPONSE_FORMAT_TEMPLATE,
+    create_result_interpretation_prompt,
+    format_pipeline_response
+)
 
 __all__ = [
     'SQL_GENERATION_PROMPT',
-    'SCHEMA_ANALYSIS_PROMPT',
-    'QUERY_PLANNING_PROMPT'
+    'QUERY_PLANNING_PROMPT',
+    'ERROR_ANALYSIS_PROMPT',
+    'RESPONSE_FORMAT_TEMPLATE',
+    'create_result_interpretation_prompt',
+    'format_pipeline_response'
 ]

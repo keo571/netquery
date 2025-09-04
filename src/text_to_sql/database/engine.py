@@ -1,11 +1,8 @@
 """
-Generic SQLAlchemy base configuration for any database schema.
-Works automatically with any existing database through reflection.
+SQLAlchemy database engine and metadata management.
+Provides database connectivity and schema reflection.
 """
-import os
-from pathlib import Path
-from sqlalchemy import create_engine, MetaData, inspect
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import create_engine, MetaData
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.engine import Engine
 import logging
@@ -14,12 +11,8 @@ from ..config import config
 
 logger = logging.getLogger(__name__)
 
-# Create declarative base (not used for reflection, but available for custom models)
-Base = declarative_base()
-
-# Global engine and session factory
+# Global instances
 _engine = None
-_SessionLocal = None
 _metadata = None
 
 
@@ -66,26 +59,6 @@ def get_metadata() -> MetaData:
     return _metadata
 
 
-def get_session_factory():
-    """Get session factory."""
-    global _SessionLocal
-    if _SessionLocal is None:
-        engine = get_engine()
-        _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    return _SessionLocal
-
-
-def get_session() -> Session:
-    """Get database session."""
-    SessionLocal = get_session_factory()
-    return SessionLocal()
-
-
-def refresh_metadata():
-    """Refresh metadata to pick up schema changes."""
-    global _metadata
-    _metadata = None
-    get_metadata()  # This will recreate and reflect
 
 
 class DatabaseSession:
@@ -95,7 +68,9 @@ class DatabaseSession:
         self.session = None
     
     def __enter__(self) -> Session:
-        self.session = get_session()
+        engine = get_engine()
+        session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        self.session = session_factory()
         return self.session
     
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -104,12 +79,3 @@ class DatabaseSession:
         else:
             self.session.commit()
         self.session.close()
-
-
-# Convenience function for database operations
-def with_session(func):
-    """Decorator to provide database session to function."""
-    def wrapper(*args, **kwargs):
-        with DatabaseSession() as session:
-            return func(session, *args, **kwargs)
-    return wrapper

@@ -235,8 +235,8 @@ $RECYCLE.BIN/
 *.db
 *.sqlite
 *.sqlite3
-!backend/src/data/infrastructure.db
-!backend/text_to_sql/infrastructure.db
+# Keep the main sample database
+!infrastructure.db
 
 # Log files
 *.log
@@ -282,6 +282,10 @@ site/
 
 # Jupyter notebook checkpoints
 .ipynb_checkpoints/
+
+# Claude Code specific
+.claude/
+.embeddings_cache/
 
 # Local development
 .local/

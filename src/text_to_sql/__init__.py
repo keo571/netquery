@@ -8,7 +8,7 @@ from .config import config
 # Use mcp_server_standard.py for MCP implementation
 
 __version__ = "1.0.0"
-__author__ = "AI Assistant"
+__author__ = "QW the SQL Sorceress"
 __description__ = "Advanced Text-to-SQL pipeline with natural language processing capabilities"
 
 __all__ = [

@@ -2,24 +2,30 @@
 SQL generation prompt templates.
 """
 
-SQL_GENERATION_PROMPT = """You are an expert SQL query generator. Convert the natural language query to SQL using the provided database schema.
+SQL_GENERATION_PROMPT = """You are an expert SQL query generator. Convert the natural language query to SQL using the provided database schema and query plan.
 
 Database Schema:
 {schema_context}
 
-{plan_context}
+Query Plan:
+{query_plan}
 
 Natural Language Query: {query}
 
 Instructions:
-1. Generate a syntactically correct SQL query
+1. Generate a syntactically correct SQL query for SQLite database
 2. Use only the tables and columns shown in the schema
 3. Apply appropriate WHERE clauses, JOINs, and aggregations
 4. Include LIMIT clause to prevent large result sets (max {max_rows} rows)
 5. Use explicit JOIN syntax instead of implicit joins
 6. Ensure the query is safe (SELECT only, no data modification)
 7. Handle case-insensitive string matching with UPPER() or LOWER() when appropriate
-8. Optimize for performance by:
+8. For date operations in SQLite, use:
+   - DATE() function for date calculations
+   - Example: DATE('now', '+30 days') for 30 days from now
+   - Example: DATE('now', '-1 week') for one week ago
+   - Use DATE() instead of INTERVAL syntax
+9. Optimize for performance by:
    - Selecting only necessary columns (avoid SELECT *)
    - Using appropriate indexes where possible
    - Minimizing subqueries when JOINs would be more efficient

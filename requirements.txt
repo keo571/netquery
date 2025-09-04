@@ -10,6 +10,7 @@ sqlparse>=0.4.4
 # Embedding-based table search (required)
 sentence-transformers>=2.2.0
 numpy>=1.21.0
+scikit-learn>=1.0.0
 
 # Add based on your database:
 # psycopg2-binary>=2.9.0  # For PostgreSQL
