@@ -15,7 +15,7 @@ flowchart TD
     F --> G[Format Results]
     G --> H([Response])
     
-    DB[(Database)] --> B
+    DB[(Database)] -.->|schema reflection<br/>at startup| CACHE
     CACHE[(Embedding Cache)] --> B
     LLM[Gemini API] --> D
     DB --> F
