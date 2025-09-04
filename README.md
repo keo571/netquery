@@ -2,9 +2,54 @@
 
 An AI-powered assistant that converts natural language queries into SQL for network infrastructure monitoring and management. Designed specifically for network engineers and operators who need to query complex infrastructure databases without SQL expertise.
 
-## Overview
+## Architecture Overview
 
-Netquery helps network operations teams query their infrastructure databases using natural language:
+```mermaid
+graph TD
+    A[Natural Language Query] --> B[Schema Analyzer]
+    B --> C[Query Planner]
+    C --> D[SQL Generator]
+    D --> E[Safety Validator]
+    E --> F[Query Executor]
+    F --> G[Result Interpreter]
+    G --> H[Formatted Response]
+    
+    B --> I[(Database Schema)]
+    D --> J[LLM - Gemini]
+    E --> K[Safety Rules]
+    F --> L[(Infrastructure DB)]
+    
+    style A fill:#e1f5fe
+    style H fill:#e8f5e8
+    style J fill:#fff3e0
+    style K fill:#fce4ec
+    style L fill:#f3e5f5
+```
+
+## Why Netquery? Design Advantages
+
+### 🎯 **Domain-Specific Intelligence**
+- **Built for Network Ops**: Unlike generic text-to-SQL tools, Netquery understands network infrastructure terminology, relationships, and common query patterns
+- **Semantic Understanding**: Recognizes that "unhealthy load balancers" means checking status fields, not literal health metrics
+
+### 🛡️ **Safety-First Architecture**
+- **Multi-Layer Validation**: Every query passes through safety checks before execution
+- **Read-Only Operations**: Blocks all destructive operations (DELETE, DROP, UPDATE) by design
+- **Result Limits**: Automatically adds LIMIT clauses to prevent runaway queries
+
+### ⚡ **Performance & Scalability**
+- **Smart Schema Analysis**: Uses semantic similarity to identify relevant tables, reducing query complexity
+- **Pipeline Architecture**: LangGraph-based processing allows for easy optimization and monitoring
+- **Efficient Caching**: Schema metadata is cached to reduce repeated analysis overhead
+
+### 🔌 **Integration Ready**
+- **MCP Protocol**: Works with any AI assistant supporting Model Context Protocol
+- **Modular Design**: Each pipeline stage can be customized or replaced independently
+- **API Ready**: Easy to integrate into existing monitoring dashboards and tools
+
+## Query Examples
+
+Transform natural language into precise SQL for network infrastructure:
 
 - **"Show me all load balancers that are unhealthy"**
 - **"Which SSL certificates expire in the next 30 days?"** 
@@ -154,23 +199,24 @@ MAX_RESULT_ROWS=1000
 LLM_MODEL=gemini-2.5-flash
 ```
 
-## Architecture
+## Detailed Architecture
 
-```
-Natural Language Query 
-    ↓
-Schema Analysis (identify relevant tables)
-    ↓  
-Query Planning (understand intent)
-    ↓
-SQL Generation (create safe SQL)
-    ↓
-Safety Validation (prevent destructive operations)
-    ↓
-Query Execution (run against database)
-    ↓
-Result Interpretation (format for humans)
-```
+### Pipeline Stages
+
+1. **Schema Analyzer** - Uses semantic similarity to identify relevant database tables and relationships from natural language context
+2. **Query Planner** - Analyzes query intent, determines required joins, filters, and aggregations needed
+3. **SQL Generator** - Leverages LLM to convert the planned query into syntactically correct, optimized SQL
+4. **Safety Validator** - Multi-layer security checks to prevent destructive operations and enforce business rules
+5. **Query Executor** - Executes validated SQL against the database with proper error handling and timeouts
+6. **Result Interpreter** - Formats raw SQL results into human-readable responses with insights and explanations
+
+### Technical Implementation
+
+- **LangGraph Framework**: Orchestrates the multi-stage pipeline with state management and error handling
+- **Semantic Table Discovery**: Uses sentence transformers to match queries with relevant database schemas
+- **LLM Integration**: Google Gemini API for intelligent SQL generation with domain-specific prompts
+- **SQLAlchemy ORM**: Database abstraction layer supporting multiple database backends
+- **MCP Protocol**: Standard interface for AI assistant integration
 
 ## Safety Features
 
