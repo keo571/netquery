@@ -15,16 +15,13 @@ flowchart TD
     F --> G[Format Results]
     G --> H([Response])
     
-    subgraph resources ["Key Resources"]
-        DB[(Database)]
-        CACHE[(Embedding Cache)]
-        LLM[Gemini API]
-    end
+    DB[(Database)]
+    CACHE[(Embedding Cache)]
+    LLM[Gemini API]
     
     style A fill:#4FC3F7,color:#000
     style H fill:#81C784,color:#000
     style E fill:#FFB74D,color:#000
-    style resources fill:#f8f9fa,stroke:#dee2e6
 ```
 
 ## Why Netquery? Design Advantages
