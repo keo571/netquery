@@ -5,15 +5,19 @@ An AI-powered assistant that converts natural language queries into SQL. Current
 ## Architecture Overview
 
 ```mermaid
-flowchart LR
+flowchart TD
     A[Natural Language Query] --> B[Schema Analysis]
     B --> C[Query Planning]
     C --> D[SQL Generation]
     D --> E[Safety Check]
-    E --> F[Execute]
+    E --> F[Execute Query]
     F --> G[Format Results]
-    
     G --> H[Response]
+    
+    DB[(Database)] -.-> B
+    DB -.-> F
+    LLM[Gemini LLM] -.-> D
+    
     E --> H
     
     style A fill:#e3f2fd
