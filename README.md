@@ -56,15 +56,6 @@ Transform natural language into precise SQL for network infrastructure:
 - **"What's the average CPU utilization by datacenter?"**
 - **"List all VIP addresses in production environment"**
 
-## Key Features
-
-- **🌐 Network Infrastructure Focus**: Optimized for load balancers, servers, VIPs, SSL certificates, and monitoring data
-- **🤖 Natural Language Queries**: Convert plain English to SQL automatically  
-- **🔒 Safety First**: Query validation prevents destructive operations
-- **🚀 MCP Server**: Integrates with AI assistants via Model Context Protocol
-- **📊 Smart Schema Analysis**: Automatically understands database relationships
-- **⚡ Performance Optimized**: Handles large infrastructure databases efficiently
-
 ## Network Infrastructure Entities
 
 Netquery understands common network infrastructure components:
@@ -217,13 +208,6 @@ LLM_MODEL=gemini-2.5-flash
 - **LLM Integration**: Google Gemini API for intelligent SQL generation with domain-specific prompts
 - **SQLAlchemy ORM**: Database abstraction layer supporting multiple database backends
 - **MCP Protocol**: Standard interface for AI assistant integration
-
-## Safety Features
-
-- **Query Validation**: Blocks DELETE, DROP, UPDATE, and other destructive operations
-- **Row Limits**: Automatically adds LIMIT clauses to prevent large result sets
-- **Schema Validation**: Ensures queries only access valid tables and columns
-- **Error Handling**: Graceful failure with informative error messages
 
 ## Development
 
