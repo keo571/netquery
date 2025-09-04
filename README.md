@@ -6,21 +6,40 @@ An AI-powered assistant that converts natural language queries into SQL. Current
 
 ```mermaid
 graph TD
-    A[Natural Language Query] --> B[Schema Analyzer]
-    B --> C[Query Planner]  
-    C --> D[SQL Generator]
-    D --> E[Safety Validator]
-    E --> F[Query Executor]
-    F --> G[Result Interpreter]
-    G --> H[Formatted Response]
+    subgraph "External Resources"
+        DB[(Database)]
+        LLM[🤖 Gemini LLM]
+        RULES[🛡️ Safety Rules]
+        CACHE[💾 Embeddings Cache]
+    end
     
-    I[(Database Schema)] -.-> B
-    J[LLM<br/>Gemini] -.-> D
-    K[Safety Rules] -.-> E
-    L[(Database)] -.-> F
+    subgraph "Processing Pipeline"
+        A["📝 Natural Language Query"] 
+        B["🔍 Find Relevant Tables<br/><small>reads schema via SQLAlchemy reflection</small>"]
+        C["📋 Plan Query Structure"] 
+        D["⚡ Generate SQL"]
+        E["✅ Validate Safety"]
+        F["🚀 Execute Query"]
+        G["📊 Format Results"]
+        H["✨ Final Response"]
+    end
+    
+    A --> B --> C --> D --> E --> F --> G --> H
+    
+    DB -.->|"reflect() schema metadata"| B
+    CACHE -.->|"semantic embeddings"| B
+    LLM -.-> D
+    RULES -.-> E
+    DB -.->|"execute SQL"| F
+    
+    E -.-> ERR["❌ Error Handler"]
+    F -.-> ERR
+    ERR --> H
     
     style A fill:#e3f2fd
     style H fill:#e8f5e8
+    style ERR fill:#ffebee
+    style B fill:#f3e5f5
 ```
 
 ## Why Netquery? Design Advantages
