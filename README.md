@@ -6,7 +6,7 @@ An AI-powered assistant that converts natural language queries into SQL. Current
 
 ```mermaid
 flowchart TD
-    A[Natural Language Query] --> B[Schema Analysis]
+    A[Natural Language Query] --> B[Schema Analysis<br/><small>semantic table matching</small>]
     B --> C[Query Planning]
     C --> D[SQL Generation]
     D --> E[Safety Check]
@@ -14,7 +14,8 @@ flowchart TD
     F --> G[Format Results]
     G --> H[Response]
     
-    DB[(Database)] -.-> B
+    DB[(Database)] -.->|schema reflection<br/>once at startup| B
+    EMB[Table Embeddings<br/>Cache] -.-> B
     DB -.-> F
     LLM[Gemini LLM] -.-> D
     
@@ -23,6 +24,7 @@ flowchart TD
     style A fill:#e3f2fd
     style H fill:#e8f5e8
     style E fill:#fff3e0
+    style EMB fill:#f0f4c3
 ```
 
 ## Why Netquery? Design Advantages
@@ -203,7 +205,7 @@ LLM_MODEL=gemini-2.5-flash
 ### Technical Implementation
 
 - **LangGraph Framework**: Orchestrates the multi-stage pipeline with state management and error handling
-- **Semantic Table Discovery**: Uses sentence transformers to match queries with relevant database schemas
+- **Semantic Table Discovery**: Schema reflected once at startup, then uses cached embeddings for fast table matching
 - **LLM Integration**: Google Gemini API for intelligent SQL generation with domain-specific prompts
 - **SQLAlchemy ORM**: Database abstraction layer supporting multiple database backends
 - **MCP Protocol**: Standard interface for AI assistant integration
