@@ -268,10 +268,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# VS Code Extension
-vscode-extension/out/
-vscode-extension/node_modules/
-vscode-extension/*.vsix
 
 # Build artifacts
 build/
@@ -289,7 +285,6 @@ site/
 # Claude Code specific
 .claude/
 .embeddings_cache/
-CLAUDE.md
 
 # Local development
 .local/

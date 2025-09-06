@@ -1,17 +1,17 @@
-# Core dependencies only
-langchain-core>=0.1.0
-langchain-google-genai>=1.0.0
+# Core dependencies
+langchain-core>=0.3.0
+langchain-google-genai>=2.0.0
 langgraph>=0.1.0
-mcp>=1.0.0
+mcp>=1.13.0
 sqlalchemy>=2.0.0
-python-dotenv==1.0.0
+python-dotenv>=1.0.0
 sqlparse>=0.4.4
 
-# Embedding-based table search (required)
-sentence-transformers>=2.2.0
+# Semantic analysis dependencies
+sentence-transformers>=5.0.0
 numpy>=1.21.0
-scikit-learn>=1.0.0
+scikit-learn>=1.5.0
 
-# Add based on your database:
+# Optional database drivers (uncomment as needed):
 # psycopg2-binary>=2.9.0  # For PostgreSQL
 # pymysql>=1.0.0          # For MySQL
