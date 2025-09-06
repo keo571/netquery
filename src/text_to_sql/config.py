@@ -13,6 +13,17 @@ class DatabaseConfig(BaseModel):
         description="Database connection URL (relative to project root)"
     )
     connection_timeout: int = Field(default=30, description="Connection timeout in seconds")
+    
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Convert relative SQLite paths to absolute for reliability
+        if self.database_url.startswith('sqlite:///') and not self.database_url.startswith('sqlite:////'):
+            rel_path = self.database_url[10:]  # Remove 'sqlite:///'
+            
+            # Get project root (where this config file's parent/parent directory is)
+            project_root = Path(__file__).parent.parent.parent
+            abs_path = project_root / rel_path
+            self.database_url = f"sqlite:///{abs_path.resolve()}"
 
 
 class LLMConfig(BaseModel):

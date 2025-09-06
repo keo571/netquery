@@ -126,7 +126,7 @@ async def handle_query(arguments: Dict[str, Any]) -> str:
 
     logger.info(f"Processing query: {query[:80]}...")
     
-    # Run the pipeline
+    # Run the multi-step pipeline
     initial_state = {
         "messages": [HumanMessage(content=query)],
         "original_query": query,
@@ -135,21 +135,8 @@ async def handle_query(arguments: Dict[str, Any]) -> str:
     
     result = await text_to_sql_graph.ainvoke(initial_state)
     
-    # Format response
-    response = ["## Query Result\n"]
-    response.append(result.get("formatted_response", "No results generated"))
-    
-    if include_explanation:
-        # Show tables that were analyzed (from relevance_scores)
-        if result.get("relevance_scores"):
-            tables = list(result.get("relevance_scores", {}).keys())
-            if tables:
-                response.append(f"**Tables Analyzed:** {', '.join(tables[:5])}")
-                if len(tables) > 5:
-                    response.append(f" (and {len(tables) - 5} more)")
-    
-    
-    return "\n".join(response)
+    # Return the pipeline's formatted response directly
+    return result.get("formatted_response", "No results generated")
 
 
 def handle_schema(arguments: Dict[str, Any]) -> str:

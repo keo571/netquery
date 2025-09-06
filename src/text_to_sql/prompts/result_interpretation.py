@@ -8,7 +8,7 @@ import json
 # Common response guidelines
 _RESPONSE_GUIDELINES = """
 Guidelines:
-- Keep explanations non-technical and actionable
+- Keep explanations technical and actionable
 - Make responses conversational and helpful
 - Focus on network infrastructure context (operational health, performance, capacity)
 - Provide direct answers first, then supporting details
@@ -95,9 +95,7 @@ def format_pipeline_response(
     else:
         formatted_results = "No results found for your query."
     
-    # Basic response structure
     response_parts = [
-        f"## Query Result",
         llm_summary,
         "",
         f"**Results:** {formatted_results}",

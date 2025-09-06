@@ -18,15 +18,24 @@ class GenericDatabaseToolkit:
     
     def __init__(self):
         """Initialize generic database toolkit."""
-        self.engine = get_engine()
-        if not self.test_connection():
-            raise RuntimeError("Database connection failed during initialization")
-        logger.info("Database connection established successfully")
+        self._engine = None
+        self._initialized = False
+    
+    @property
+    def engine(self):
+        """Lazy-load database engine."""
+        if not self._initialized:
+            self._engine = get_engine()
+            if not self.test_connection():
+                raise RuntimeError("Database connection failed during initialization")
+            logger.info("Database connection established successfully")
+            self._initialized = True
+        return self._engine
     
     def test_connection(self) -> bool:
         """Test database connection."""
         try:
-            with self.engine.connect() as conn:
+            with self._engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
                 return True
         except Exception as e:
