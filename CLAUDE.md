@@ -40,12 +40,8 @@ User Query → Schema Analysis → Query Planning → SQL Generation → Validat
 - ✅ Organized prompts in `prompts/` directory
 - ✅ Added config management with hot-reloading
 
-### 3. Docker Support
-- ✅ Multi-stage Dockerfile for optimized builds
-- ✅ docker-compose.yml with PostgreSQL & Redis options
-- ✅ Makefile for easy management
 
-### 4. Schema Intelligence
+### 3. Schema Intelligence
 - ✅ Removed penalty for large tables (was incorrectly penalizing important data)
 - ✅ Improved semantic scoring for network infrastructure domain
 - ✅ Enhanced semantic table finder for better relevance matching
@@ -199,21 +195,13 @@ ENABLE_CACHE=true
 
 ```bash
 # Development
-make dev          # Start dev environment
-make test         # Run tests
-make format       # Format code
+python -m src.text_to_sql.create_sample_data  # Create sample data
+python gemini_cli.py "your query"             # Test queries via CLI
+python -m src.text_to_sql.mcp_server          # Start MCP server
 
-# Docker
-make build        # Build images
-make up           # Start services
-make logs         # View logs
-
-# Database
-make db-create    # Create sample data
-make db-shell     # Access database
-
-# MCP
-make mcp-test     # Test MCP server
+# Testing
+python gemini_cli.py "Show me all load balancers"
+python gemini_cli.py "Which SSL certificates expire soon?"
 ```
 
 ## Key Files to Understand
@@ -242,13 +230,10 @@ make mcp-test     # Test MCP server
    
    # 2. Make changes
    # 3. Test locally
-   make test
+   python gemini_cli.py "test query"
    
-   # 4. Format code
-   make format
-   
-   # 5. Test in Docker
-   make rebuild
+   # 4. Test MCP server
+   python -m src.text_to_sql.mcp_server
    ```
 
 2. **Adding Features**
@@ -258,9 +243,8 @@ make mcp-test     # Test MCP server
    - Test with sample queries
 
 3. **Debugging**
-   - Check logs: `make logs`
-   - Use debug mode: `LOG_LEVEL=DEBUG`
-   - Test individual components
+   - Use debug mode: `LOG_LEVEL=DEBUG python gemini_cli.py "query"`
+   - Test individual components with Python imports
    - Use SQLAlchemy echo mode for SQL debugging
 
 ## Network Infrastructure Specifics

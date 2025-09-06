@@ -52,7 +52,7 @@ class PipelineConfig(BaseModel):
 
 class SafetyConfig(BaseModel):
     """Safety configuration."""
-    max_result_rows: int = Field(default=50, description="Maximum result rows")
+    max_result_rows: int = Field(default=30, description="Maximum result rows")
     allowed_operations: list = Field(default=["SELECT"], description="Allowed SQL operations")
     
     # Additional fields for the existing safety validator
