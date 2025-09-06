@@ -62,7 +62,7 @@ def query_planner_node(state: TextToSQLState) -> Dict[str, Any]:
         # Log the reasoning step
         reasoning_step = {
             "step_name": "Query Planning",
-            "details": f"Created a plan with intent '{query_plan.get('intent')}' and complexity '{query_plan.get('complexity')}'.",
+            "details": f"Created a plan with intent '{query_plan.get('intent')}' and complexity '{query_plan.get('estimated_complexity')}'.",
             "status": "✅"
         }
 
