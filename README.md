@@ -35,7 +35,7 @@ flowchart TD
 ### 🛡️ **Safety-First Architecture**
 - **Multi-Layer Validation**: Every query passes through safety checks before execution
 - **Read-Only Operations**: Blocks all destructive operations (DELETE, DROP, UPDATE) by design
-- **Result Limits**: Automatically adds LIMIT clauses to prevent runaway queries
+- **Query Warnings**: Suggests LIMIT clauses for queries that might return large result sets
 
 ### ⚡ **Performance & Scalability**
 - **Smart Schema Analysis**: Uses cached embeddings for fast table matching
@@ -91,7 +91,6 @@ The system supports comprehensive query patterns with automatic chart generation
 ### 🛠️ **Export & Analysis Tools**
 - **HTML Reports**: Interactive reports with embedded charts
 - **CSV Export**: Raw data for further analysis
-- **PDF Reports**: Formatted reports for sharing
 - **Database Export**: Full table exports for backup/analysis
 
 ### 🔍 **Query Evaluation**
@@ -155,7 +154,6 @@ python gemini_cli.py "Which SSL certificates expire soon?"
 # With chart generation and exports
 python gemini_cli.py "Show network traffic over time" --html
 python gemini_cli.py "Display server performance by datacenter" --csv
-python gemini_cli.py "Show memory usage by datacenter" --pdf
 ```
 
 **MCP Server (for AI assistants):**
@@ -244,7 +242,7 @@ python gemini_cli.py "What's the average memory usage by datacenter?"
 
 # With visualizations and exports
 python gemini_cli.py "Show network traffic trends over time" --html
-python gemini_cli.py "Display server performance by datacenter" --csv --pdf
+python gemini_cli.py "Display server performance by datacenter" --csv
 ```
 
 **Batch Evaluation:**
