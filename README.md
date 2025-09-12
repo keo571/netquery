@@ -230,7 +230,7 @@ src/text_to_sql/
 - **LangGraph Framework**: Orchestrates the multi-stage pipeline with state management and error handling
 - **Semantic Table Discovery**: Schema reflected once at startup, then uses cached embeddings for fast table matching
 - **LLM Integration**: Google Gemini API for intelligent SQL generation with domain-specific prompts
-- **SQLAlchemy ORM**: Database abstraction layer supporting multiple database backends
+- **SQLAlchemy ORM**: Database abstraction layer with SQLite implementation and PostgreSQL/MySQL preparation
 - **FastMCP Integration**: Simplified MCP server implementation with automatic type validation
 
 ## Development
