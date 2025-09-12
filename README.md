@@ -49,14 +49,23 @@ flowchart TD
 
 ## Sample Data Schema
 
-The included sample database contains network infrastructure entities for demonstration:
+The included sample database contains realistic network infrastructure data for demonstration:
 
-- **Load Balancers** - F5, HAProxy, Nginx configurations
-- **Backend Servers** - Pool members, real servers, health status
-- **Virtual IPs (VIPs)** - Virtual services, IP addresses
-- **Data Centers** - Sites, regions, availability zones  
-- **SSL Certificates** - TLS certificates, expiration tracking
-- **Monitoring Metrics** - Performance data, utilization statistics
+### **Core Infrastructure**
+- **Load Balancers** (50 records) - Application, network, gateway, and internal load balancers
+- **Servers** (50 records) - Web, API, database, cache, worker, and proxy servers with CPU/memory metrics
+- **SSL Certificates** (50 records) - Certificates from various providers with expiration tracking
+- **VIP Pools** (50 records) - Virtual IP addresses mapped to load balancers
+- **Backend Mappings** (50 records) - Relationships between load balancers and backend servers
+
+### **Time-Series Monitoring Data**
+- **Network Traffic** (840 records) - Hourly traffic data with bandwidth, requests, response times
+- **SSL Monitoring** (30 records) - Daily SSL certificate health and expiration trends  
+- **Load Balancer Health** (720 records) - Backend health status and performance over time
+- **Network Connectivity** (960 records) - Server connectivity metrics including latency and packet loss
+
+### **Geographic Distribution**
+Data spans four datacenters: `us-east-1`, `us-west-2`, `eu-west-1`, `ap-southeast-1`
 
 ## Query Examples
 
