@@ -206,7 +206,7 @@ src/text_to_sql/
 │   └── llm_utils.py          # LLM configuration utilities
 ├── database/          # Database connection management
 ├── create_sample_data.py      # Network infrastructure sample data
-└── mcp_server.py             # MCP server implementation
+└── mcp_server.py             # FastMCP server implementation
 
 # Root level scripts
 ├── evaluate_queries.py        # Comprehensive query evaluation
@@ -231,7 +231,7 @@ src/text_to_sql/
 - **Semantic Table Discovery**: Schema reflected once at startup, then uses cached embeddings for fast table matching
 - **LLM Integration**: Google Gemini API for intelligent SQL generation with domain-specific prompts
 - **SQLAlchemy ORM**: Database abstraction layer supporting multiple database backends
-- **MCP Protocol**: Standard interface for AI assistant integration
+- **FastMCP Integration**: Simplified MCP server implementation with automatic type validation
 
 ## Development
 
