@@ -3,14 +3,15 @@ Query planner node for Text-to-SQL pipeline.
 Analyzes the natural language query and creates a detailed query plan.
 """
 from typing import Dict, Any
-from langchain_google_genai import ChatGoogleGenerativeAI
 import json
 import logging
 import re
+import time
 
 from ...config import config
 from ..state import TextToSQLState, QueryPlan
 from ...prompts import QUERY_PLANNING_PROMPT
+from ...utils.llm_utils import get_llm_with_config
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +34,13 @@ def query_planner_node(state: TextToSQLState) -> Dict[str, Any]:
     logger.info(f"Planning query: {query[:100]}...")
     
     try:
-        # Initialize LLM for query planning
-        llm = ChatGoogleGenerativeAI(
-            model=config.llm.model_name,
+        # Measure query planning time
+        start_time = time.time()
+        
+        # Get LLM instance with query planning specific config
+        llm = get_llm_with_config(
             temperature=0.1,
-            max_tokens=1500,  # Increased for complete JSON responses
-            api_key=config.llm.effective_api_key
+            max_tokens=1500  # Increased for complete JSON responses
         )
         
         # Create planning prompt using organized template
@@ -47,6 +49,8 @@ def query_planner_node(state: TextToSQLState) -> Dict[str, Any]:
         # Get query plan from LLM
         response = llm.invoke(planning_prompt)
         plan_text = response.content.strip() if response.content else ""
+        
+        query_planning_time_ms = (time.time() - start_time) * 1000
         
         if not plan_text:
             raise ValueError("Empty response from LLM")
@@ -69,6 +73,7 @@ def query_planner_node(state: TextToSQLState) -> Dict[str, Any]:
         return {
             "query_plan": query_plan,
             "complexity_assessment": complexity_assessment,
+            "query_planning_time_ms": query_planning_time_ms,
             "reasoning_log": [reasoning_step]
         }
         

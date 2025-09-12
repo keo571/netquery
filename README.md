@@ -29,7 +29,8 @@ flowchart TD
 
 ### 🎯 **Semantic Understanding**
 - **Schema Intelligence**: Uses semantic similarity to identify relevant tables based on natural language context
-- **Domain Adaptable**: Currently demonstrates network infrastructure concepts but can be adapted to other domains
+- **Domain Knowledge**: Enhanced with network infrastructure terminology and concepts
+- **Smart Relevance Matching**: Optimized threshold balances precision and recall
 
 ### 🛡️ **Safety-First Architecture**
 - **Multi-Layer Validation**: Every query passes through safety checks before execution
@@ -37,9 +38,9 @@ flowchart TD
 - **Result Limits**: Automatically adds LIMIT clauses to prevent runaway queries
 
 ### ⚡ **Performance & Scalability**
-- **Smart Schema Analysis**: Uses semantic similarity to identify relevant tables, reducing query complexity
+- **Smart Schema Analysis**: Uses cached embeddings for fast table matching
 - **Pipeline Architecture**: LangGraph-based processing allows for easy optimization and monitoring
-- **Efficient Caching**: Schema metadata is cached to reduce repeated analysis overhead
+- **Chart Generation**: Automatic visualization detection for appropriate data patterns
 
 ### 🔌 **Integration Ready**
 - **MCP Protocol**: Works with any AI assistant supporting Model Context Protocol
@@ -61,7 +62,22 @@ The included sample database contains network infrastructure entities for demons
 
 For comprehensive testing examples and query patterns organized by complexity level, see **[SAMPLE_QUERIES.md](SAMPLE_QUERIES.md)**.
 
-The sample database includes load balancers, servers, SSL certificates, VIP pools, and backend mappings with realistic data for testing various query types.
+**Basic Operations:**
+- "Show me all load balancers"
+- "List servers with high CPU usage"
+- "What SSL certificates do we have?"
+
+**Analytics & Aggregations:**
+- "What's the average memory usage by datacenter?"
+- "Count unhealthy servers by datacenter"
+- "Show server performance by datacenter"
+
+**Visualizations:**
+- "Show network traffic trends over time" (generates line charts)
+- "Display load balancer types distribution" (generates pie charts)
+- "Show CPU vs memory usage" (generates scatter plots)
+
+The system supports comprehensive query patterns with automatic chart generation for appropriate data patterns.
 
 ## Quick Start
 
@@ -191,6 +207,22 @@ python -m src.text_to_sql.create_sample_data
 python gemini_cli.py "Show me all load balancers"
 python gemini_cli.py "Which servers have high CPU usage?"
 python gemini_cli.py "What's the average memory usage by datacenter?"
+
+# With visualizations and exports
+python gemini_cli.py "Show network traffic trends over time" --html
+python gemini_cli.py "Display server performance by datacenter" --csv --pdf
+```
+
+**Batch Evaluation:**
+```bash
+# Run comprehensive test suite
+python evaluate_queries.py
+```
+
+**Database Export:**
+```bash
+# Export all database tables to CSV files
+python export_database_tables.py
 ```
 
 **Test with MCP:**
@@ -206,6 +238,33 @@ See `SAMPLE_QUERIES.md` for comprehensive test cases organized by complexity lev
 1. Update sample data patterns in `create_sample_data.py`
 2. Add domain knowledge to prompts in `prompts/`
 3. Update schema analysis in `tools/semantic_table_finder.py`
+
+## Recent Improvements
+
+### v1.1.0 - Enhanced Semantic Understanding & Visualizations
+
+**🎯 Improved Query Processing**
+- Fixed schema analysis error handling
+- Optimized similarity threshold for better table discovery
+- Enhanced table descriptions with domain-specific context
+- Added key metrics highlighting for infrastructure terminology
+
+**📊 Chart Generation**
+- Automatic chart type detection (line, bar, pie, scatter)
+- Static SVG charts compatible with all viewers
+- Smart data pattern recognition for visualization
+
+**🛠️ Technical Improvements:**
+- Refactored interpreter module for better maintainability
+- Extracted chart generation to dedicated module
+- Improved column name mapping for network infrastructure
+- Added comprehensive evaluation framework
+
+**📈 Enhanced Performance:**
+- Robust schema analysis pipeline
+- Reliable SQL generation process
+- Improved execution success rate
+- Comprehensive chart generation coverage
 
 ## License
 

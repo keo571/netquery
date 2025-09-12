@@ -23,6 +23,7 @@ class TextToSQLState(TypedDict):
     final_response: str
     formatted_response: str
     include_reasoning: bool
+    save_csv: Optional[bool]
     
     # Schema Analysis
     schema_context: str
@@ -42,8 +43,19 @@ class TextToSQLState(TypedDict):
     
     # Execution
     execution_time_ms: Optional[float]
+    total_pipeline_time_ms: Optional[float]
+    schema_analysis_time_ms: Optional[float]
+    query_planning_time_ms: Optional[float]
+    sql_generation_time_ms: Optional[float]
+    interpretation_time_ms: Optional[float]
     rows_affected: Optional[int]
     execution_error: Optional[str]
+    
+    # CSV export path
+    csv_export_path: Optional[str]
+    
+    # Chart HTML for visualization
+    chart_html: Optional[str]
     
     # Reasoning Log
     reasoning_log: Annotated[List[ReasoningStep], operator.add]

@@ -45,46 +45,161 @@ Include:
 def create_result_interpretation_prompt(
     query: str,
     results: List[Dict],
-    sql_query: str
+    sql_query: str = None
 ) -> str:
     """Create a prompt for interpreting and explaining query results."""
     
-    # Use JSON for a clean, structured data preview for the LLM
-    try:
-        results_preview = json.dumps(results[:3], indent=2) if results else "No results returned."
-    except TypeError:
-        # Fallback for non-serializable data types
-        results_preview = str(results[:3]) if results else "No results returned."
+    total_count = len(results)
     
-    return f"""Your task is to interpret database query results for a network engineer.
+    # Generate intelligent statistical insights
+    stats_summary = _generate_statistical_summary(results)
+    patterns = _identify_patterns(results)
+    
+    return f"""Your task is to provide intelligent analysis of database query results for a network engineer.
 
 **Original Question:** "{query}"
 
-**SQL Query Used:** 
-```sql
-{sql_query}
-```
+**Dataset:** {total_count} total rows
 
-**Query Results (JSON Sample):**
-```json
-{results_preview}
-```
+**Statistical Summary:**
+{stats_summary}
+
+**Key Patterns Identified:**
+{patterns}
 
 **Instructions:**
-1. **Directly Answer the Question:** Start with a direct, concise answer to the user's original question
-2. **Summarize Key Findings:** Briefly summarize the most important insights from the data
-3. **Do NOT Format Tables:** Do not create markdown tables - the system handles data formatting separately
-4. **Keep it Concise:** Focus on the most important information (2-3 paragraphs maximum)
+1. **Direct Answer:** Start with a clear answer to the original question
+2. **Statistical Insights:** Use the statistical summary to provide percentage breakdowns and distributions
+3. **Operational Impact:** Explain what these patterns mean for network operations, capacity planning, and troubleshooting
+4. **Actionable Recommendations:** Suggest specific actions based on the data (e.g., investigate unhealthy resources, review duplicate IPs)
+5. **Risk Assessment:** Highlight any potential issues or anomalies that need attention
+6. **Keep Professional:** Write for a network engineer who needs actionable intelligence
 
 {_RESPONSE_GUIDELINES.strip()}"""
 
 
+def _generate_statistical_summary(results: List[Dict]) -> str:
+    """Generate statistical insights from the complete dataset."""
+    if not results:
+        return "No data to analyze."
+    
+    summary_parts = []
+    
+    # Analyze categorical fields
+    categorical_fields = ['status', 'datacenter', 'lb_type', 'algorithm']
+    
+    for field in categorical_fields:
+        if field in results[0]:
+            values = [row.get(field) for row in results if row.get(field)]
+            if values:
+                value_counts = {}
+                for value in values:
+                    value_counts[value] = value_counts.get(value, 0) + 1
+                
+                # Sort by count descending
+                sorted_counts = sorted(value_counts.items(), key=lambda x: x[1], reverse=True)
+                total = len(values)
+                
+                field_summary = f"**{field.upper()}:**\n"
+                for value, count in sorted_counts:
+                    percentage = (count / total) * 100
+                    field_summary += f"- {value}: {count} ({percentage:.1f}%)\n"
+                
+                summary_parts.append(field_summary)
+    
+    # Analyze duplicates (common network issue)
+    ip_fields = ['vip_address', 'ip_address']
+    for field in ip_fields:
+        if field in results[0]:
+            ips = [row.get(field) for row in results if row.get(field)]
+            ip_counts = {}
+            for ip in ips:
+                ip_counts[ip] = ip_counts.get(ip, 0) + 1
+            
+            duplicates = {ip: count for ip, count in ip_counts.items() if count > 1}
+            if duplicates:
+                dup_summary = f"**DUPLICATE {field.upper()}S (Potential Issues):**\n"
+                for ip, count in sorted(duplicates.items(), key=lambda x: x[1], reverse=True):
+                    dup_summary += f"- {ip}: used by {count} resources\n"
+                summary_parts.append(dup_summary)
+    
+    return "\n".join(summary_parts) if summary_parts else "No significant patterns found."
+
+
+def _identify_patterns(results: List[Dict]) -> str:
+    """Identify operational patterns and anomalies."""
+    if not results:
+        return "No patterns to analyze."
+    
+    patterns = []
+    
+    # Health status analysis
+    if 'status' in results[0]:
+        statuses = [row.get('status') for row in results if row.get('status')]
+        total = len(statuses)
+        unhealthy_states = ['unhealthy', 'down', 'failed', 'error', 'maintenance', 'draining']
+        unhealthy_count = sum(1 for status in statuses if status and status.lower() in unhealthy_states)
+        
+        if unhealthy_count > 0:
+            unhealthy_pct = (unhealthy_count / total) * 100
+            if unhealthy_pct > 25:
+                patterns.append(f"🚨 HIGH ALERT: {unhealthy_pct:.1f}% of resources are in non-optimal states")
+            elif unhealthy_pct > 10:
+                patterns.append(f"⚠️  MODERATE CONCERN: {unhealthy_pct:.1f}% of resources need attention")
+            else:
+                patterns.append(f"✓ ACCEPTABLE: Only {unhealthy_pct:.1f}% of resources in non-optimal states")
+    
+    # Geographic distribution
+    if 'datacenter' in results[0]:
+        datacenters = [row.get('datacenter') for row in results if row.get('datacenter')]
+        dc_counts = {}
+        for dc in datacenters:
+            dc_counts[dc] = dc_counts.get(dc, 0) + 1
+        
+        if len(dc_counts) > 1:
+            max_dc = max(dc_counts.items(), key=lambda x: x[1])
+            total = len(datacenters)
+            concentration_pct = (max_dc[1] / total) * 100
+            
+            if concentration_pct > 70:
+                patterns.append(f"📍 HIGH CONCENTRATION: {concentration_pct:.1f}% of resources in {max_dc[0]} (consider load distribution)")
+            else:
+                patterns.append(f"📍 BALANCED DISTRIBUTION: Resources spread across {len(dc_counts)} datacenters")
+    
+    # Time-based patterns (if created_at exists)
+    if 'created_at' in results[0]:
+        import re
+        from datetime import datetime
+        
+        current_year = datetime.now().year
+        dates = []
+        for row in results:
+            date_str = row.get('created_at')
+            if date_str:
+                # Extract year from various date formats
+                year_match = re.search(r'20\d{2}', str(date_str))
+                if year_match:
+                    dates.append(int(year_match.group()))
+        
+        if dates:
+            # Consider "recent" as current year or within last 6 months of previous year
+            recent_threshold = current_year if datetime.now().month > 6 else current_year - 1
+            recent_count = sum(1 for year in dates if year >= recent_threshold)
+            
+            if recent_count > len(dates) * 0.7:  # 70% threshold for significant growth
+                patterns.append(f"📅 RECENT GROWTH: {(recent_count/len(dates)*100):.1f}% of resources created since {recent_threshold}")
+            elif recent_count > len(dates) * 0.3:  # 30% threshold for moderate growth  
+                patterns.append(f"📅 MODERATE GROWTH: {(recent_count/len(dates)*100):.1f}% of resources created since {recent_threshold}")
+    
+    return "\n".join(patterns) if patterns else "No significant operational patterns detected."
+
+
 def format_pipeline_response(
-    original_query: str,
-    results: List[Dict],
-    sql_query: str,
-    metadata: Dict[str, Any],
-    llm_summary: str,
+    original_query: str = None,
+    results: List[Dict] = None,
+    sql_query: str = None,
+    metadata: Dict[str, Any] = None,
+    llm_summary: str = "",
     include_technical_details: bool = True
 ) -> str:
     """Format a complete pipeline response using the template."""

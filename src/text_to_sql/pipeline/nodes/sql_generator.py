@@ -3,13 +3,14 @@ SQL generator node for Text-to-SQL pipeline.
 Generates SQL queries from natural language using LLM.
 """
 from typing import Dict, Any
-from langchain_google_genai import ChatGoogleGenerativeAI
 import logging
+import time
 
 from ...config import config
 from ..state import TextToSQLState
 from ...utils.sql_utils import extract_sql_from_response, format_sql_query
 from ...prompts.sql_generation import SQL_GENERATION_PROMPT
+from ...utils.llm_utils import get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -32,14 +33,11 @@ def sql_generator_node(state: TextToSQLState) -> Dict[str, Any]:
     
     logger.info(f"Generating SQL for query: {query[:100]}...")
     
-    # Initialize LLM for SQL generation
-    llm = ChatGoogleGenerativeAI(
-        model=config.llm.model_name,
-        temperature=config.llm.temperature,
-        max_tokens=config.llm.max_tokens,
-        max_retries=config.llm.max_retries,
-        api_key=config.llm.effective_api_key
-    )
+    # Measure SQL generation time
+    start_time = time.time()
+    
+    # Get shared LLM instance
+    llm = get_llm()
     
     # Create SQL generation prompt
     sql_prompt = _create_sql_generation_prompt(
@@ -49,6 +47,8 @@ def sql_generator_node(state: TextToSQLState) -> Dict[str, Any]:
     # Generate SQL
     response = llm.invoke(sql_prompt)
     response_text = response.content.strip()
+    
+    sql_generation_time_ms = (time.time() - start_time) * 1000
     
     try:
         # Extract and clean SQL using utility function
@@ -68,6 +68,7 @@ def sql_generator_node(state: TextToSQLState) -> Dict[str, Any]:
         
         return {
             "generated_sql": generated_sql,
+            "sql_generation_time_ms": sql_generation_time_ms,
             "reasoning_log": [reasoning_step]
         }
         
@@ -97,8 +98,7 @@ def _create_sql_generation_prompt(query: str, schema_context: str,
     return SQL_GENERATION_PROMPT.format(
         schema_context=schema_context,
         query_plan=query_plan,
-        query=query,
-        max_rows=config.safety.max_result_rows
+        query=query
     )
 
 

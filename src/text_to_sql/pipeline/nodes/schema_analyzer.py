@@ -4,6 +4,7 @@ Schema analyzer node for Text-to-SQL pipeline.
 from typing import Dict, Any
 import logging
 import os
+import time
 
 from ...tools.semantic_table_finder import SemanticTableFinder
 from ...tools.database_toolkit import db_toolkit
@@ -196,11 +197,24 @@ def schema_analyzer_node(state: TextToSQLState) -> Dict[str, Any]:
     query = state["original_query"]
     
     try:
+        # Measure schema analysis time
+        start_time = time.time()
+        
         # Analyze schema using embeddings
         analyzer = get_analyzer()
         analysis_result = analyzer.analyze_schema(query=query)
         
-        # Extract results
+        schema_analysis_time_ms = (time.time() - start_time) * 1000
+        
+        # Check if schema analysis found an error
+        if "schema_analysis_error" in analysis_result:
+            return {
+                "schema_analysis_error": analysis_result["schema_analysis_error"],
+                "schema_analysis_time_ms": schema_analysis_time_ms,
+                "reasoning_log": analysis_result.get("reasoning_log", [])
+            }
+        
+        # Extract results for successful analysis
         schema_context = analysis_result["schema_context"] 
         relevance_scores = analysis_result.get("relevance_scores", {})
         relevant_tables = list(relevance_scores.keys()) if relevance_scores else []
@@ -211,6 +225,7 @@ def schema_analyzer_node(state: TextToSQLState) -> Dict[str, Any]:
         return {
             "schema_context": schema_context,
             "relevance_scores": relevance_scores,
+            "schema_analysis_time_ms": schema_analysis_time_ms,
             "reasoning_log": [reasoning_step]
         }
         

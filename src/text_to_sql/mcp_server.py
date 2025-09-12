@@ -50,11 +50,6 @@ async def list_tools() -> List[Tool]:
                     "query": {
                         "type": "string",
                         "description": "Natural language query about infrastructure (load balancers, servers, VIPs, etc.)"
-                    },
-                    "include_explanation": {
-                        "type": "boolean",
-                        "description": "Include SQL and explanation",
-                        "default": True
                     }
                 },
                 "required": ["query"]
@@ -105,7 +100,8 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 async def handle_query(arguments: Dict[str, Any]) -> str:
     """Handle natural language to SQL queries."""
     query = arguments.get("query", "").strip()
-    include_explanation = arguments.get("include_explanation")
+    include_explanation = False  # No flags by default
+    save_csv = False  # No flags by default
     
     if not query:
         # Show available tables and examples
@@ -130,7 +126,8 @@ async def handle_query(arguments: Dict[str, Any]) -> str:
     initial_state = {
         "messages": [HumanMessage(content=query)],
         "original_query": query,
-        "include_reasoning": include_explanation
+        "include_reasoning": include_explanation,
+        "save_csv": save_csv
     }
     
     result = await text_to_sql_graph.ainvoke(initial_state)

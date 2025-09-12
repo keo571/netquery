@@ -83,15 +83,24 @@ class SemanticTableFinder:
         """Create text description of table for embedding - focus on semantic meaning."""
         table_info = db_toolkit.get_table_info(table_name)
         
-        parts = [f"Table: {table_name}"]
+        # Start with semantic purpose based on table name
+        semantic_context = self._get_semantic_context(table_name)
+        parts = [f"Table: {table_name} - {semantic_context}"]
         
-        # Add column names only (no types or constraints)
+        # Add column names with semantic meaning
         if table_info.get('columns'):
             column_names = [col['name'] for col in table_info['columns']]
-            parts.append(f"Columns: {', '.join(column_names)}")
+            # Group columns by semantic meaning
+            key_columns = [col for col in column_names if any(keyword in col.lower() 
+                          for keyword in ['usage', 'memory', 'cpu', 'utilization', 'performance', 
+                                        'health', 'status', 'datacenter', 'location', 'time', 
+                                        'rate', 'bandwidth', 'response', 'error', 'latency'])]
+            if key_columns:
+                parts.append(f"Key metrics: {', '.join(key_columns)}")
+            parts.append(f"All columns: {', '.join(column_names)}")
         
         # Add sample data for semantic context
-        sample_data = db_toolkit.get_sample_data(table_name, limit=3)
+        sample_data = db_toolkit.get_sample_data(table_name, limit=2)
         if sample_data:
             sample_parts = []
             for row in sample_data:
@@ -101,6 +110,21 @@ class SemanticTableFinder:
             parts.append(f"Sample data: {'; '.join(sample_parts)}")
         
         return ". ".join(parts)
+    
+    def _get_semantic_context(self, table_name: str) -> str:
+        """Get semantic context for a table based on its name."""
+        contexts = {
+            'servers': 'Infrastructure servers with CPU, memory, and performance metrics by datacenter',
+            'load_balancers': 'Load balancing infrastructure with health status and datacenter locations',
+            'network_traffic': 'Time-series network traffic data with bandwidth, requests, and performance metrics',
+            'ssl_certificates': 'SSL certificate management with expiry dates and certificate providers',
+            'lb_health_log': 'Load balancer health monitoring with backend status and response times over time',
+            'network_connectivity': 'Server network connectivity metrics including latency, packet loss, and uptime over time',
+            'ssl_monitoring': 'SSL certificate monitoring trends with expiration tracking over time',
+            'vip_pools': 'Virtual IP pools associated with load balancers and network services',
+            'backend_mappings': 'Mapping between load balancers and their backend servers'
+        }
+        return contexts.get(table_name, f'{table_name} data')
     
     def _load_cache(self) -> None:
         """Load cached embeddings if available."""

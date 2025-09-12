@@ -60,11 +60,7 @@ class GenericDatabaseToolkit:
                 
                 execution_time_ms = (time.time() - start_time) * 1000
                 
-                # Apply row limit
-                max_rows = config.safety.max_result_rows
-                truncated = len(results) > max_rows
-                if truncated:
-                    results = results[:max_rows]
+                truncated = False
                 
                 return {
                     "success": True,

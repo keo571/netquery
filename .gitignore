@@ -284,8 +284,15 @@ site/
 
 # Claude Code specific
 .claude/
+
+# Netquery specific files
 .embeddings_cache/
-CLAUDE.md
+query_exports/*.csv
+query_exports/*.html
+query_exports/*.pdf
+database_exports/*.csv
+evaluation_report_*.html
+infrastructure.db
 
 # Local development
 .local/

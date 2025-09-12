@@ -45,14 +45,13 @@ class LLMConfig(BaseModel):
 class PipelineConfig(BaseModel):
     """Pipeline-specific configuration."""
     max_relevant_tables: int = Field(default=5, description="Maximum tables to return after filtering")
-    relevance_threshold: float = Field(default=0.3, description="Minimum similarity threshold for table relevance (0-1). Uses two-stage filtering: gets 2x candidates, then filters by this threshold.")
+    relevance_threshold: float = Field(default=0.15, description="Minimum similarity threshold for table relevance (0-1). Uses two-stage filtering: gets 2x candidates, then filters by this threshold.")
     include_sample_data: bool = Field(default=True, description="Include sample data")
     max_execution_time: int = Field(default=30, description="Maximum execution time in seconds")
 
 
 class SafetyConfig(BaseModel):
     """Safety configuration."""
-    max_result_rows: int = Field(default=30, description="Maximum result rows")
     allowed_operations: list = Field(default=["SELECT"], description="Allowed SQL operations")
     
     # Additional fields for the existing safety validator

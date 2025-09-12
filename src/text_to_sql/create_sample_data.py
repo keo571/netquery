@@ -1,11 +1,12 @@
 """
-Network infrastructure sample data generator.
+Network infrastructure sample data generator with monitoring capabilities.
 Creates realistic network operations data for monitoring and management.
 """
 import random
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 import logging
+import sqlite3
 
 import sys
 import os
@@ -114,6 +115,191 @@ def create_infrastructure_schema(metadata):
         'vip_pools': vip_pools,
         'backend_mappings': backend_mappings
     }
+
+
+def create_network_monitoring_tables():
+    """Create network monitoring tables with sample time-series data."""
+    conn = sqlite3.connect('infrastructure.db')
+    cursor = conn.cursor()
+    
+    print("Creating network monitoring tables...")
+    
+    # 1. Network Traffic Monitoring Table
+    print("  - Creating network_traffic table...")
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS network_traffic (
+        id INTEGER PRIMARY KEY,
+        load_balancer_id INTEGER,
+        timestamp DATETIME,
+        requests_per_second INTEGER,
+        response_time_ms FLOAT,
+        bandwidth_mbps FLOAT,
+        active_connections INTEGER,
+        error_rate_percent FLOAT,
+        FOREIGN KEY (load_balancer_id) REFERENCES load_balancers(id)
+    )
+    ''')
+    
+    # Generate 7 days of hourly traffic data for first 5 load balancers
+    base_time = datetime(2025, 1, 1, 0, 0, 0)
+    for day in range(7):
+        for hour in range(24):
+            timestamp = base_time + timedelta(days=day, hours=hour)
+            for lb_id in range(1, 6):  # First 5 load balancers
+                # Simulate daily traffic patterns (higher during business hours)
+                if 9 <= hour <= 17:  # Business hours
+                    base_rps = random.randint(800, 1500)
+                    base_response = random.uniform(20, 50)
+                    base_bandwidth = random.uniform(80, 150)
+                    base_connections = random.randint(200, 500)
+                    base_error = random.uniform(0.1, 2.0)
+                else:  # Off hours
+                    base_rps = random.randint(200, 600)
+                    base_response = random.uniform(15, 35)
+                    base_bandwidth = random.uniform(20, 70)
+                    base_connections = random.randint(50, 200)
+                    base_error = random.uniform(0.05, 1.0)
+                
+                cursor.execute('''
+                INSERT INTO network_traffic 
+                (load_balancer_id, timestamp, requests_per_second, response_time_ms, bandwidth_mbps, active_connections, error_rate_percent)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (lb_id, timestamp, base_rps, base_response, base_bandwidth, base_connections, base_error))
+    
+    # 2. SSL Certificate Monitoring Table
+    print("  - Creating ssl_monitoring table...")
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS ssl_monitoring (
+        id INTEGER PRIMARY KEY,
+        date DATE,
+        certificates_expiring_30days INTEGER,
+        certificates_expiring_7days INTEGER,
+        total_certificates INTEGER,
+        expired_certificates INTEGER,
+        renewed_certificates INTEGER
+    )
+    ''')
+    
+    # Generate 30 days of SSL monitoring data
+    base_date = datetime(2025, 1, 1).date()
+    total_certs = 450
+    for day in range(30):
+        date = base_date + timedelta(days=day)
+        
+        # Simulate certificate lifecycle trends
+        expiring_30 = max(10, 25 - day//2 + random.randint(-3, 3))  # Decreasing trend (renewals)
+        expiring_7 = max(1, expiring_30//4 + random.randint(-2, 2))
+        expired = random.randint(0, 3)
+        renewed = random.randint(1, 5) if day > 0 else 0
+        total_certs += random.randint(-1, 2)  # Slight growth
+        
+        cursor.execute('''
+        INSERT INTO ssl_monitoring 
+        (date, certificates_expiring_30days, certificates_expiring_7days, total_certificates, expired_certificates, renewed_certificates)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ''', (date, expiring_30, expiring_7, total_certs, expired, renewed))
+    
+    # 3. Load Balancer Health Log Table  
+    print("  - Creating lb_health_log table...")
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS lb_health_log (
+        id INTEGER PRIMARY KEY,
+        load_balancer_id INTEGER,
+        timestamp DATETIME,
+        healthy_backends INTEGER,
+        total_backends INTEGER,
+        avg_response_time_ms FLOAT,
+        total_requests INTEGER,
+        health_score_percent FLOAT,
+        FOREIGN KEY (load_balancer_id) REFERENCES load_balancers(id)
+    )
+    ''')
+    
+    # Generate 3 days of hourly health data for first 10 load balancers
+    base_time = datetime(2025, 1, 8, 0, 0, 0)
+    for day in range(3):
+        for hour in range(24):
+            timestamp = base_time + timedelta(days=day, hours=hour)
+            for lb_id in range(1, 11):  # First 10 load balancers
+                total_backends = random.randint(8, 15)
+                
+                # Simulate occasional backend failures
+                if random.random() < 0.1:  # 10% chance of issues
+                    healthy_backends = max(1, total_backends - random.randint(1, 3))
+                else:
+                    healthy_backends = max(1, total_backends - random.randint(0, 1))
+                
+                health_score = (healthy_backends / total_backends) * 100
+                avg_response = random.uniform(15, 45) if healthy_backends == total_backends else random.uniform(25, 80)
+                total_requests = random.randint(1000, 5000)
+                
+                cursor.execute('''
+                INSERT INTO lb_health_log 
+                (load_balancer_id, timestamp, healthy_backends, total_backends, avg_response_time_ms, total_requests, health_score_percent)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (lb_id, timestamp, healthy_backends, total_backends, avg_response, total_requests, health_score))
+    
+    # 4. Network Connectivity Metrics Table
+    print("  - Creating network_connectivity table...")
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS network_connectivity (
+        id INTEGER PRIMARY KEY,
+        server_id INTEGER,
+        timestamp DATETIME,
+        latency_ms FLOAT,
+        packet_loss_percent FLOAT,
+        uptime_percent FLOAT,
+        bandwidth_utilization_percent FLOAT,
+        connection_count INTEGER,
+        FOREIGN KEY (server_id) REFERENCES servers(id)
+    )
+    ''')
+    
+    # Generate 2 days of hourly connectivity data for first 20 servers
+    base_time = datetime(2025, 1, 9, 0, 0, 0)
+    for day in range(2):
+        for hour in range(24):
+            timestamp = base_time + timedelta(days=day, hours=hour)
+            for server_id in range(1, 21):  # First 20 servers
+                # Simulate network conditions
+                latency = random.uniform(1.2, 15.8)
+                packet_loss = random.uniform(0.0, 2.5)
+                
+                # Occasional network issues
+                if random.random() < 0.05:  # 5% chance of issues
+                    latency *= random.uniform(2, 5)
+                    packet_loss *= random.uniform(2, 10)
+                    uptime = random.uniform(85, 95)
+                else:
+                    uptime = random.uniform(98, 100)
+                
+                bandwidth_util = random.uniform(20, 85)
+                connections = random.randint(50, 300)
+                
+                cursor.execute('''
+                INSERT INTO network_connectivity 
+                (server_id, timestamp, latency_ms, packet_loss_percent, uptime_percent, bandwidth_utilization_percent, connection_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (server_id, timestamp, latency, packet_loss, uptime, bandwidth_util, connections))
+    
+    conn.commit()
+    
+    # Show monitoring summary
+    monitoring_counts = {}
+    cursor.execute("SELECT COUNT(*) FROM network_traffic")
+    monitoring_counts['network_traffic'] = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(*) FROM ssl_monitoring") 
+    monitoring_counts['ssl_monitoring'] = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(*) FROM lb_health_log")
+    monitoring_counts['lb_health_log'] = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(*) FROM network_connectivity")
+    monitoring_counts['network_connectivity'] = cursor.fetchone()[0]
+    
+    conn.close()
+    return monitoring_counts
 
 
 def generate_network_value(column_name: str, column_type: str, index: int) -> Any:
@@ -293,13 +479,15 @@ def populate_table(session, table, records: int = 50) -> int:
 
 
 def create_infrastructure_database(tables: Optional[List[str]] = None, 
-                                  records_per_table: int = 50) -> Dict[str, int]:
+                                  records_per_table: int = 50,
+                                  include_monitoring: bool = True) -> Dict[str, int]:
     """
     Create network infrastructure database schema and sample data.
     
     Args:
         tables: Specific tables to populate (None = all tables)
         records_per_table: Number of records per table
+        include_monitoring: Whether to create monitoring tables with time-series data
         
     Returns:
         Dictionary with table names and record counts
@@ -331,12 +519,19 @@ def create_infrastructure_database(tables: Optional[List[str]] = None,
     target_tables = tables or list(tables_to_use.keys())
     results = {}
     
+    # Populate main infrastructure tables
     with DatabaseSession() as session:
         for table_name in target_tables:
             if table_name in tables_to_use:
                 table = tables_to_use[table_name]
                 count = populate_table(session, table, records_per_table)
                 results[table_name] = count
+    
+    # Create monitoring tables if requested
+    if include_monitoring:
+        print("\nAdding network monitoring capabilities...")
+        monitoring_results = create_network_monitoring_tables()
+        results.update(monitoring_results)
     
     logger.info(f"Network infrastructure data generation completed for {len(results)} tables")
     return results
@@ -346,7 +541,7 @@ if __name__ == "__main__":
     print("Creating network infrastructure database...")
     print(f"Database will be created at: infrastructure.db")
     
-    result = create_infrastructure_database()
+    result = create_infrastructure_database(include_monitoring=True)
     
     print(f"✅ Successfully created network infrastructure database!")
     print(f"📊 Tables and record counts: {result}")
