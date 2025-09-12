@@ -21,11 +21,22 @@ User Query → Schema Analysis → Query Planning → SQL Generation → Validat
 
 2. **Tools** (`src/text_to_sql/tools/`)
    - `database_toolkit.py` - Database operations with lazy loading
-   - `semantic_table_finder.py` - Semantic table relevance scoring
+   - `semantic_table_finder.py` - Enhanced semantic table relevance scoring
    - `safety_validator.py` - Query safety checks
 
-3. **MCP Server** (`src/text_to_sql/`)
+3. **Utils** (`src/text_to_sql/utils/`)
+   - `chart_generator.py` - SVG chart generation (line, bar, pie, scatter)
+   - `html_exporter.py` - HTML report generation with embedded charts
+   - `llm_utils.py` - LLM configuration and utilities
+   - `sql_utils.py` - SQL parsing and validation utilities
+
+4. **MCP Server** (`src/text_to_sql/`)
    - `mcp_server.py` - Standard MCP implementation
+
+5. **Evaluation & Export Scripts**
+   - `evaluate_queries.py` - Comprehensive query evaluation framework
+   - `export_database_tables.py` - Database table export utility
+   - `gemini_cli.py` - Enhanced CLI with chart and export support
 
 ## Recent Improvements
 
@@ -35,16 +46,33 @@ User Query → Schema Analysis → Query Planning → SQL Generation → Validat
 - ✅ Simplified MCP server response formatting
 - ✅ Made result interpretation more technical and direct
 
-### 2. Code Organization
+### 2. Chart Generation & Visualization System
+- ✅ Added automatic chart type detection (line, bar, pie, scatter)
+- ✅ Implemented static SVG chart generation (no JavaScript dependencies)
+- ✅ Created dedicated chart_generator.py module
+- ✅ Smart data pattern recognition for appropriate visualizations
+- ✅ HTML report generation with embedded charts
+
+### 3. Enhanced Semantic Understanding  
+- ✅ Fixed schema analysis error handling for robust pipeline
+- ✅ Optimized similarity threshold from 0.3 to 0.15 for better table discovery
+- ✅ Enhanced table descriptions with domain-specific context
+- ✅ Added key metrics highlighting for infrastructure terminology
+- ✅ Improved column name mapping for network infrastructure
+
+### 4. Code Organization & Refactoring
+- ✅ Refactored interpreter module (reduced from 700+ to 184 lines)
 - ✅ Extracted SQL utilities to `utils/sql_utils.py`
 - ✅ Organized prompts in `prompts/` directory
 - ✅ Added config management with hot-reloading
+- ✅ Created modular utilities (chart_generator.py, html_exporter.py, llm_utils.py)
 
-
-### 3. Schema Intelligence
-- ✅ Removed penalty for large tables (was incorrectly penalizing important data)
-- ✅ Improved semantic scoring for network infrastructure domain
-- ✅ Enhanced semantic table finder for better relevance matching
+### 5. Evaluation & Testing Framework
+- ✅ Built comprehensive evaluation system (evaluate_queries.py)
+- ✅ Added batch testing across all query categories  
+- ✅ Pipeline stage tracking (schema, SQL, execution, charts)
+- ✅ HTML evaluation reports with detailed metrics
+- ✅ Database export utilities (export_database_tables.py)
 
 ## Domain Focus: Network Infrastructure
 
@@ -199,9 +227,15 @@ python -m src.text_to_sql.create_sample_data  # Create sample data
 python gemini_cli.py "your query"             # Test queries via CLI
 python -m src.text_to_sql.mcp_server          # Start MCP server
 
-# Testing
+# Testing with Charts & Exports
 python gemini_cli.py "Show me all load balancers"
-python gemini_cli.py "Which SSL certificates expire soon?"
+python gemini_cli.py "Show network traffic over time" --html
+python gemini_cli.py "Display server performance by datacenter" --csv --pdf
+python gemini_cli.py "What's the average memory usage by datacenter?"
+
+# Evaluation & Export
+python evaluate_queries.py                    # Run comprehensive evaluation
+python export_database_tables.py             # Export all database tables
 ```
 
 ## Key Files to Understand
@@ -218,7 +252,13 @@ python gemini_cli.py "Which SSL certificates expire soon?"
    - `src/text_to_sql/tools/semantic_table_finder.py` - Semantic table relevance scoring
    - `src/text_to_sql/tools/database_toolkit.py` - Database operations and schema reflection
 
-4. **MCP Integration**
+4. **Chart Generation & Export**
+   - `src/text_to_sql/utils/chart_generator.py` - SVG chart generation system
+   - `src/text_to_sql/utils/html_exporter.py` - HTML report generation
+   - `evaluate_queries.py` - Comprehensive evaluation framework
+   - `export_database_tables.py` - Database export utilities
+
+5. **MCP Integration**
    - `src/text_to_sql/mcp_server.py` - Standard MCP server
 
 ## Development Workflow
@@ -238,9 +278,10 @@ python gemini_cli.py "Which SSL certificates expire soon?"
 
 2. **Adding Features**
    - Update relevant node in `pipeline/nodes/`
-   - Add tests in `tests/`
+   - Add new utilities in `utils/` if needed
    - Update this documentation
    - Test with sample queries
+   - Run evaluation suite to verify improvements
 
 3. **Debugging**
    - Use debug mode: `LOG_LEVEL=DEBUG python gemini_cli.py "query"`
@@ -284,5 +325,5 @@ ssl_certificates -> vips -> services
 
 ---
 
-*Last Updated: September 2025*
-*Version: 1.1.0*
+*Last Updated: December 2025*
+*Version: 1.1.0 - Enhanced Semantic Understanding & Visualization System*
