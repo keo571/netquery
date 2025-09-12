@@ -79,6 +79,27 @@ For comprehensive testing examples and query patterns organized by complexity le
 
 The system supports comprehensive query patterns with automatic chart generation for appropriate data patterns.
 
+## Features
+
+### 📊 **Automatic Visualization**
+- **Line Charts**: Time-series data and trends
+- **Bar Charts**: Categorical comparisons and distributions  
+- **Pie Charts**: Proportional data and percentages
+- **Scatter Plots**: Correlations and relationships
+- **Static SVG**: Works in any browser without JavaScript
+
+### 🛠️ **Export & Analysis Tools**
+- **HTML Reports**: Interactive reports with embedded charts
+- **CSV Export**: Raw data for further analysis
+- **PDF Reports**: Formatted reports for sharing
+- **Database Export**: Full table exports for backup/analysis
+
+### 🔍 **Query Evaluation**
+- **Batch Testing**: Test multiple queries automatically
+- **Pipeline Analysis**: Track success/failure at each stage
+- **Performance Metrics**: Execution time and success rates
+- **Comprehensive Reporting**: Detailed HTML evaluation reports
+
 ## Quick Start
 
 ### Prerequisites
@@ -89,7 +110,7 @@ The system supports comprehensive query patterns with automatic chart generation
 
 1. **Clone the repository:**
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/keo571/netquery.git
    cd netquery
    ```
 
@@ -130,6 +151,11 @@ result = await text_to_sql_graph.ainvoke({
 # Simple CLI for testing (requires sample data)
 python gemini_cli.py "Show me all load balancers"
 python gemini_cli.py "Which SSL certificates expire soon?"
+
+# With chart generation and exports
+python gemini_cli.py "Show network traffic over time" --html
+python gemini_cli.py "Display server performance by datacenter" --csv
+python gemini_cli.py "Show memory usage by datacenter" --pdf
 ```
 
 **MCP Server (for AI assistants):**
@@ -167,9 +193,17 @@ src/text_to_sql/
 │   └── semantic_table_finder.py # Schema analysis
 ├── prompts/           # LLM prompts for each stage
 ├── utils/             # SQL utilities and helpers
+│   ├── chart_generator.py     # SVG chart generation
+│   ├── html_exporter.py      # HTML report generation
+│   └── llm_utils.py          # LLM configuration utilities
 ├── database/          # Database connection management
 ├── create_sample_data.py      # Network infrastructure sample data
 └── mcp_server.py             # MCP server implementation
+
+# Root level scripts
+├── evaluate_queries.py        # Comprehensive query evaluation
+├── export_database_tables.py  # Database table export utility
+└── gemini_cli.py             # Enhanced CLI with chart support
 ```
 
 ## Detailed Architecture
