@@ -45,7 +45,7 @@ flowchart TD
 ### 🔌 **Integration Ready**
 - **MCP Protocol**: Works with any AI assistant supporting Model Context Protocol
 - **Modular Design**: Each pipeline stage can be customized or replaced independently
-- **API Ready**: Easy to integrate into existing monitoring dashboards and tools
+- **Pipeline Architecture**: Easy to extend with custom nodes and processing steps
 
 ## Sample Data Schema
 
@@ -154,6 +154,7 @@ python gemini_cli.py "Which SSL certificates expire soon?"
 # With chart generation and exports
 python gemini_cli.py "Show network traffic over time" --html
 python gemini_cli.py "Display server performance by datacenter" --csv
+python gemini_cli.py "What's the average memory usage?" --reasoning
 ```
 
 **MCP Server (for AI assistants):**
@@ -242,7 +243,7 @@ python gemini_cli.py "What's the average memory usage by datacenter?"
 
 # With visualizations and exports
 python gemini_cli.py "Show network traffic trends over time" --html
-python gemini_cli.py "Display server performance by datacenter" --csv
+python gemini_cli.py "Display server performance by datacenter" --csv --reasoning
 ```
 
 **Batch Evaluation:**

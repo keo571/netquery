@@ -230,7 +230,7 @@ python -m src.text_to_sql.mcp_server          # Start MCP server
 # Testing with Charts & Exports
 python gemini_cli.py "Show me all load balancers"
 python gemini_cli.py "Show network traffic over time" --html
-python gemini_cli.py "Display server performance by datacenter" --csv
+python gemini_cli.py "Display server performance by datacenter" --csv --reasoning
 python gemini_cli.py "What's the average memory usage by datacenter?"
 
 # Evaluation & Export
