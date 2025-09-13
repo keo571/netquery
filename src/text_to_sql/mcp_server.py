@@ -13,7 +13,7 @@ from langchain_core.messages import HumanMessage
 # Import pipeline and tools
 from .pipeline.graph import text_to_sql_graph
 from .tools.database_toolkit import db_toolkit
-from .create_sample_data import create_infrastructure_database
+from scripts.create_sample_data import create_infrastructure_database
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -34,12 +34,20 @@ def ensure_database():
         logger.error(f"Database setup failed: {e}")
 
 
-@mcp.tool()
-async def text_to_sql(query: str) -> str:
+@mcp.tool(description="Query network infrastructure: load balancers, VIPs, SSL certs, backend servers, metrics. Automatically generates charts for time-series and aggregated data.")
+async def text_to_sql(
+    query: str,
+    show_explanation: bool = False,
+    export_csv: bool = False,
+    export_html: bool = False
+) -> str:
     """Query network infrastructure data using natural language.
     
     Args:
         query: Natural language query about infrastructure (load balancers, servers, VIPs, etc.)
+        show_explanation: Show detailed explanations of SQL generation and results
+        export_csv: Export results to CSV file
+        export_html: Generate HTML report with charts and visualizations
     """
     if not query.strip():
         # Show available tables and examples
@@ -64,9 +72,9 @@ async def text_to_sql(query: str) -> str:
     initial_state = {
         "messages": [HumanMessage(content=query)],
         "original_query": query,
-        "include_reasoning": False,  # No flags by default
-        "save_csv": False,  # No flags by default
-        "html": False  # No flags by default
+        "include_explanation": show_explanation,  # Use parameter
+        "save_csv": export_csv,  # Use parameter
+        "html": export_html  # Use parameter
     }
     
     try:
@@ -77,13 +85,13 @@ async def text_to_sql(query: str) -> str:
         return f"Error processing query: {e}"
 
 
-@mcp.tool()
+@mcp.tool(description="Get network infrastructure database schema: tables, columns, relationships, row counts. Use before queries to understand data model.")
 def get_schema(table_names: Optional[List[str]] = None, include_sample_data: bool = False) -> str:
     """Get database schema and table information.
     
     Args:
-        table_names: Specific tables to describe (optional)
-        include_sample_data: Include sample rows
+        table_names: Specific tables to describe (optional, defaults to all tables)
+        include_sample_data: Include 3 sample rows per table to understand data format
     """
     # Get tables to describe
     if table_names:
@@ -126,6 +134,55 @@ def get_schema(table_names: Optional[List[str]] = None, include_sample_data: boo
         output.append("")  # Blank line between tables
     
     return "\n".join(output)
+
+
+@mcp.tool(description="Get suggested queries for common network operations: troubleshooting, performance, security, capacity planning")
+def suggest_queries(category: Optional[str] = None) -> str:
+    """Get example queries for network infrastructure monitoring.
+    
+    Args:
+        category: Query category (troubleshooting, performance, security, capacity)
+    """
+    queries = {
+        "troubleshooting": [
+            "Show me all unhealthy load balancers",
+            "Which backend servers are down in datacenter us-east-1?",
+            "List VIPs with no healthy backends",
+            "Show recent state changes for load balancer lb-prod-01"
+        ],
+        "performance": [
+            "What's the average response time by datacenter?",
+            "Show top 10 load balancers by traffic volume",
+            "Display CPU utilization trends over the last 24 hours",
+            "Which servers have memory usage above 80%?"
+        ],
+        "security": [
+            "Which SSL certificates expire in the next 30 days?",
+            "List all VIPs without valid SSL certificates",
+            "Show load balancers with outdated TLS versions",
+            "Which certificates are self-signed?"
+        ],
+        "capacity": [
+            "What's the current capacity utilization by datacenter?",
+            "Show growth trends for bandwidth usage",
+            "List load balancers near connection limits",
+            "Which datacenters need capacity expansion?"
+        ]
+    }
+    
+    if category and category.lower() in queries:
+        output = f"## {category.capitalize()} Queries\n\n"
+        for query in queries[category.lower()]:
+            output += f"• {query}\n"
+    else:
+        output = "## Suggested Query Categories\n\n"
+        for cat, examples in queries.items():
+            output += f"### {cat.capitalize()}\n"
+            for query in examples[:2]:  # Show 2 examples per category
+                output += f"• {query}\n"
+            output += "\n"
+    
+    return output
 
 
 async def run_server():

@@ -71,8 +71,8 @@ def _save_results_to_csv(data: list, query: str) -> str:
         query_id = abs(hash(query)) % 10000
         filename = f"query_{query_id}_{timestamp}.csv"
         
-        Path("query_exports").mkdir(exist_ok=True)
-        filepath = f"query_exports/{filename}"
+        Path("outputs/query_data").mkdir(parents=True, exist_ok=True)
+        filepath = f"outputs/query_data/{filename}"
         
         pd.DataFrame(data).to_csv(filepath, index=False)
         return filepath

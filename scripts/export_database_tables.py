@@ -4,16 +4,20 @@ Export all database tables to CSV files.
 Useful for data analysis, backup, or sharing sample data.
 """
 import os
+import sys
 from pathlib import Path
-from datetime import datetime
+
+# Add parent directory to path for imports
+sys.path.append(str(Path(__file__).parent.parent))
+
 from src.text_to_sql.tools.database_toolkit import db_toolkit
 import pandas as pd
 
 def export_all_tables():
     """Export all database tables to CSV files."""
-    # Create exports directory
-    export_dir = Path("database_exports")
-    export_dir.mkdir(exist_ok=True)
+    # Create testing/table_exports directory for database table exports  
+    export_dir = Path(__file__).parent.parent / "testing" / "table_exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
     
     print("🚀 Starting database table export...")
     print(f"📁 Export directory: {export_dir.absolute()}")

@@ -4,8 +4,9 @@ Finds relevant tables using semantic similarity instead of keyword matching.
 """
 import logging
 import pickle
+import yaml
 from pathlib import Path
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -27,6 +28,10 @@ class SemanticTableFinder:
         self.cache_file = Path(cache_dir) / "table_embeddings.pkl"
         self.table_embeddings: Dict[str, np.ndarray] = {}
         self.table_descriptions: Dict[str, str] = {}
+        self.custom_descriptions: Optional[Dict[str, str]] = None
+        
+        # Load table descriptions from config
+        self._load_table_descriptions()
         
         # Load cached embeddings if available
         self._load_cache()
@@ -111,8 +116,33 @@ class SemanticTableFinder:
         
         return ". ".join(parts)
     
+    def _load_table_descriptions(self) -> None:
+        """Load table descriptions from YAML config file."""
+        config_paths = [
+            Path(__file__).parent.parent / 'table_descriptions.yaml',
+            Path('src/text_to_sql/table_descriptions.yaml'),
+            Path('table_descriptions.yaml')
+        ]
+        
+        for config_path in config_paths:
+            if config_path.exists():
+                try:
+                    with open(config_path, 'r') as f:
+                        self.custom_descriptions = yaml.safe_load(f)
+                        logger.info(f"Loaded table descriptions from {config_path}")
+                        return
+                except Exception as e:
+                    logger.warning(f"Failed to load descriptions from {config_path}: {e}")
+        
+        logger.info("No table descriptions config found, using defaults")
+    
     def _get_semantic_context(self, table_name: str) -> str:
         """Get semantic context for a table based on its name."""
+        # First try custom descriptions from YAML
+        if self.custom_descriptions and table_name in self.custom_descriptions:
+            return self.custom_descriptions[table_name]
+        
+        # Fallback to hardcoded defaults for backward compatibility
         contexts = {
             'servers': 'Infrastructure servers with CPU, memory, and performance metrics by datacenter',
             'load_balancers': 'Load balancing infrastructure with health status and datacenter locations',

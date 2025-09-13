@@ -17,13 +17,13 @@ def export_to_html(
     """Export markdown response to beautiful HTML."""
     
     # Create exports directory
-    Path("query_exports").mkdir(exist_ok=True)
+    Path("outputs/query_reports").mkdir(parents=True, exist_ok=True)
     
     # Generate filename if not provided
     if not filename:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         query_id = abs(hash(query)) % 10000
-        filename = f"query_exports/query_{query_id}_{timestamp}.html"
+        filename = f"outputs/query_reports/query_{query_id}_{timestamp}.html"
     
     # Convert markdown to HTML (without syntax highlighting to keep it clean)
     html_content = markdown2.markdown(response, extras=['tables', 'fenced-code-blocks'])

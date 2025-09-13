@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Simple CLI wrapper for the Netquery Text-to-SQL system.
-Usage: python gemini_cli.py "your query here" [--no-csv] [--no-reasoning]
+Usage: python gemini_cli.py "your query here" [--csv] [--explain] [--html]
 """
 import asyncio
 import sys
@@ -19,7 +19,7 @@ async def main():
     parser = argparse.ArgumentParser(description="Netquery Text-to-SQL CLI")
     parser.add_argument("query", nargs="+", help="Your natural language query")
     parser.add_argument("--csv", action="store_true", help="Save results to CSV")
-    parser.add_argument("--reasoning", action="store_true", help="Include reasoning in output")
+    parser.add_argument("--explain", action="store_true", help="Show detailed explanations of SQL generation and results")
     parser.add_argument("--html", action="store_true", help="Save results to HTML")
     
     if len(sys.argv) < 2:
@@ -27,7 +27,7 @@ async def main():
         print("\nExamples:")
         print("  python gemini_cli.py 'Show me all load balancers'")
         print("  python gemini_cli.py 'Which SSL certificates expire soon?' --csv")
-        print("  python gemini_cli.py 'Show unhealthy servers' --reasoning")
+        print("  python gemini_cli.py 'Show unhealthy servers' --explain")
         print("  python gemini_cli.py 'Show load balancers in us-east-1' --html")
         return
     
@@ -48,7 +48,7 @@ async def main():
         
         result = await text_to_sql_graph.ainvoke({
             "original_query": query,
-            "include_reasoning": args.reasoning,
+            "include_explanation": args.explain,
             "save_csv": args.csv
         })
         

@@ -23,7 +23,7 @@ def interpreter_node(state: TextToSQLState) -> Dict[str, Any]:
     if state.get("execution_error"):
         return {"formatted_response": f"An error occurred: {state['execution_error']}"}
     
-    if state["include_reasoning"]:
+    if state["include_explanation"]:
         return _create_full_response(state)
     else:
         return _create_simple_response(state)

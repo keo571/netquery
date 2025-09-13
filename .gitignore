@@ -259,7 +259,6 @@ temp/
 
 # Test results and reports
 test_results/
-reports/
 coverage/
 
 # Node.js (if any frontend dependencies)
@@ -287,12 +286,14 @@ site/
 
 # Netquery specific files
 .embeddings_cache/
-query_exports/*.csv
-query_exports/*.html
-query_exports/*.pdf
-database_exports/*.csv
-evaluation_report_*.html
-infrastructure.db
+outputs/
+testing/
+query_exports/
+*evaluation_report_*.html
+data/
+*.db
+*.sqlite
+*.sqlite3
 
 # Local development
 .local/

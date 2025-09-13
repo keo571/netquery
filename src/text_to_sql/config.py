@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 class DatabaseConfig(BaseModel):
     """Database configuration."""
     database_url: str = Field(
-        default="sqlite:///infrastructure.db",
+        default="sqlite:///data/infrastructure.db",
         description="Database connection URL (relative to project root)"
     )
     connection_timeout: int = Field(default=30, description="Connection timeout in seconds")

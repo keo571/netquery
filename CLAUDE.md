@@ -33,18 +33,27 @@ User Query → Schema Analysis → Query Planning → SQL Generation → Validat
 4. **MCP Server** (`src/text_to_sql/`)
    - `mcp_server.py` - Standard MCP implementation
 
-5. **Evaluation & Export Scripts**
-   - `evaluate_queries.py` - Comprehensive query evaluation framework
-   - `export_database_tables.py` - Database table export utility
+5. **Scripts & CLI**
+   - `scripts/create_sample_data.py` - Pure SQL sample data generator 
+   - `scripts/evaluate_queries.py` - Comprehensive query evaluation framework
+   - `scripts/evaluate_mcp.py` - MCP tool selection testing
+   - `scripts/export_database_tables.py` - Database export utility
    - `gemini_cli.py` - Enhanced CLI with chart and export support
+
+6. **Output Structure**
+   - `outputs/query_data/` - CSV exports from text-to-SQL queries
+   - `outputs/query_reports/` - HTML reports from text-to-SQL queries
+   - `testing/table_exports/` - Database table exports for analysis
+   - `testing/evaluations/` - Evaluation reports and testing artifacts
 
 ## Recent Improvements
 
-### 1. Config & Database Management (Latest)
-- ✅ Fixed SQLite path resolution with absolute paths for reliability
-- ✅ Added lazy loading to database connections for better initialization
-- ✅ Simplified MCP server response formatting
-- ✅ Made result interpretation more technical and direct
+### 1. Database & Code Simplification (Latest)
+- ✅ Refactored create_sample_data.py to use pure raw SQL (eliminated SQLAlchemy complexity)
+- ✅ Fixed SQLite path resolution to use data/ folder consistently
+- ✅ Fixed datetime/float type conversion errors in sample data generation
+- ✅ Reorganized SAMPLE_QUERIES.md for better clarity and removed redundancies
+- ✅ Streamlined README.md documentation
 
 ### 2. Chart Generation & Visualization System
 - ✅ Added automatic chart type detection (line, bar, pie, scatter)
@@ -60,12 +69,13 @@ User Query → Schema Analysis → Query Planning → SQL Generation → Validat
 - ✅ Added key metrics highlighting for infrastructure terminology
 - ✅ Improved column name mapping for network infrastructure
 
-### 4. Code Organization & Refactoring
+### 4. Code Organization & Output Structure
 - ✅ Refactored interpreter module (reduced from 700+ to 184 lines)
 - ✅ Extracted SQL utilities to `utils/sql_utils.py`
 - ✅ Organized prompts in `prompts/` directory
 - ✅ Added config management with hot-reloading
 - ✅ Created modular utilities (chart_generator.py, html_exporter.py, llm_utils.py)
+- ✅ Organized output structure: `outputs/` for user results, `dev/` for development artifacts
 
 ### 5. Evaluation & Testing Framework
 - ✅ Built comprehensive evaluation system (evaluate_queries.py)
@@ -210,33 +220,49 @@ test_batch_processing()
 # Required
 GEMINI_API_KEY=your_key_here
 
-# Database
-DATABASE_URL=sqlite:///infrastructure.db  # or postgresql://...
-
-# Optional
-LOG_LEVEL=INFO
-MAX_RESULT_ROWS=1000
-ENABLE_CACHE=true
+# Optional: Override default database location  
+DATABASE_URL=sqlite:///data/infrastructure.db
 ```
 
 ## Quick Commands
 
 ```bash
 # Development
-python -m src.text_to_sql.create_sample_data  # Create sample data
+python scripts/create_sample_data.py          # Create sample data (REQUIRED for CLI/Python API)
 python gemini_cli.py "your query"             # Test queries via CLI
-python -m src.text_to_sql.mcp_server          # Start MCP server
+python -m src.text_to_sql.mcp_server          # Start MCP server (auto-creates data if missing)
 
 # Testing with Charts & Exports
 python gemini_cli.py "Show me all load balancers"
 python gemini_cli.py "Show network traffic over time" --html
-python gemini_cli.py "Display server performance by datacenter" --csv --reasoning
-python gemini_cli.py "What's the average memory usage by datacenter?"
+python gemini_cli.py "Display server performance by datacenter" --csv --explain
 
-# Evaluation & Export
-python evaluate_queries.py                    # Run comprehensive evaluation
-python export_database_tables.py             # Export all database tables
+# Testing & Evaluation
+python scripts/evaluate_mcp.py               # Test MCP tool selection
+python scripts/evaluate_queries.py          # Run comprehensive pipeline evaluation
+python scripts/export_database_tables.py    # Export all database tables
 ```
+
+## Adding or Updating Table Descriptions
+
+When adding new tables or updating existing ones:
+
+1. **Edit the descriptions file**: `src/text_to_sql/table_descriptions.yaml`
+   ```yaml
+   your_new_table: "Description focusing on key metrics and use cases"
+   ```
+
+2. **Clear the embeddings cache** to rebuild with new descriptions:
+   ```bash
+   rm -rf .embeddings_cache/
+   ```
+
+3. **Test** that your table is being found correctly:
+   ```bash
+   python gemini_cli.py "query about your new table"
+   ```
+
+The semantic table finder uses these descriptions to match user queries to relevant tables, so make descriptions clear and include key terms users might search for.
 
 ## Key Files to Understand
 
