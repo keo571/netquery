@@ -28,7 +28,7 @@ class DatabaseConfig(BaseModel):
 
 class LLMConfig(BaseModel):
     """LLM configuration."""
-    model_name: str = Field(default="gemini-2.5-flash", description="Model name")
+    model_name: str = Field(default="gemini-2.0-flash", description="Model name")
     temperature: float = Field(default=0.1, description="Temperature for generation")
     max_tokens: int = Field(default=4096, description="Maximum tokens")
     max_retries: int = Field(default=3, description="Maximum retries")

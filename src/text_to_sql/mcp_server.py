@@ -72,9 +72,9 @@ async def text_to_sql(
     initial_state = {
         "messages": [HumanMessage(content=query)],
         "original_query": query,
-        "include_explanation": show_explanation,  # Use parameter
-        "save_csv": export_csv,  # Use parameter
-        "html": export_html  # Use parameter
+        "show_explanation": show_explanation,
+        "export_csv": export_csv,
+        "export_html": export_html
     }
     
     try:
@@ -94,8 +94,30 @@ def get_schema(table_names: Optional[List[str]] = None, include_sample_data: boo
         include_sample_data: Include 3 sample rows per table to understand data format
     """
     # Get tables to describe
-    if table_names:
-        tables_to_show = table_names
+    if table_names is not None and len(table_names) > 0:
+        # Validate that the requested tables exist
+        all_tables = db_toolkit.get_table_names()
+        valid_tables = []
+        invalid_tables = []
+
+        for table in table_names:
+            if table in all_tables:
+                valid_tables.append(table)
+            else:
+                invalid_tables.append(table)
+
+        if invalid_tables:
+            logger.warning(f"Invalid table names: {invalid_tables}")
+
+        tables_to_show = valid_tables
+
+        # If no valid tables found, show available tables
+        if not valid_tables:
+            output = ["## Database Schema\n"]
+            output.append("**Invalid table names provided.** Available tables are:\n")
+            for table in all_tables:
+                output.append(f"• {table}")
+            return "\n".join(output)
     else:
         tables_to_show = db_toolkit.get_table_names()
     
@@ -170,10 +192,18 @@ def suggest_queries(category: Optional[str] = None) -> str:
         ]
     }
     
-    if category and category.lower() in queries:
-        output = f"## {category.capitalize()} Queries\n\n"
-        for query in queries[category.lower()]:
-            output += f"• {query}\n"
+    if category:
+        category_lower = category.lower()
+        if category_lower in queries:
+            output = f"## {category.capitalize()} Queries\n\n"
+            for query in queries[category_lower]:
+                output += f"• {query}\n"
+        else:
+            # Invalid category - show available categories
+            output = f"## Invalid Category: '{category}'\n\n"
+            output += "**Available categories:**\n"
+            for cat in queries.keys():
+                output += f"• {cat}\n"
     else:
         output = "## Suggested Query Categories\n\n"
         for cat, examples in queries.items():
@@ -185,16 +215,16 @@ def suggest_queries(category: Optional[str] = None) -> str:
     return output
 
 
-async def run_server():
+def run_server():
     """Run the FastMCP server."""
     logger.info("Starting Netquery FastMCP Server")
     
     # Ensure database exists
     ensure_database()
     
-    # Run server
-    await mcp.run()
+    # Run server - FastMCP handles the event loop
+    mcp.run()
 
 
 if __name__ == "__main__":
-    asyncio.run(run_server())
+    run_server()

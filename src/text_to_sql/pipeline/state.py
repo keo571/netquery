@@ -22,8 +22,9 @@ class TextToSQLState(TypedDict):
     query_results: Optional[List[Dict]]
     final_response: str
     formatted_response: str
-    include_explanation: bool
-    save_csv: Optional[bool]
+    show_explanation: bool
+    export_csv: Optional[bool]
+    export_html: Optional[bool]
     
     # Schema Analysis
     schema_context: str

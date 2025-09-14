@@ -48,8 +48,9 @@ async def main():
         
         result = await text_to_sql_graph.ainvoke({
             "original_query": query,
-            "include_explanation": args.explain,
-            "save_csv": args.csv
+            "show_explanation": args.explain,
+            "export_csv": args.csv,
+            "export_html": args.html
         })
         
         pipeline_end_time = time.time()

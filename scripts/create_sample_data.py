@@ -7,6 +7,19 @@ import sqlite3
 import os
 from datetime import datetime, timedelta, date
 
+# Configure SQLite to handle datetime properly (fixes Python 3.12 warnings)
+def adapt_datetime(dt):
+    """Convert datetime to ISO string for SQLite storage."""
+    return dt.isoformat()
+
+def adapt_date(d):
+    """Convert date to ISO string for SQLite storage."""
+    return d.isoformat()
+
+# Register adapters to avoid deprecation warnings
+sqlite3.register_adapter(datetime, adapt_datetime)
+sqlite3.register_adapter(date, adapt_date)
+
 
 # Network infrastructure data patterns
 LOAD_BALANCERS = [
@@ -415,7 +428,17 @@ def create_infrastructure_database():
         # Create schema
         print("Creating database schema...")
         create_database_schema(cursor)
-        
+
+        # Clear existing data to prevent duplicates
+        print("Clearing existing data...")
+        tables_to_clear = [
+            'network_connectivity', 'lb_health_log', 'ssl_monitoring',
+            'network_traffic', 'backend_mappings', 'vip_pools',
+            'ssl_certificates', 'servers', 'load_balancers'
+        ]
+        for table in tables_to_clear:
+            cursor.execute(f'DELETE FROM {table}')
+
         # Generate infrastructure data
         print("Generating infrastructure data...")
         results = {}

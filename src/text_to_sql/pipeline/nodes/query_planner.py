@@ -49,9 +49,9 @@ def query_planner_node(state: TextToSQLState) -> Dict[str, Any]:
         # Get query plan from LLM
         response = llm.invoke(planning_prompt)
         plan_text = response.content.strip() if response.content else ""
-        
+
         query_planning_time_ms = (time.time() - start_time) * 1000
-        
+
         if not plan_text:
             raise ValueError("Empty response from LLM")
         

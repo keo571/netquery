@@ -5,7 +5,6 @@ langgraph>=0.1.0
 fastmcp>=0.2.0
 sqlalchemy>=2.0.0
 python-dotenv>=1.0.0
-sqlparse>=0.4.4
 
 # Semantic analysis dependencies
 sentence-transformers>=5.0.0

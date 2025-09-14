@@ -6,47 +6,54 @@ An AI-powered assistant that converts natural language queries into SQL. Optimiz
 
 ```mermaid
 flowchart TD
-    A([Natural Language Query]) --> B[Schema Analysis]
-    B --> C[Query Planning] 
-    C --> D[SQL Generation]
-    D --> E{Safety Check}
-    E -->|✅ Pass| F[Execute Query]
-    E -->|❌ Block| H
-    F --> G[Format Results]
-    G --> H([Response])
-    
+    A([Natural Language Query]) --> B[Schema Analysis<br/>Semantic Similarity]
+    B --> C[Query Planning<br/>JSON Structure]
+    C --> D[SQL Generation<br/>No CTEs]
+    D --> E[Safety Validation<br/>Read-Only Check]
+    E -->|✅ Pass| F[Query Execution<br/>Timeout Handling]
+    E -->|❌ Block| I[Error Response]
+    F --> G[Result Interpretation<br/>Chart Generation]
+    G --> H([Response with Charts])
+
     DB[(Database)] -.->|schema reflection<br/>at startup| CACHE
-    CACHE[(Embedding Cache)] --> B
-    LLM[Gemini API] --> D
+    CACHE[(Embedding Cache)] -.->|table similarity<br/>scoring| B
+    LLM[Gemini API] --> C
+    LLM --> D
+    LLM --> G
     DB --> F
-    
+
     style A fill:#4FC3F7,color:#000
     style H fill:#81C784,color:#000
+    style I fill:#FF8A65,color:#000
     style E fill:#FFB74D,color:#000
+    style CACHE fill:#E1BEE7,color:#000
 ```
 
 ## Key Features
 
 ### 🎯 **Smart Query Understanding**
-- **Semantic Schema Analysis**: Identifies relevant tables using AI-powered similarity matching
-- **Domain-Optimized**: Enhanced for network infrastructure terminology and concepts
-- **Multi-Table Joins**: Handles complex relationships across load balancers, servers, and monitoring data
+- **Semantic Table Discovery**: Automatically finds relevant database tables using sentence transformer embeddings
+- **Network Infrastructure Focused**: Specialized for load balancers, servers, VIPs, and monitoring data
+- **Multi-Table Support**: Handles complex relationships using database schema reflection
+- **Structured Planning**: Creates JSON execution plans with joins, filters, and aggregations
 
-### 🛡️ **Safety-First Design**
-- **Read-Only Operations**: Blocks all destructive operations (DELETE, DROP, UPDATE) by design
-- **Multi-Layer Validation**: Every query passes through safety checks before execution
-- **Query Optimization**: Automatically adds LIMIT clauses for large result sets
+### 🛡️ **Safety & Performance**
+- **Read-Only Architecture**: Blocks all destructive operations (DELETE, DROP, UPDATE, CREATE)
+- **Timeout Protection**: Dual-level timeouts (30s evaluation, 45s database) prevent hangs
+- **Smart Limits**: Automatic LIMIT clauses and performance warnings for large datasets
+- **Error Recovery**: Multi-layer validation with retry logic for failed SQL generation
 
 ### 📊 **Automatic Visualizations**
-- **Line Charts**: Time-series data and trends over time
-- **Bar Charts**: Comparative analysis and distributions
-- **Scatter Plots**: Correlation analysis and relationships
-- **Static SVG**: Charts work in any browser without JavaScript dependencies
+- **Smart Chart Detection**: Automatically detects optimal chart types based on data patterns
+- **Time-Series Support**: Built-in support for performance trends and monitoring metrics
+- **Static SVG Output**: Charts work everywhere without JavaScript dependencies
+- **HTML Reports**: Integrated visualizations in exported HTML reports
 
-### 🔌 **Integration Ready**
-- **MCP Protocol**: Works with any AI assistant supporting Model Context Protocol
-- **CLI Interface**: Direct command-line testing and exploration
-- **Export Options**: HTML reports, CSV data, and reasoning explanations
+### 🔌 **Multiple Interfaces**
+- **MCP Protocol**: Works with Claude, ChatGPT, and other AI assistants
+- **Command Line**: CLI with export options (--html, --csv) and detailed explanations (--explain)
+- **Export Formats**: HTML reports with charts, CSV data, structured JSON responses
+- **Testing Framework**: Built-in evaluation suite with comprehensive performance metrics
 
 ## Quick Start
 
@@ -155,12 +162,12 @@ DATABASE_URL=sqlite:///data/infrastructure.db
 
 ## Pipeline Architecture
 
-1. **Schema Analysis** → Identifies relevant tables using semantic similarity
-2. **Query Planning** → Determines required joins, filters, and aggregations
-3. **SQL Generation** → Uses Gemini AI to create optimized SQL queries
-4. **Safety Validation** → Ensures read-only operations and safe execution
-5. **Query Execution** → Runs validated SQL with proper error handling
-6. **Result Formatting** → Generates charts and human-readable responses
+1. **Schema Analysis** → Uses semantic similarity to identify relevant tables from embeddings cache
+2. **Query Planning** → Creates structured JSON execution plan with joins, filters, and aggregations
+3. **SQL Generation** → Generates optimized SQLite queries (blocks CTEs, uses subqueries)
+4. **Safety Validation** → Enforces read-only operations, blocks destructive queries
+5. **Query Execution** → Runs SQL with timeout protection and error handling
+6. **Result Interpretation** → Generates charts, formats responses, and provides insights
 
 ## Development & Testing
 
@@ -168,9 +175,6 @@ DATABASE_URL=sqlite:///data/infrastructure.db
 ```bash
 # Test with CLI queries
 python gemini_cli.py "Show server performance by datacenter" --html
-
-# Test MCP server (tool selection)
-python scripts/evaluate_mcp.py
 
 # Comprehensive pipeline evaluation
 python scripts/evaluate_queries.py

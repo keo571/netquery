@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 
 def validator_node(state: TextToSQLState) -> Dict[str, Any]:
     """
-    Validate the generated SQL query using the safety validator.
-    
-    This node uses the safety validator to perform comprehensive validation
-    including syntax checking, safety scoring, and security validation.
+    Validate the generated SQL query for safety and security.
+
+    Focuses on business rules, security, and safety - syntax validation
+    is handled by the database during execution.
     """
     generated_sql = state["generated_sql"]
     
@@ -44,7 +44,7 @@ def validator_node(state: TextToSQLState) -> Dict[str, Any]:
         details = f"Validation found {len(validation_result['errors'])} issues. First issue: {validation_result['errors'][0]}"
         status = "⚠️"
     else:
-        details = "The generated SQL passed all safety and syntax checks."
+        details = "The generated SQL passed all safety and security checks."
         status = "✅"
     
     reasoning_step = {

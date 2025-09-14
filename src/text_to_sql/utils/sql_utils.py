@@ -1,8 +1,7 @@
 """
-Simple SQL utilities for cleaning and basic validation.
+Simple SQL utilities for cleaning and extraction.
 """
 import re
-import sqlparse
 import logging
 
 logger = logging.getLogger(__name__)
@@ -40,37 +39,7 @@ def _remove_comments(sql_query: str) -> str:
     return sql_query
 
 
-def format_sql_query(sql_query: str) -> str:
-    """Format SQL query for readability."""
-    try:
-        # Format with compact style
-        formatted = sqlparse.format(
-            sql_query,
-            reindent=False,  # Don't split columns onto separate lines
-            keyword_case='upper',
-            identifier_case='lower',
-            strip_comments=True,
-            use_space_around_operators=True
-        )
-        
-        # Clean up whitespace and format nicely
-        formatted = re.sub(r'\s+', ' ', formatted)  # Normalize whitespace
-        formatted = formatted.replace('SELECT ', 'SELECT ')
-        formatted = formatted.replace(' FROM ', '\nFROM ')
-        formatted = formatted.replace(' WHERE ', '\nWHERE ')
-        formatted = formatted.replace(' GROUP BY ', '\nGROUP BY ')
-        formatted = formatted.replace(' ORDER BY ', '\nORDER BY ')
-        formatted = formatted.replace(' LIMIT ', '\nLIMIT ')
-        formatted = formatted.replace(' JOIN ', '\n  JOIN ')
-        formatted = formatted.replace(' LEFT JOIN ', '\n  LEFT JOIN ')
-        formatted = formatted.replace(' RIGHT JOIN ', '\n  RIGHT JOIN ')
-        formatted = formatted.replace(' INNER JOIN ', '\n  INNER JOIN ')
-        formatted = formatted.replace(' AND ', '\n  AND ')
-        formatted = formatted.replace(' OR ', '\n   OR ')
-        
-        return formatted.strip()
-    except Exception:
-        return sql_query
+# SQL formatting removed - database handles validation, raw SQL is fine
 
 
 def extract_sql_from_response(response_text: str) -> str:

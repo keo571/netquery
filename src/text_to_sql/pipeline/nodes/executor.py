@@ -28,9 +28,9 @@ def executor_node(state: TextToSQLState) -> Dict[str, Any]:
         rows_affected = execution_result["row_count"]
         execution_error = None
         
-        # Save all results to CSV if enabled
+        # Save results to CSV if enabled
         csv_path = None
-        if state.get("save_csv", False):  # Default to False
+        if state.get("export_csv", False):  # Default to False
             csv_path = _save_results_to_csv(query_results, state["original_query"])
             
         logger.info(f"Query executed: {rows_affected} rows")

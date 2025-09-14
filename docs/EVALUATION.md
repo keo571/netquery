@@ -1,19 +1,10 @@
-# Netquery Evaluation Framework
+# Netquery Query Evaluation Framework
 
-This document describes the comprehensive evaluation system for testing and validating the Netquery text-to-SQL pipeline and MCP server functionality.
+This document describes the comprehensive evaluation system for testing and validating the Netquery text-to-SQL pipeline using `scripts/evaluate_queries.py`.
 
-## Overview
+## Purpose
 
-The evaluation framework consists of two main components:
-
-1. **Query Evaluation** (`scripts/evaluate_queries.py`) - Tests the core text-to-SQL pipeline across all query categories
-2. **MCP Evaluation** (`scripts/evaluate_mcp.py`) - Tests MCP server tool selection and parameter handling
-
-## Query Evaluation
-
-### Purpose
-
-The Query Evaluation framework tests the complete text-to-SQL pipeline end-to-end, measuring both technical success and behavioral accuracy across different query types and complexity levels.
+The Query Evaluation framework tests the complete text-to-SQL pipeline end-to-end, measuring technical success across different query types and complexity levels.
 
 ### What It Tests
 
@@ -53,17 +44,6 @@ Percentage of queries that execute successfully through the entire pipeline:
 Technical Success Rate = (Successful Queries / Total Queries) × 100%
 ```
 
-#### Behavioral Accuracy
-Percentage of queries that behave as expected (including appropriate failures):
-```
-Behavioral Accuracy = (Expected Behaviors / Total Queries) × 100%
-```
-
-**Expected Behaviors:**
-- ✅ Normal queries should succeed
-- ✅ Destructive queries should be blocked by safety validator
-- ✅ Invalid/test queries should fail gracefully or return empty results
-- ✅ Ambiguous queries should attempt a reasonable response
 
 ### Pipeline Stage Tracking
 
@@ -79,8 +59,7 @@ Each query is evaluated through all pipeline stages:
 ### Output
 
 - **Console Report** - Real-time progress and summary statistics
-- **HTML Report** - Detailed results table saved to `testing/evaluations/`
-- **File**: `query_evaluation_report_YYYYMMDD_HHMMSS.html`
+- **HTML Report** - Detailed results table saved to `testing/evaluations/query_evaluation_report.html`
 
 ### Usage
 
@@ -104,164 +83,17 @@ python scripts/evaluate_queries.py
    
 📈 EVALUATION SUMMARY
 Technical Success Rate: 45/52 (86.5%)
-Behavioral Accuracy: 48/52 (92.3%)
 Charts Generated: 12
 ```
-
-## MCP Evaluation
-
-### Purpose
-
-The MCP Evaluation framework tests the Model Context Protocol server implementation, focusing on tool discovery, parameter handling, and realistic usage scenarios.
-
-### What It Tests
-
-#### Tool Availability
-- **text_to_sql** - Main query processing tool
-- **get_schema** - Database schema information
-- **suggest_queries** - Query suggestions by category
-
-#### Parameter Handling
-Tests each tool's parameter support and validation:
-
-**text_to_sql parameters:**
-- `query` (required) - Natural language query
-- `show_explanation` (optional) - Detailed explanations
-- `export_csv` (optional) - CSV export functionality  
-- `export_html` (optional) - HTML report generation
-
-**get_schema parameters:**
-- `table_names` (optional) - Specific tables to describe
-- `include_sample_data` (optional) - Include sample rows
-
-**suggest_queries parameters:**
-- `category` (optional) - Filter by query category
-
-#### Realistic Usage Scenarios
-
-1. **Single Feature Tests**
-   - Basic querying without flags
-   - Visualization requests (`export_html=True`)
-   - Data export needs (`export_csv=True`)
-   - Learning scenarios (`show_explanation=True`)
-
-2. **Combined Feature Tests**
-   - Visualization + explanation
-   - Export + explanation  
-   - Multi-format exports
-   - Full reports with all features
-
-3. **Tool Selection Tests**
-   - Schema exploration workflows
-   - Query suggestion requests
-   - Complex multi-step operations
-
-### Metrics
-
-#### Tool Availability Rate
-```
-Availability Rate = (Available Tools / Expected Tools) × 100%
-```
-
-#### Parameter Support Rate
-```
-Parameter Support = (Supported Parameters / Expected Parameters) × 100%
-```
-
-#### Scenario Success Rate
-```
-Scenario Success = (Passing Scenarios / Total Scenarios) × 100%
-```
-
-### Output
-
-- **Console Report** - Real-time test results and feature tracking
-- **HTML Report** - Detailed test results saved to `testing/evaluations/`
-- **File**: `mcp_evaluation_report_YYYYMMDD_HHMMSS.html`
-
-### Usage
-
-```bash
-# Run MCP evaluation
-python scripts/evaluate_mcp.py
-
-# The script will test tool discovery and parameter handling
-# No API key required (tests tool metadata only)
-```
-
-**Example Output:**
-```
-🔧 Starting MCP Server Evaluation...
-
-Testing text_to_sql tool...
-   ✅ Tool available and accessible
-   ✅ All required parameters supported
-   ✅ Complex scenario with all features: PASS
-
-📊 MCP Evaluation Results:
-Tool Availability: 3/3 (100%)
-Parameter Support: 12/12 (100%)  
-Scenario Success: 15/15 (100%)
-```
-
-## Comparison: Query vs MCP Evaluation
-
-| Aspect | Query Evaluation | MCP Evaluation |
-|--------|------------------|----------------|
-| **Purpose** | End-to-end pipeline testing | Tool interface testing |
-| **Scope** | SQL generation to results | Tool discovery to parameters |
-| **Requirements** | GEMINI_API_KEY needed | No API key needed |
-| **Focus** | Data accuracy & behavior | Interface compliance |
-| **Runtime** | ~2-5 minutes | ~10-30 seconds |
-| **Query Execution** | Actually runs queries | Tests tool metadata only |
-
-## Best Practices
-
-### When to Run Evaluations
-
-1. **Before releases** - Ensure quality and compatibility
-2. **After major changes** - Validate pipeline modifications  
-3. **During development** - Catch regressions early
-4. **Performance testing** - Monitor system capabilities
-
-### Interpreting Results
-
-#### Query Evaluation
-- **>90% Technical Success** = Excellent pipeline performance
-- **>85% Behavioral Accuracy** = Good error handling and safety
-- **Charts Generated** = Visualization system working
-
-#### MCP Evaluation  
-- **100% Tool Availability** = MCP server properly configured
-- **100% Parameter Support** = Complete tool interface
-- **>95% Scenario Success** = Robust parameter handling
-
-### Troubleshooting
-
-#### Low Technical Success Rate
-- Check database connectivity
-- Verify GEMINI_API_KEY configuration
-- Review SQL generation prompts
-- Check for schema analysis issues
-
-#### Low Behavioral Accuracy
-- Review safety validator rules
-- Check error handling in pipeline nodes
-- Verify expected behavior logic in evaluation
-
-#### MCP Tool Issues
-- Confirm FastMCP server configuration
-- Check tool function signatures
-- Verify parameter type annotations
 
 ## Integration with Development
 
 ### Pre-commit Hooks
 ```bash
 # Add to .git/hooks/pre-commit
-python scripts/evaluate_mcp.py
+python scripts/evaluate_queries.py
 if [ $? -ne 0 ]; then
-    echo "MCP evaluation failed"
+    echo "Query evaluation failed"
     exit 1
 fi
 ```
@@ -269,10 +101,8 @@ fi
 ### CI/CD Pipeline
 ```yaml
 # Add to GitHub Actions
-- name: Run Evaluations
-  run: |
-    python scripts/evaluate_mcp.py
-    python scripts/evaluate_queries.py
+- name: Run Query Evaluation
+  run: python scripts/evaluate_queries.py
   env:
     GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 ```
@@ -287,10 +117,47 @@ fi
 
 ## Files and Locations
 
-- **Query Evaluation**: `scripts/evaluate_queries.py`
-- **MCP Evaluation**: `scripts/evaluate_mcp.py`
+- **Query Evaluation Script**: `scripts/evaluate_queries.py`
 - **Test Queries**: Defined in `docs/SAMPLE_QUERIES.md`
 - **Reports**: Saved to `testing/evaluations/`
 - **Configuration**: Uses `.env` for API keys
 
-The evaluation framework ensures Netquery maintains high quality and reliability across all use cases and deployment scenarios.
+## Future Improvements
+
+### Technical Success Rate Improvements
+
+**Difficulty-Based LLM Selection**
+- Use advanced LLMs (GPT-4, Claude-3.5) for high-complexity queries identified by query planner
+- Keep standard LLM (Gemini) for simple queries to optimize costs
+
+**Schema Analysis Enhancement** 
+- Upgrade embedding model from `all-MiniLM-L6-v2` to `text-embedding-3-large`
+- Add hybrid search combining semantic similarity with BM25 scoring (BM25 provides lexical matching for exact technical terms while embeddings handle conceptual understanding)
+- Enhance table descriptions with infrastructure-specific keywords
+
+**SQL Generation Resilience**
+- Implement SQL validation with retry using increased reasoning levels
+- Add few-shot learning with curated network infrastructure examples
+- Automatic query optimization (LIMIT clauses, execution time controls)
+
+### Error Recovery and Reliability
+
+**Smart Error Recovery**
+- Query decomposition for overly complex requests
+- Intelligent fallback to simpler query variants when complex joins fail
+- Better error messages with suggested alternatives
+
+**Learning System**
+- Track query success patterns to improve complexity assessment
+- Log execution failures to identify common problem areas
+- Adaptive difficulty scoring based on historical performance
+
+### Measurement Enhancements
+
+**Additional Metrics**
+- Complex query success rate (difficulty > 0.8)
+- Average query execution time by complexity level
+- Schema analysis accuracy by table type
+- Failure mode categorization (syntax, logic, timeout, safety)
+
+The query evaluation framework ensures Netquery maintains high quality and reliability across all text-to-SQL use cases and deployment scenarios.

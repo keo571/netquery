@@ -351,5 +351,5 @@ ssl_certificates -> vips -> services
 
 ---
 
-*Last Updated: December 2025*
-*Version: 1.1.0 - Enhanced Semantic Understanding & Visualization System*
+*Last Updated: September 2025*
+*Version: 1.2.0 - Simplified Evaluation & Timeout Management*

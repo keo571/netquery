@@ -9,6 +9,7 @@ from ..state import TextToSQLState
 from ...prompts import create_result_interpretation_prompt
 from ...utils.llm_utils import get_llm
 from ...utils.chart_generator import generate_chart
+from ...utils.html_exporter import export_to_html
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +20,7 @@ def interpreter_node(state: TextToSQLState) -> Dict[str, Any]:
     if state.get("final_response"):
         return {"formatted_response": state["final_response"]}
 
-    # Handle execution errors
-    if state.get("execution_error"):
-        return {"formatted_response": f"An error occurred: {state['execution_error']}"}
-    
-    if state["include_explanation"]:
+    if state["show_explanation"]:
         return _create_full_response(state)
     else:
         return _create_simple_response(state)
@@ -34,6 +31,11 @@ def _create_simple_response(state: TextToSQLState) -> Dict[str, Any]:
     query_results = state["query_results"] or []
     display_results = query_results[:10]
     total_count = len(query_results)
+
+    # Add performance warning for large result sets
+    performance_warning = ""
+    if total_count > 1000:
+        performance_warning = f"\n⚠️  **Large result set**: {total_count:,} rows returned. Consider adding filters to improve performance."
     
     # Generate chart for visualization
     chart_html = generate_chart(query_results)
@@ -44,18 +46,41 @@ def _create_simple_response(state: TextToSQLState) -> Dict[str, Any]:
     # Format results table
     table_section = _format_results_section(display_results, total_count)
     
-    # Format footer
-    footer = _format_footer(
+    # Create initial formatted response for HTML export
+    initial_footer = _format_footer(
         total_pipeline_time=state.get("total_pipeline_time_ms", 0.0),
         row_count=total_count,
         csv_path=state.get('csv_export_path')
     )
-    
-    formatted_response = f"{sql_section}{table_section}{footer}"
-    
+
+    initial_formatted_response = f"{sql_section}{table_section}{initial_footer}"
+
+    # Export to HTML if enabled
+    html_export_path = None
+    if state.get("export_html", False):
+        try:
+            html_export_path = export_to_html(
+                query=state["original_query"],
+                response=initial_formatted_response,
+                chart_html=chart_html
+            )
+        except Exception as e:
+            logger.error(f"HTML export failed: {e}")
+
+    # Final footer with HTML path if available
+    footer = _format_footer(
+        total_pipeline_time=state.get("total_pipeline_time_ms", 0.0),
+        row_count=total_count,
+        csv_path=state.get('csv_export_path'),
+        html_path=html_export_path
+    )
+
+    formatted_response = f"{sql_section}{table_section}{performance_warning}{footer}"
+
     return {
         "formatted_response": formatted_response,
-        "chart_html": chart_html
+        "chart_html": chart_html,
+        "html_export_path": html_export_path
     }
 
 
@@ -83,16 +108,54 @@ def _create_full_response(state: TextToSQLState) -> Dict[str, Any]:
     
     # Format results
     display_results = state["query_results"][:10] if state["query_results"] else []
-    results_section = _format_results_section(display_results, len(state.get("query_results", [])))
+    total_results = len(state.get("query_results", []))
+    results_section = _format_results_section(display_results, total_results)
+
+    # Add performance warning for large result sets
+    performance_warning = ""
+    if total_results > 1000:
+        performance_warning = f"\n⚠️  **Large result set**: {total_results:,} rows returned. Consider adding filters to improve performance."
     
-    # Format footer
-    footer = _format_footer(
+    # Create initial formatted response for HTML export
+    initial_footer = _format_footer(
         total_pipeline_time=state.get("total_pipeline_time_ms", 0.0),
         row_count=len(state.get("query_results", [])),
         display_count=len(display_results),
         csv_path=state.get('csv_export_path')
     )
-    
+
+    initial_formatted_response = f"""{sql_section}
+
+{reasoning_section}
+
+{results_section}
+
+## Analysis
+{insights}
+
+{initial_footer}"""
+
+    # Export to HTML if enabled
+    html_export_path = None
+    if state.get("export_html", False):
+        try:
+            html_export_path = export_to_html(
+                query=state["original_query"],
+                response=initial_formatted_response,
+                chart_html=chart_html
+            )
+        except Exception as e:
+            logger.error(f"HTML export failed: {e}")
+
+    # Final footer with HTML path if available
+    footer = _format_footer(
+        total_pipeline_time=state.get("total_pipeline_time_ms", 0.0),
+        row_count=len(state.get("query_results", [])),
+        display_count=len(display_results),
+        csv_path=state.get('csv_export_path'),
+        html_path=html_export_path
+    )
+
     formatted_response = f"""{sql_section}
 
 {reasoning_section}
@@ -102,13 +165,14 @@ def _create_full_response(state: TextToSQLState) -> Dict[str, Any]:
 ## Analysis
 {insights}
 
-{footer}"""
-    
+{performance_warning}{footer}"""
+
     return {
         "formatted_response": formatted_response,
         "interpretation_time_ms": interpretation_time_ms,
         "markdown_analysis": insights,  # Store original markdown for exports
-        "chart_html": chart_html
+        "chart_html": chart_html,
+        "html_export_path": html_export_path
     }
 
 
@@ -140,8 +204,8 @@ def _format_results_section(display_results: List[Dict], total_count: int) -> st
     return f"{header}{table}"
 
 
-def _format_footer(total_pipeline_time: float, row_count: int, 
-                  display_count: int = None, csv_path: str = None) -> str:
+def _format_footer(total_pipeline_time: float, row_count: int,
+                  display_count: int = None, csv_path: str = None, html_path: str = None) -> str:
     """Format footer with timing and row count information."""
     footer_parts = []
     
@@ -160,7 +224,11 @@ def _format_footer(total_pipeline_time: float, row_count: int,
     # Add CSV export path if available
     if csv_path:
         footer_parts.append(f"📄 **Complete data:** `{csv_path}`")
-    
+
+    # Add HTML export path if available
+    if html_path:
+        footer_parts.append(f"🌐 **HTML report:** `{html_path}`")
+
     return "\n\n".join(footer_parts) if footer_parts else ""
 
 

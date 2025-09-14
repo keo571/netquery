@@ -16,6 +16,7 @@ from .nodes.interpreter import interpreter_node
 logger = logging.getLogger(__name__)
 
 
+
 def error_handler_node(state: TextToSQLState) -> dict:
     """Handle pipeline errors with user-friendly messages."""
     # Determine error type and message
@@ -31,6 +32,10 @@ def error_handler_node(state: TextToSQLState) -> dict:
         error = state["generation_error"]
         msg = "I couldn't generate SQL for your query."
         hint = "Try simplifying your request."
+    elif state.get("execution_error"):
+        error = state["execution_error"]
+        msg = "I couldn't execute the SQL query against the database."
+        hint = "This might be a database connectivity issue. Please try again."
     elif not state.get("is_valid", True):
         error = state.get("validation_error", "Validation failed")
         msg = "The SQL query has safety issues."
@@ -82,8 +87,8 @@ def create_text_to_sql_graph():
     workflow.add_node("executor", executor_node)
     workflow.add_node("interpreter", interpreter_node)
     workflow.add_node("error_handler", error_handler_node)
-    
-    # Add edges
+
+    # Add edges - start directly with schema analyzer
     workflow.add_edge(START, "schema_analyzer")
     
     # Add conditional routing with error handling

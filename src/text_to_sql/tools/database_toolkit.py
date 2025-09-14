@@ -5,6 +5,7 @@ Works automatically with any database schema through reflection.
 import time
 import logging
 from typing import List, Dict, Any, Optional
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from sqlalchemy import text
 
 from ..database.engine import get_engine, get_metadata
@@ -43,13 +44,15 @@ class GenericDatabaseToolkit:
             return False
     
     def execute_query(self, sql_query: str) -> Dict[str, Any]:
-        """Execute SQL query."""
+        """Execute SQL query with timeout."""
         start_time = time.time()
-        
-        try:
+        timeout_seconds = 45  # Database timeout longer than evaluation timeout (30s)
+
+        def _execute():
+            """Execute the query in a separate thread."""
             with self.engine.connect() as conn:
                 result = conn.execute(text(sql_query))
-                
+
                 if result.returns_rows:
                     rows = result.fetchall()
                     results = [dict(row._mapping) for row in rows]
@@ -57,24 +60,45 @@ class GenericDatabaseToolkit:
                 else:
                     results = []
                     row_count = result.rowcount
-                
-                execution_time_ms = (time.time() - start_time) * 1000
-                
-                truncated = False
-                
-                return {
-                    "success": True,
-                    "data": results,
-                    "execution_time_ms": execution_time_ms,
-                    "row_count": row_count,
-                    "truncated": truncated,
-                    "error": None
-                }
-                
+
+                return results, row_count
+
+        try:
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_execute)
+
+                try:
+                    results, row_count = future.result(timeout=timeout_seconds)
+                    execution_time_ms = (time.time() - start_time) * 1000
+
+                    return {
+                        "success": True,
+                        "data": results,
+                        "execution_time_ms": execution_time_ms,
+                        "row_count": row_count,
+                        "truncated": False,
+                        "error": None
+                    }
+
+                except TimeoutError:
+                    execution_time_ms = (time.time() - start_time) * 1000
+                    timeout_msg = f"Database query timed out after {timeout_seconds} seconds"
+                    print(f"⏱️ DATABASE_TIMEOUT ({timeout_seconds:.1f}s) - {timeout_msg}")
+                    logger.error(timeout_msg)
+
+                    return {
+                        "success": False,
+                        "data": None,
+                        "execution_time_ms": execution_time_ms,
+                        "row_count": 0,
+                        "truncated": False,
+                        "error": timeout_msg
+                    }
+
         except Exception as e:
             execution_time_ms = (time.time() - start_time) * 1000
             logger.error(f"Query execution failed: {e}")
-            
+
             return {
                 "success": False,
                 "data": None,

@@ -6,95 +6,84 @@ from typing import Dict, Any
 import logging
 import time
 
-from ...config import config
 from ..state import TextToSQLState
-from ...utils.sql_utils import extract_sql_from_response, format_sql_query
+from ...utils.sql_utils import extract_sql_from_response
 from ...prompts.sql_generation import SQL_GENERATION_PROMPT
 from ...utils.llm_utils import get_llm
 
 logger = logging.getLogger(__name__)
 
+# SQL generation with fail-fast approach - rely on upstream nodes for quality
+
 
 def sql_generator_node(state: TextToSQLState) -> Dict[str, Any]:
-    """
-    Generate SQL query from natural language using LLM with schema context.
-    
-    This node:
-    1. Uses the query plan and schema context to generate SQL
-    2. Applies best practices and optimization hints
-    3. Includes explanation of the generated query
-    4. Provides confidence score for the generation
-    """
-    # Get validated inputs from previous nodes
-    query = state["original_query"]  # From initial state
-    schema_context = state["schema_context"]  # From schema_analyzer
-    query_plan = state["query_plan"]  # From query_planner
-    
-    
+    """Generate SQL query from natural language using LLM with schema context."""
+    query = state["original_query"]
+    schema_context = state["schema_context"]
+    query_plan = state["query_plan"]
+
     logger.info(f"Generating SQL for query: {query[:100]}...")
-    
-    # Measure SQL generation time
+
     start_time = time.time()
-    
-    # Get shared LLM instance
     llm = get_llm()
-    
-    # Create SQL generation prompt
-    sql_prompt = _create_sql_generation_prompt(
-        query, schema_context, query_plan
-    )
-    
-    # Generate SQL
+    sql_prompt = _create_sql_generation_prompt(query, schema_context, query_plan)
+
     response = llm.invoke(sql_prompt)
-    response_text = response.content.strip()
-    
     sql_generation_time_ms = (time.time() - start_time) * 1000
-    
-    try:
-        # Extract and clean SQL using utility function
-        generated_sql = extract_sql_from_response(response_text)
-        
-        # Format SQL for readability
-        generated_sql = format_sql_query(generated_sql)
-        
-        logger.info(f"SQL generated successfully")
-        
-        # Log the reasoning step
-        reasoning_step = {
-            "step_name": "SQL Generation",
-            "details": "Successfully generated the SQL query based on the plan and schema.",
-            "status": "✅"
-        }
-        
-        return {
-            "generated_sql": generated_sql,
-            "sql_generation_time_ms": sql_generation_time_ms,
-            "reasoning_log": [reasoning_step]
-        }
-        
-    except ValueError as e:
-        logger.error(f"Failed to extract SQL from LLM response: {e}")
-        logger.debug(f"LLM response was: {response_text}")
-        
-        # Log the reasoning step for failure
-        reasoning_step = {
-            "step_name": "SQL Generation",
-            "details": f"Failed to extract valid SQL from the LLM response: {str(e)}",
-            "status": "❌"
-        }
-        
-        return {
-            "generated_sql": "",
-            "generation_error": f"Could not generate valid SQL: {str(e)}",
-            "reasoning_log": [reasoning_step]
-        }
+
+    for attempt in range(2):  # Try twice for LLM non-determinism
+        try:
+            if attempt == 0:
+                current_response = response.content.strip()
+            else:
+                logger.info("Retrying SQL generation due to validation error...")
+                retry_response = llm.invoke(sql_prompt)
+                current_response = retry_response.content.strip()
+
+            generated_sql = extract_sql_from_response(current_response)
+
+            # Basic validation
+            if not generated_sql or not generated_sql.strip():
+                raise ValueError("No SQL query generated")
+
+            # Block CTEs entirely to prevent syntax errors
+            if generated_sql.upper().strip().startswith('WITH'):
+                raise ValueError("CTEs (WITH clauses) not allowed - use subqueries instead")
+
+            # Success!
+            retry_note = " (after retry)" if attempt > 0 else ""
+            logger.info(f"SQL generated and syntax validated successfully{retry_note}")
+
+            return {
+                "generated_sql": generated_sql,
+                "sql_generation_time_ms": sql_generation_time_ms,
+                "reasoning_log": [{
+                    "step_name": "SQL Generation",
+                    "details": f"Successfully generated and validated SQL syntax{retry_note}.",
+                    "status": "✅"
+                }]
+            }
+
+        except Exception as e:
+            if attempt == 0:
+                # First attempt failed, try once more
+                continue
+
+            # Both attempts failed
+            logger.error(f"SQL generation failed after 2 attempts: {str(e)}")
+            return {
+                "generated_sql": "",
+                "generation_error": str(e),
+                "reasoning_log": [{
+                    "step_name": "SQL Generation",
+                    "details": f"Failed to generate valid SQL after 2 attempts: {str(e)}",
+                    "status": "❌"
+                }]
+            }
 
 
-def _create_sql_generation_prompt(query: str, schema_context: str, 
-                                query_plan: Dict[str, Any]) -> str:
+def _create_sql_generation_prompt(query: str, schema_context: str, query_plan: Dict[str, Any]) -> str:
     """Create the SQL generation prompt for the LLM."""
-    
-    # Use the prompt template with structured query plan
     return SQL_GENERATION_PROMPT.format(
         schema_context=schema_context,
         query_plan=query_plan,
