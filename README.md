@@ -166,7 +166,8 @@ DATABASE_URL=sqlite:///data/infrastructure.db
 │   ├── table_exports/        # Database table exports
 │   └── evaluations/          # Evaluation reports
 ├── docs/                     # Documentation and examples
-│   └── SAMPLE_QUERIES.md     # Comprehensive query examples
+│   ├── SAMPLE_QUERIES.md     # Comprehensive query examples
+│   └── EVALUATION.md         # Evaluation framework documentation
 └── gemini_cli.py             # Command-line interface
 ```
 
