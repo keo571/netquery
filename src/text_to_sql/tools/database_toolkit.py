@@ -83,8 +83,7 @@ class GenericDatabaseToolkit:
                 except TimeoutError:
                     execution_time_ms = (time.time() - start_time) * 1000
                     timeout_msg = f"Database query timed out after {timeout_seconds} seconds"
-                    print(f"⏱️ DATABASE_TIMEOUT ({timeout_seconds:.1f}s) - {timeout_msg}")
-                    logger.error(timeout_msg)
+                    print(f"      ⏱️ DATABASE_TIMEOUT ({timeout_seconds:.1f}s) - {timeout_msg}")
 
                     return {
                         "success": False,
