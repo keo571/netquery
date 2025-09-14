@@ -18,29 +18,41 @@ User Query → Schema Analysis → Query Planning → SQL Generation → Validat
    - LangGraph-based orchestration
    - Six processing nodes working in sequence
    - State management across the pipeline
+   - **Nodes**: executor.py, interpreter.py, query_planner.py, schema_analyzer.py, sql_generator.py, validator.py
 
-2. **Tools** (`src/text_to_sql/tools/`)
+2. **Database** (`src/text_to_sql/database/`)
+   - Database connection management
+   - `engine.py` - Database engine configuration
+
+3. **Tools** (`src/text_to_sql/tools/`)
    - `database_toolkit.py` - Database operations with lazy loading
    - `semantic_table_finder.py` - Enhanced semantic table relevance scoring
    - `safety_validator.py` - Query safety checks
 
-3. **Utils** (`src/text_to_sql/utils/`)
+4. **Utils** (`src/text_to_sql/utils/`)
    - `chart_generator.py` - SVG chart generation (line, bar, pie, scatter)
    - `html_exporter.py` - HTML report generation with embedded charts
    - `llm_utils.py` - LLM configuration and utilities
    - `sql_utils.py` - SQL parsing and validation utilities
 
-4. **MCP Server** (`src/text_to_sql/`)
+5. **Prompts** (`src/text_to_sql/prompts/`)
+   - `query_planning.py` - Query planning prompts
+   - `result_interpretation.py` - Result interpretation prompts
+   - `sql_generation.py` - SQL generation prompts
+   - `_shared.py` - Shared prompt utilities
+
+6. **Configuration**
+   - `config.py` - Configuration management with hot-reloading
    - `mcp_server.py` - Standard MCP implementation
 
-5. **Scripts & CLI**
-   - `scripts/create_sample_data.py` - Pure SQL sample data generator 
+7. **Scripts & CLI**
+   - `scripts/create_sample_data.py` - Pure SQL sample data generator
    - `scripts/evaluate_queries.py` - Comprehensive query evaluation framework
-   - `scripts/evaluate_mcp.py` - MCP tool selection testing
    - `scripts/export_database_tables.py` - Database export utility
    - `gemini_cli.py` - Enhanced CLI with chart and export support
 
-6. **Output Structure**
+8. **Output Structure**
+   - `data/` - Database files (infrastructure.db)
    - `outputs/query_data/` - CSV exports from text-to-SQL queries
    - `outputs/query_reports/` - HTML reports from text-to-SQL queries
    - `testing/table_exports/` - Database table exports for analysis
@@ -75,7 +87,8 @@ User Query → Schema Analysis → Query Planning → SQL Generation → Validat
 - ✅ Organized prompts in `prompts/` directory
 - ✅ Added config management with hot-reloading
 - ✅ Created modular utilities (chart_generator.py, html_exporter.py, llm_utils.py)
-- ✅ Organized output structure: `outputs/` for user results, `dev/` for development artifacts
+- ✅ Organized output structure: `outputs/` for user results, `testing/` for development artifacts
+- ✅ Added dedicated `database/` module for connection management
 
 ### 5. Evaluation & Testing Framework
 - ✅ Built comprehensive evaluation system (evaluate_queries.py)

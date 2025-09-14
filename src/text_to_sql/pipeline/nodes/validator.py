@@ -1,12 +1,18 @@
 """
 Validator node for Text-to-SQL pipeline.
-Validates generated SQL queries for safety, syntax, and correctness.
+
+Validates generated SQL queries for safety and security, including:
+- Blocking destructive operations (DELETE, DROP, UPDATE, etc.)
+- Enforcing read-only access patterns
+- Checking table access permissions
+- Validating against business rules
+
+Note: Syntax validation is handled by the database during execution.
 """
 from typing import Dict, Any
 import logging
 
 from ...tools.safety_validator import safety_validator
-from ...config import config
 from ..state import TextToSQLState
 
 logger = logging.getLogger(__name__)

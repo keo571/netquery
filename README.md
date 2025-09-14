@@ -138,20 +138,30 @@ DATABASE_URL=sqlite:///data/infrastructure.db
 ├── src/text_to_sql/           # Core pipeline implementation
 │   ├── pipeline/              # LangGraph processing stages
 │   │   ├── graph.py          # Main orchestration
-│   │   ├── state.py          # State management  
-│   │   └── nodes/            # Processing nodes
-│   ├── tools/                # Database and analysis tools
-│   ├── utils/                # Chart generation and exports
+│   │   ├── state.py          # State management
+│   │   └── nodes/            # Six processing nodes
 │   ├── database/             # Database connection management
+│   ├── tools/                # Database and analysis tools
+│   │   ├── database_toolkit.py # Database operations
+│   │   ├── semantic_table_finder.py # Table relevance scoring
+│   │   └── safety_validator.py # Query safety validation
+│   ├── utils/                # Chart generation and utilities
+│   │   ├── chart_generator.py # SVG chart generation
+│   │   ├── html_exporter.py  # HTML report generation
+│   │   ├── llm_utils.py      # LLM configuration
+│   │   └── sql_utils.py      # SQL parsing utilities
+│   ├── prompts/              # LLM prompts for each stage
+│   ├── config.py             # Configuration management
 │   └── mcp_server.py         # MCP server implementation
-├── scripts/                  # Data generation and utilities
+├── scripts/                  # Data generation and evaluation
 │   ├── create_sample_data.py # Sample data generator
 │   ├── evaluate_queries.py   # Query evaluation framework
-│   ├── evaluate_mcp.py       # MCP tool selection testing
 │   └── export_database_tables.py # Database export utility
-├── outputs/                  # User-facing results (gitignored)
+├── data/                     # Database files
+│   └── infrastructure.db     # SQLite database (auto-created)
+├── outputs/                  # Query results (gitignored)
 │   ├── query_data/           # CSV exports from queries
-│   └── query_reports/        # HTML reports from queries  
+│   └── query_reports/        # HTML reports with charts
 ├── testing/                  # Testing artifacts (gitignored)
 │   ├── table_exports/        # Database table exports
 │   └── evaluations/          # Evaluation reports

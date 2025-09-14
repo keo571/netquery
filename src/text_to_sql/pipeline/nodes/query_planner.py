@@ -8,7 +8,6 @@ import logging
 import re
 import time
 
-from ...config import config
 from ..state import TextToSQLState, QueryPlan
 from ...prompts import QUERY_PLANNING_PROMPT
 from ...utils.llm_utils import get_llm_with_config
