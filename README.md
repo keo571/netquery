@@ -5,22 +5,32 @@ An AI-powered assistant that converts natural language queries into SQL. Optimiz
 ## Architecture Overview
 
 ```mermaid
-flowchart TD
-    A([Natural Language Query]) --> B[Schema Analysis<br/>Semantic Similarity]
-    B --> C[Query Planning<br/>JSON Structure]
-    C --> D[SQL Generation<br/>No CTEs]
-    D --> E[Safety Validation<br/>Read-Only Check]
-    E -->|✅ Pass| F[Query Execution<br/>Timeout Handling]
-    E -->|❌ Block| I[Error Response]
-    F --> G[Result Interpretation<br/>Chart Generation]
-    G --> H([Response with Charts])
+flowchart LR
+    subgraph Pipeline ["Text-to-SQL Pipeline"]
+        direction TB
+        A([Natural Language Query]) --> B[Schema Analysis<br/>Semantic Similarity]
+        B --> C[Query Planning<br/>JSON Structure]
+        C --> D[SQL Generation<br/>No CTEs]
+        D --> E[Safety Validation<br/>Read-Only Check]
+        E -->|✅ Pass| F[Query Execution<br/>Timeout Handling]
+        E -->|❌ Block| I[Error Response]
+        F --> G[Result Interpretation<br/>Chart Generation]
+        G --> H([Response with Charts])
+    end
 
-    DB[(Database)] -.->|schema reflection<br/>at startup| CACHE
-    CACHE[(Embedding Cache)] -.->|table similarity<br/>scoring| B
-    LLM[Gemini API] --> C
-    LLM --> D
-    LLM --> G
-    DB --> F
+    subgraph External ["External Systems"]
+        direction TB
+        DB[(Database)]
+        CACHE[(Embedding Cache)]
+        LLM[Gemini API]
+    end
+
+    DB -.->|schema at startup| CACHE
+    CACHE -.->|similarity scoring| B
+    LLM -.->|planning| C
+    LLM -.->|generation| D
+    LLM -.->|interpretation| G
+    DB -.->|query execution| F
 
     style A fill:#4FC3F7,color:#000
     style H fill:#81C784,color:#000
