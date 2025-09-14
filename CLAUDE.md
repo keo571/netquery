@@ -60,28 +60,35 @@ User Query → Schema Analysis → Query Planning → SQL Generation → Validat
 
 ## Recent Improvements
 
-### 1. Database & Code Simplification (Latest)
+### 1. Documentation & Structure Improvements (Latest - September 2025)
+- ✅ Updated project structure documentation in README.md and CLAUDE.md
+- ✅ Refined node descriptions for accuracy (validator.py now correctly describes safety-only validation)
+- ✅ Cleaned up import statements in pipeline nodes
+- ✅ Removed references to non-existent scripts
+- ✅ Improved project structure clarity with proper directory hierarchy
+
+### 2. Database & Code Simplification
 - ✅ Refactored create_sample_data.py to use pure raw SQL (eliminated SQLAlchemy complexity)
 - ✅ Fixed SQLite path resolution to use data/ folder consistently
 - ✅ Fixed datetime/float type conversion errors in sample data generation
 - ✅ Reorganized SAMPLE_QUERIES.md for better clarity and removed redundancies
 - ✅ Streamlined README.md documentation
 
-### 2. Chart Generation & Visualization System
+### 3. Chart Generation & Visualization System
 - ✅ Added automatic chart type detection (line, bar, pie, scatter)
 - ✅ Implemented static SVG chart generation (no JavaScript dependencies)
 - ✅ Created dedicated chart_generator.py module
 - ✅ Smart data pattern recognition for appropriate visualizations
 - ✅ HTML report generation with embedded charts
 
-### 3. Enhanced Semantic Understanding  
+### 4. Enhanced Semantic Understanding
 - ✅ Fixed schema analysis error handling for robust pipeline
 - ✅ Optimized similarity threshold from 0.3 to 0.15 for better table discovery
 - ✅ Enhanced table descriptions with domain-specific context
 - ✅ Added key metrics highlighting for infrastructure terminology
 - ✅ Improved column name mapping for network infrastructure
 
-### 4. Code Organization & Output Structure
+### 5. Code Organization & Output Structure
 - ✅ Refactored interpreter module (reduced from 700+ to 184 lines)
 - ✅ Extracted SQL utilities to `utils/sql_utils.py`
 - ✅ Organized prompts in `prompts/` directory
@@ -90,9 +97,9 @@ User Query → Schema Analysis → Query Planning → SQL Generation → Validat
 - ✅ Organized output structure: `outputs/` for user results, `testing/` for development artifacts
 - ✅ Added dedicated `database/` module for connection management
 
-### 5. Evaluation & Testing Framework
+### 6. Evaluation & Testing Framework
 - ✅ Built comprehensive evaluation system (evaluate_queries.py)
-- ✅ Added batch testing across all query categories  
+- ✅ Added batch testing across all query categories
 - ✅ Pipeline stage tracking (schema, SQL, execution, charts)
 - ✅ HTML evaluation reports with detailed metrics
 - ✅ Database export utilities (export_database_tables.py)
@@ -210,22 +217,23 @@ test_batch_processing()
 ## Future Improvements
 
 ### High Priority
-1. **Add Redis caching** for frequently used queries
-2. **Implement query history** learning
-3. **Add unit tests** for all components
-4. **Create query explain mode** for debugging
+1. **Add unit tests** for all pipeline components and utilities
+2. **Improve error handling** with more specific error types and recovery strategies
+3. **Add query caching** for frequently used queries (Redis or local cache)
+4. **Enhanced logging** with structured logging and better debugging information
 
 ### Medium Priority
-1. **Multi-database support** (currently SQLite-focused)
-2. **Query optimization hints** based on execution plans
-3. **Prometheus metrics** integration
-4. **GraphQL API** option
+1. **Multi-database support** - PostgreSQL, MySQL, SQL Server adapters
+2. **Query optimization hints** based on execution plans and performance analysis
+3. **Streaming results** for very large datasets with pagination
+4. **Natural language explanations** of generated SQL queries for transparency
 
 ### Nice to Have
-1. **Natural language explanations** of SQL queries
-2. **Query suggestions** based on schema
-3. **Visual query builder** integration
-4. **Automated index recommendations**
+1. **Query suggestions** based on schema analysis and common patterns
+2. **Visual query builder** integration for complex query construction
+3. **Automated index recommendations** based on query patterns
+4. **Real-time monitoring** integration with Prometheus/Grafana
+5. **GraphQL API** as an alternative interface to MCP
 
 ## Environment Variables
 
@@ -251,54 +259,69 @@ python gemini_cli.py "Show network traffic over time" --html
 python gemini_cli.py "Display server performance by datacenter" --csv --explain
 
 # Testing & Evaluation
-python scripts/evaluate_mcp.py               # Test MCP tool selection
 python scripts/evaluate_queries.py          # Run comprehensive pipeline evaluation
 python scripts/export_database_tables.py    # Export all database tables
 ```
 
 ## Adding or Updating Table Descriptions
 
-When adding new tables or updating existing ones:
+The system uses dynamic table descriptions generated from schema reflection rather than a static YAML file. Table descriptions are automatically created based on:
 
-1. **Edit the descriptions file**: `src/text_to_sql/table_descriptions.yaml`
-   ```yaml
-   your_new_table: "Description focusing on key metrics and use cases"
-   ```
+1. **Table names and column names** - Used for semantic similarity matching
+2. **Column types and constraints** - Analyzed to understand data patterns
+3. **Sample data** - Used to infer content and relationships
 
-2. **Clear the embeddings cache** to rebuild with new descriptions:
+To improve table discovery for new tables:
+
+1. **Use descriptive table and column names** that match domain terminology
+2. **Add meaningful sample data** that represents real use cases
+3. **Clear embeddings cache** after schema changes:
    ```bash
    rm -rf .embeddings_cache/
    ```
 
-3. **Test** that your table is being found correctly:
+3. **Test table discovery**:
    ```bash
    python gemini_cli.py "query about your new table"
    ```
 
-The semantic table finder uses these descriptions to match user queries to relevant tables, so make descriptions clear and include key terms users might search for.
-
 ## Key Files to Understand
 
 1. **Pipeline Core**
-   - `src/text_to_sql/pipeline/graph.py` - Main orchestration
-   - `src/text_to_sql/pipeline/state.py` - State management
+   - `src/text_to_sql/pipeline/graph.py` - Main LangGraph orchestration and node connections
+   - `src/text_to_sql/pipeline/state.py` - State management and data structures across pipeline
 
-2. **SQL Generation**
-   - `src/text_to_sql/pipeline/nodes/sql_generator.py` - LLM-based generation
-   - `src/text_to_sql/utils/sql_utils.py` - SQL utilities
+2. **Processing Nodes** (Six-stage pipeline)
+   - `src/text_to_sql/pipeline/nodes/schema_analyzer.py` - Schema discovery and table selection
+   - `src/text_to_sql/pipeline/nodes/query_planner.py` - JSON query plan generation
+   - `src/text_to_sql/pipeline/nodes/sql_generator.py` - LLM-based SQL generation
+   - `src/text_to_sql/pipeline/nodes/validator.py` - Safety and security validation
+   - `src/text_to_sql/pipeline/nodes/executor.py` - Database query execution
+   - `src/text_to_sql/pipeline/nodes/interpreter.py` - Result formatting and chart generation
 
-3. **Schema Analysis**
-   - `src/text_to_sql/tools/semantic_table_finder.py` - Semantic table relevance scoring
+3. **Database Layer**
+   - `src/text_to_sql/database/engine.py` - Database connection and configuration
    - `src/text_to_sql/tools/database_toolkit.py` - Database operations and schema reflection
 
-4. **Chart Generation & Export**
-   - `src/text_to_sql/utils/chart_generator.py` - SVG chart generation system
-   - `src/text_to_sql/utils/html_exporter.py` - HTML report generation
-   - `evaluate_queries.py` - Comprehensive evaluation framework
-   - `export_database_tables.py` - Database export utilities
+4. **Intelligence Layer**
+   - `src/text_to_sql/tools/semantic_table_finder.py` - Semantic table relevance scoring with embeddings
+   - `src/text_to_sql/tools/safety_validator.py` - Query safety validation rules
+   - `src/text_to_sql/prompts/` - LLM prompts for each pipeline stage
 
-5. **MCP Integration**
-   - `src/text_to_sql/mcp_server.py` - Standard MCP server
+5. **Utilities & Export**
+   - `src/text_to_sql/utils/chart_generator.py` - SVG chart generation (line, bar, pie, scatter)
+   - `src/text_to_sql/utils/html_exporter.py` - HTML report generation with embedded charts
+   - `src/text_to_sql/utils/llm_utils.py` - LLM configuration and API management
+   - `src/text_to_sql/utils/sql_utils.py` - SQL parsing and validation utilities
+
+6. **CLI & Testing**
+   - `gemini_cli.py` - Command-line interface with export options
+   - `scripts/evaluate_queries.py` - Comprehensive evaluation framework
+   - `scripts/create_sample_data.py` - Sample data generation
+   - `scripts/export_database_tables.py` - Database export utilities
+
+7. **MCP Integration**
+   - `src/text_to_sql/mcp_server.py` - Model Context Protocol server implementation
 
 ## Development Workflow
 
@@ -349,10 +372,9 @@ ssl_certificates -> vips -> services
 
 ## Contact & Resources
 
-- **Documentation**: See README.md, DOCKER_GUIDE.md
-- **Architecture**: See TEXT_TO_SQL_ARCHITECTURE.md
-- **Issues**: GitHub Issues
-- **Model**: Uses Google Gemini for SQL generation
+- **Documentation**: See README.md and docs/SAMPLE_QUERIES.md
+- **Issues**: GitHub Issues at https://github.com/keo571/netquery
+- **Model**: Uses Google Gemini 1.5 Flash for SQL generation and query planning
 
 ## Remember
 
@@ -365,4 +387,4 @@ ssl_certificates -> vips -> services
 ---
 
 *Last Updated: September 2025*
-*Version: 1.2.0 - Simplified Evaluation & Timeout Management*
+*Version: 1.3.0 - Updated Documentation & Project Structure*
