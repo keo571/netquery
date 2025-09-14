@@ -34,6 +34,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 load_dotenv()
 
 from src.text_to_sql.pipeline.graph import text_to_sql_graph
+from src.text_to_sql.database.engine import cleanup_database_connections
 
 
 # Comprehensive Text-to-SQL evaluation queries (49 total)
@@ -427,9 +428,13 @@ class QueryEvaluator:
         </body>
         </html>
         """
-        
+
         Path(report_path).write_text(html_content)
         print(f"\n📄 Detailed report saved: {report_path}")
+
+        # Clean up database connections after saving report
+        cleanup_database_connections()
+        print("🔒 Database connections closed after evaluation")
 
     def _generate_category_html(self):
         """Generate HTML table rows for category breakdown matching evaluator.py format."""
@@ -503,6 +508,9 @@ def test_single_query(query: str):
         print(f"💥 EXCEPTION: {e}")
         import traceback
         traceback.print_exc()
+    finally:
+        # Clean up database connections after single query test
+        cleanup_database_connections()
 
 
 async def main():

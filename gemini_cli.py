@@ -11,6 +11,7 @@ import time
 from dotenv import load_dotenv
 from src.text_to_sql.pipeline.graph import text_to_sql_graph
 from src.text_to_sql.utils.html_exporter import create_html_from_cli_output
+from src.text_to_sql.database.engine import cleanup_database_connections
 
 # Load environment variables from .env file
 load_dotenv()
@@ -116,7 +117,6 @@ async def main():
                     full_output=response + timing_breakdown,
                     chart_html=result.get("chart_html", "")
                 )
-                print(f"\n🌐 HTML report saved: {html_path}")
             except Exception as html_error:
                 print(f"\n⚠️  HTML export failed: {html_error}")
         
@@ -124,6 +124,9 @@ async def main():
         print(f"Error: {e}")
         import traceback
         traceback.print_exc()
+    finally:
+        # Always clean up database connections
+        cleanup_database_connections()
 
 if __name__ == "__main__":
     asyncio.run(main())

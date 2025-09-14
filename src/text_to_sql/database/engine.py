@@ -61,18 +61,30 @@ def get_metadata() -> MetaData:
 
 
 
+def cleanup_database_connections():
+    """Clean up database connections and dispose of the engine."""
+    global _engine, _metadata
+
+    if _engine is not None:
+        logger.info("Disposing database engine and closing all connections")
+        _engine.dispose()
+        _engine = None
+        _metadata = None
+        logger.info("Database connections cleaned up successfully")
+
+
 class DatabaseSession:
     """Context manager for database sessions."""
-    
+
     def __init__(self):
         self.session = None
-    
+
     def __enter__(self) -> Session:
         engine = get_engine()
         session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
         self.session = session_factory()
         return self.session
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is not None:
             self.session.rollback()
