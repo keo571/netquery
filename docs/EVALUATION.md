@@ -64,26 +64,37 @@ Each query is evaluated through all pipeline stages:
 ### Usage
 
 ```bash
-# Run complete evaluation
+# Run complete batch evaluation (all 49 queries with HTML report)
 python scripts/evaluate_queries.py
+
+# Test a single query (pass/fail only, console output)
+python scripts/evaluate_queries.py --single "Show me all load balancers"
 
 # Check GEMINI_API_KEY is set
 export GEMINI_API_KEY=your_key_here
 python scripts/evaluate_queries.py
 ```
 
-**Example Output:**
+**Example Batch Output:**
 ```
 🚀 Starting Netquery Evaluation...
-📊 Testing 52 queries across 6 categories
+📊 Testing 49 queries across 14 categories
 
-📂 Basic Queries (8 queries)
+📂 Basic Queries (5 queries)
    1. Testing: Show me all load balancers
-      ✅ SUCCESS (1.2s, 8 rows)
-   
+      ✅ SUCCESS (1.2s, 50 rows) [bar chart]
+
 📈 EVALUATION SUMMARY
-Technical Success Rate: 45/52 (86.5%)
-Charts Generated: 12
+Technical Success Rate: 42/49 (85.7%)
+Charts Generated: 18
+HTML report saved: testing/evaluations/query_evaluation_report.html
+```
+
+**Example Single Query Output:**
+```
+🧪 Single Query Test Mode
+Testing: "Show me all load balancers"
+✅ PASS (1.4s, 50 rows) [bar chart generated]
 ```
 
 ## Integration with Development
@@ -127,8 +138,8 @@ fi
 ### Technical Success Rate Improvements
 
 **Difficulty-Based LLM Selection**
-- Use advanced LLMs (GPT-4, Claude-3.5) for high-complexity queries identified by query planner
-- Keep standard LLM (Gemini) for simple queries to optimize costs
+- Use advanced LLMs (gemini-2.5-pro) for high-complexity queries identified by query planner
+- Keep standard LLM (gemini-2.0-flash) for simple queries to optimize costs
 
 **Schema Analysis Enhancement** 
 - Upgrade embedding model from `all-MiniLM-L6-v2` to `text-embedding-3-large`

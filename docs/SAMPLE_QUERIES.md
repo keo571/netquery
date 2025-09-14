@@ -1,12 +1,12 @@
 # Sample Queries for Netquery Testing
 
-This document provides comprehensive test queries organized by complexity and functionality to thoroughly test the Text-to-SQL pipeline.
+This document provides comprehensive test queries organized by complexity and functionality to thoroughly test the Text-to-SQL pipeline. These queries match the evaluation framework in `scripts/evaluate_queries.py`.
 
 ## Database Schema Quick Reference
 
 ### Core Infrastructure Tables
 - **load_balancers**: id, name, status, vip_address, datacenter, lb_type, algorithm, created_at
-- **servers**: id, hostname, status, cpu_utilization, memory_usage, datacenter, role, created_at  
+- **servers**: id, hostname, status, cpu_utilization, memory_usage, datacenter, role, created_at
 - **ssl_certificates**: id, domain, issuer, expiry_date, status, provider, created_at
 - **vip_pools**: id, vip_address, port, protocol, load_balancer_id, created_at
 - **backend_mappings**: id, load_balancer_id, server_id, weight, health_check_path, created_at
@@ -26,160 +26,129 @@ This document provides comprehensive test queries organized by complexity and fu
 - "List all servers"
 - "What SSL certificates do we have?"
 - "Display VIP pools"
-- "Show backend mappings"
-
-### Basic Filtering
-- "Show unhealthy load balancers"
-- "List servers in maintenance"
-- "Find expired SSL certificates"
-- "Show servers with high CPU usage"
-- "List load balancers in us-east-1"
+- "List servers in us-east-1"
 
 ---
 
-## 2. Analytics & Aggregations
+## 2. Aggregations
 
 ### Counting and Statistics
 - "How many load balancers do we have?"
 - "Count servers by datacenter"
 - "What's the average CPU utilization by datacenter?"
-- "Show server count grouped by status"
-- "Count SSL certificates by provider"
-
-### Performance Metrics
-- "What's the average memory usage by server role?"
-- "Show load balancer distribution by type"
-- "Calculate average response time by datacenter"
-- "Show error rate statistics by load balancer"
 - "What's the total bandwidth consumption?"
+- "Show top 3 load balancers by traffic volume in each region"
 
 ---
 
-## 3. Multi-Table Joins
+## 3. Comparative Queries
+
+### Performance Comparisons
+- "Which servers have higher CPU than average?"
+- "Find load balancers with more backends than typical"
+- "Show datacenters with above-average server counts"
+
+---
+
+## 4. Multi-Table Joins
 
 ### Infrastructure Relationships
 - "Show load balancers with their backend servers and current status"
 - "List servers with their load balancer connections and roles"
-- "Find load balancers with their VIP pool configurations"
-- "Show backend mappings with server and load balancer details"
-- "Display VIP pools with their load balancer information"
-
-### Complex Filtering with Joins
-- "Show unhealthy load balancers in us-east-1 with their backend servers that have high CPU usage"
-- "Find HTTPS VIP pools connected to application load balancers"
-- "List servers that are backends for unhealthy load balancers and have high memory usage"
-- "Show SSL certificates expiring in the next 30 days with their status"
-
-### Network Performance Analysis
-- "Show servers with high packet loss and their network connectivity details"
-- "List load balancers with their VIP pools and average traffic statistics"
-- "Find servers with low uptime and their load balancer associations"
-- "Show network connectivity patterns for database servers"
-- "List load balancers with response times above 100ms and their backend servers"
+- "Show load balancers with backend mappings and monitoring metrics"
+- "Find servers with their monitoring data and SSL certificate status"
+- "Show servers with their load balancers and SSL certificate details"
 
 ---
 
-## 4. Time-Series and Visualization Queries
+## 5. Set Operations & Existence
 
-### Time-Series Analysis (Line Charts)
-- "Show network traffic trends over time"
-- "Display bandwidth usage patterns for the past week"
-- "Show backend health trends over time"
-- "Display load balancer health scores over time"
-- "Show network latency trends over time"
-- "List server connectivity trends"
-
-### Comparative Analysis (Bar Charts)
-- "Show server performance by datacenter"
-- "Display load balancer types distribution"
-- "Show certificate status by provider"
-- "List average response times by datacenter"
-- "Count servers by status and datacenter"
-
-### Correlation Analysis (Scatter Plots)
-- "Show CPU vs memory usage"
-- "Display response time vs error rate"
-- "Show bandwidth vs request volume"
-- "List latency vs packet loss correlation"
+### Missing Data Analysis
+- "Are there any servers without SSL certificates?"
+- "Find load balancers with no backend servers assigned"
+- "Show servers that have never been monitored"
 
 ---
 
-## 5. Troubleshooting Queries
+## 6. Conditional Logic
 
-### Current Status Checks
+### Dynamic Categorization
+- "Categorize servers as High/Medium/Low based on CPU usage"
+- "Show load balancers with traffic status (Heavy/Normal/Light)"
+- "Display server health as Critical/Warning/OK based on metrics"
+
+---
+
+## 7. HAVING & Advanced Filters
+
+### Group-Based Filtering
+- "Show datacenters with more than 5 unhealthy servers"
+- "Find load balancers where average response time exceeds 500ms"
+- "List SSL providers managing more than 10 certificates"
+
+---
+
+## 8. Window Functions & Analytics
+
+### Advanced Analytics
+- "Rank servers by CPU utilization within each datacenter"
+- "Compare each server's current CPU to its previous measurement"
+- "Calculate moving average of response times over the last 5 measurements"
+
+---
+
+## 9. Time-Based Queries
+
+### Time-Series Analysis
 - "Show certificates expiring in the next 30 days"
-- "List current SSL monitoring status"
-- "Display current network connectivity metrics"
-- "Show recent load balancer health logs"
+- "Find servers with high CPU for the last 3 consecutive monitoring periods"
+- "Show network traffic trends over the past week"
 
-### Health Issues
-- "Show all unhealthy infrastructure"
+---
+
+## 10. Troubleshooting
+
+### Health and Status Checks
 - "What's the health status by datacenter?"
 - "Find servers with connection issues"
 
-### Performance Problems
-- "Which servers have the highest CPU utilization?"
-- "Find performance bottlenecks by role"
-- "List high-latency connections"
+---
 
-### Security Auditing
-- "Which SSL certificates need renewal?"
-- "Show expired certificates by domain"
+## 11. Performance Testing
+
+### Large Dataset Queries
+- "Show all monitoring metrics without any filtering"
+- "Display comprehensive server details with all related data"
 
 ---
 
-## 6. Test Commands by Category
+## 12. Subqueries & Advanced Patterns
 
-### Basic Operations
-```bash
-python gemini_cli.py "Show me all load balancers"
-```
-
-### Analytics
-```bash
-python gemini_cli.py "What's the average CPU utilization by datacenter?"
-```
-
-### Complex Joins (Tested & Working)
-```bash
-python gemini_cli.py "Show load balancers with their backend servers and current status"
-```
-
-### Export Features (One Example per Flag)
-```bash
-python gemini_cli.py "Show server performance by datacenter" --html
-python gemini_cli.py "Show network traffic over time" --csv
-python gemini_cli.py "List load balancer health trends" --explain
-python gemini_cli.py "Show comprehensive report" --html --csv --explain
-```
+### Complex Logic
+- "Find servers in datacenters that have more than 5 load balancers"
+- "Show load balancers with more backends than the average"
+- "List servers that are monitored but not assigned to any load balancer"
 
 ---
 
-## 7. Edge Cases & Error Handling
+## 13. String Operations & NULL Handling
 
-### Invalid Queries (Should Handle Gracefully)
+### Text and Data Quality
+- "Find servers with hostnames containing 'web'"
+- "Show certificates with domains ending in '.com'"
+- "Display servers where hostname is not recorded"
+- "List load balancers with missing health score data"
+
+---
+
+## 14. Edge Cases
+
+### Error Handling Tests
 - "Show me nonexistent table data"
 - "List servers in Mars datacenter"
 - "Delete all servers" (should be blocked by safety validator)
-
-### Ambiguous Queries
 - "Show me everything"
 - "What's broken?"
-- "Give me a summary"
-
----
-
-## 8. Performance Testing
-
-### Large Result Sets
-```bash
-python gemini_cli.py "Show all network traffic data with load balancer details"
-```
-
-### Complex Aggregations
-```bash
-python gemini_cli.py "Calculate average response time and error rate by load balancer type"
-```
 
 ---
 
@@ -196,6 +165,7 @@ python gemini_cli.py "Calculate average response time and error rate by load bal
 - **Protocols**: HTTP, HTTPS, TCP, UDP, GRPC
 - **SSL Providers**: DigiCert, GlobalSign, Let's Encrypt, Cloudflare, AWS
 
-### Data Volumes
+### Data Volumes (from evaluate_queries.py)
+- **Total Test Queries**: 49 across 14 categories
 - **Infrastructure**: 50 records each (load_balancers, servers, ssl_certificates, vip_pools, backend_mappings)
 - **Monitoring**: 840 network_traffic, 30 ssl_monitoring, 720 lb_health_log, 960 network_connectivity records
