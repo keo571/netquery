@@ -283,6 +283,7 @@ site/
 
 # Claude Code specific
 .claude/
+CLAUDE.md
 
 # Netquery specific files
 .embeddings_cache/
