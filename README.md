@@ -158,41 +158,42 @@ DATABASE_URL=sqlite:///data/infrastructure.db
 │   │   └── interpretation_service.py # LLM-powered result interpretation
 │   └── text_to_sql/           # Core pipeline implementation
 │       ├── pipeline/          # LangGraph processing stages
-│       │   ├── graph.py      # Main orchestration
-│       │   ├── state.py      # State management
-│       │   └── nodes/        # Six processing nodes
-│       ├── database/         # Database connection management
-│       ├── tools/            # Database and analysis tools
+│       │   ├── graph.py       # Main orchestration
+│       │   ├── state.py       # State management
+│       │   └── nodes/         # Six processing nodes
+│       ├── database/          # Database connection management
+│       ├── tools/             # Database and analysis tools
 │       │   ├── database_toolkit.py # Database operations
 │       │   ├── semantic_table_finder.py # Table relevance scoring
 │       │   └── safety_validator.py # Query safety validation
-│       ├── utils/            # Chart generation and utilities
+│       ├── utils/             # Chart generation and utilities
 │       │   ├── chart_generator.py # SVG chart generation
 │       │   ├── html_exporter.py  # HTML report generation
-│       │   ├── llm_utils.py  # LLM configuration
-│       │   └── sql_utils.py  # SQL parsing utilities
-│       ├── prompts/          # LLM prompts for each stage
-│       ├── config.py         # Configuration management
-│       └── mcp_server.py     # MCP server implementation
-├── scripts/                  # Data generation and evaluation
-│   ├── create_sample_data.py # Sample data generator
-│   ├── evaluate_queries.py   # Query evaluation framework
+│       │   ├── llm_utils.py   # LLM configuration
+│       │   └── sql_utils.py   # SQL parsing utilities
+│       ├── prompts/           # LLM prompts for each stage
+│       ├── config.py          # Configuration management
+│       └── mcp_server.py      # MCP server implementation
+├── scripts/                   # Data generation and evaluation
+│   ├── create_sample_data.py  # Sample data generator
+│   ├── evaluate_queries.py    # Query evaluation framework
 │   └── export_database_tables.py # Database export utility
-├── data/                     # Database files
-│   └── infrastructure.db     # SQLite database (auto-created)
-├── outputs/                  # Query results (gitignored)
-│   ├── query_data/           # CSV exports from queries
-│   └── query_reports/        # HTML reports with charts
-├── testing/                  # Testing artifacts (gitignored)
-│   ├── table_exports/        # Database table exports
-│   └── evaluations/          # Evaluation reports
-├── docs/                     # Documentation and examples
-│   ├── SAMPLE_QUERIES.md     # Comprehensive query examples
-│   └── EVALUATION.md         # Evaluation framework documentation
-├── test_api.py               # API endpoint testing
-├── test_llm_interpretation.py # LLM interpretation testing
-├── test_large_query.py       # Large dataset testing
-└── gemini_cli.py             # Command-line interface
+├── docs/                      # Documentation and examples
+│   ├── ARCHITECTURE_DECISION.md # System architecture documentation
+│   ├── SAMPLE_QUERIES.md      # Comprehensive query examples
+│   └── EVALUATION.md          # Evaluation framework documentation
+├── data/                      # Database files (DB files git-ignored)
+│   └── infrastructure.db      # SQLite database (auto-created)
+├── outputs/                   # Query results (content git-ignored)
+│   ├── query_data/            # CSV exports from queries
+│   └── query_reports/         # HTML reports with charts
+├── testing/                   # Testing and development artifacts
+│   ├── api_tests/             # API endpoint tests
+│   ├── table_exports/         # Database table exports (git-ignored)
+│   └── evaluations/           # Evaluation reports (git-ignored)
+├── gemini_cli.py              # Command-line interface
+├── requirements.txt           # Python dependencies
+└── README.md                  # Project documentation
 ```
 
 ## Pipeline Architecture
