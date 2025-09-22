@@ -63,16 +63,17 @@ def route_after_generator(state: TextToSQLState) -> str:
     return "error_handler" if state.get("generation_error") else "validator"
 
 def route_after_validator(state: TextToSQLState) -> str:
-    """Route after validation: to executor or error handler."""
-    return "error_handler" if state.get("validation_error") else "executor"
+    """Route after validation: to executor, end (if execute=False), or error handler."""
+    if state.get("validation_error"):
+        return "error_handler"
+    # If execute is False, skip execution and interpretation
+    if state.get("execute") is False:
+        return "end"
+    return "executor"
 
 def route_after_executor(state: TextToSQLState) -> str:
     """Route after execution: to interpreter or error handler."""
     return "error_handler" if state.get("execution_error") else "interpreter"
-
-def _create_routing_map(next_node: str) -> dict:
-    """Create routing map for conditional edges."""
-    return {next_node: next_node, "error_handler": "error_handler"}
 
 def create_text_to_sql_graph():
     """Create and compile the Text-to-SQL pipeline graph."""
@@ -92,11 +93,20 @@ def create_text_to_sql_graph():
     workflow.add_edge(START, "schema_analyzer")
     
     # Add conditional routing with error handling
-    workflow.add_conditional_edges("schema_analyzer", route_after_schema, _create_routing_map("query_planner"))
-    workflow.add_conditional_edges("query_planner", route_after_planner, _create_routing_map("sql_generator"))
-    workflow.add_conditional_edges("sql_generator", route_after_generator, _create_routing_map("validator"))
-    workflow.add_conditional_edges("validator", route_after_validator, _create_routing_map("executor"))
-    workflow.add_conditional_edges("executor", route_after_executor, _create_routing_map("interpreter"))
+    workflow.add_conditional_edges("schema_analyzer", route_after_schema,
+                                  {"query_planner": "query_planner", "error_handler": "error_handler"})
+    workflow.add_conditional_edges("query_planner", route_after_planner,
+                                  {"sql_generator": "sql_generator", "error_handler": "error_handler"})
+    workflow.add_conditional_edges("sql_generator", route_after_generator,
+                                  {"validator": "validator", "error_handler": "error_handler"})
+    # Special routing for validator - can go to executor, end, or error_handler
+    workflow.add_conditional_edges(
+        "validator",
+        route_after_validator,
+        {"executor": "executor", "end": END, "error_handler": "error_handler"}
+    )
+    workflow.add_conditional_edges("executor", route_after_executor,
+                                  {"interpreter": "interpreter", "error_handler": "error_handler"})
     
     # Terminal edges
     workflow.add_edge("interpreter", END)

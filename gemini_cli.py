@@ -22,6 +22,7 @@ async def main():
     parser.add_argument("--csv", action="store_true", help="Save results to CSV")
     parser.add_argument("--explain", action="store_true", help="Show detailed explanations of SQL generation and results")
     parser.add_argument("--html", action="store_true", help="Save results to HTML")
+    parser.add_argument("--sql-only", action="store_true", help="Generate SQL only, don't execute it")
     
     if len(sys.argv) < 2:
         parser.print_help()
@@ -51,7 +52,8 @@ async def main():
             "original_query": query,
             "show_explanation": args.explain,
             "export_csv": args.csv,
-            "export_html": args.html
+            "export_html": args.html,
+            "execute": not args.sql_only  # Execute by default, unless --sql-only is set
         })
         
         pipeline_end_time = time.time()
@@ -60,8 +62,14 @@ async def main():
         # Add total pipeline time to result state for use in formatting
         result["total_pipeline_time_ms"] = total_pipeline_time_ms
         
-        response = result.get("formatted_response") or result.get("final_response", "No response generated")
-        print(response)
+        # Handle SQL-only mode differently
+        if args.sql_only:
+            sql = result.get("generated_sql", "No SQL generated")
+            print("## Generated SQL")
+            print(f"```sql\n{sql}\n```")
+        else:
+            response = result.get("formatted_response") or result.get("final_response", "No response generated")
+            print(response)
         
         # Add total pipeline timing information with breakdown
         if total_pipeline_time_ms > 0:

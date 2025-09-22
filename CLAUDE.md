@@ -48,19 +48,71 @@ User Query → Schema Analysis → Query Planning → SQL Generation → Validat
 7. **Scripts & CLI**
    - `scripts/create_sample_data.py` - Pure SQL sample data generator
    - `scripts/evaluate_queries.py` - Comprehensive query evaluation framework
-   - `scripts/export_database_tables.py` - Database export utility
-   - `gemini_cli.py` - Enhanced CLI with chart and export support
 
-8. **Output Structure**
+8. **API Layer** (`src/api/`)
+   - `server.py` - FastAPI server with four main endpoints
+   - `interpretation_service.py` - LLM-powered result interpretation
+
+9. **Output Structure**
    - `data/` - Database files (infrastructure.db)
    - `outputs/query_data/` - CSV exports from text-to-SQL queries
    - `outputs/query_reports/` - HTML reports from text-to-SQL queries
    - `testing/table_exports/` - Database table exports for analysis
    - `testing/evaluations/` - Evaluation reports and testing artifacts
 
+## API Architecture
+
+The system now includes a FastAPI server providing a clean separation between SQL generation, execution, and interpretation:
+
+### API Endpoints
+
+1. **`POST /api/generate-sql`**
+   - Converts natural language to SQL without execution
+   - Returns `query_id` for subsequent operations
+   - Uses existing LangGraph pipeline with `execute=False`
+
+2. **`GET /api/execute/{query_id}`**
+   - Executes SQL and caches up to 100 rows
+   - Returns first 30 rows for preview
+   - Smart counting: exact count ≤1000 rows, "unknown" for larger datasets
+   - Optimized for performance with fast >1000 row detection
+
+3. **`POST /api/interpret/{query_id}`**
+   - LLM-powered analysis of cached results
+   - Returns interpretation summary and key findings
+   - Suggests single best visualization (or null if inappropriate)
+   - Graceful error handling with user-friendly messages
+
+4. **`GET /api/download/{query_id}`**
+   - Streams complete dataset as CSV
+   - No row limits, handles large datasets efficiently
+
+### Cache Strategy
+
+- **Size**: Up to 100 rows per query (optimized for LLM analysis)
+- **TTL**: 10 minutes default
+- **Counting**: Fast check for >1000 rows vs exact count ≤1000
+- **Memory**: In-memory dict for POC (Redis for production)
+
+### Error Handling Philosophy
+
+- **LLM interpretation fails**: Return user-friendly message "Analysis temporarily unavailable. Your data was retrieved successfully."
+- **Visualization parsing fails**: Return interpretation with `visualization: null`
+- **No data**: Simple "No data found" message
+- **Principle**: If LLM can't handle it, don't over-engineer fallbacks
+
 ## Recent Improvements
 
-### 1. Documentation & Structure Improvements (Latest - September 2025)
+### 1. FastAPI Server & Interpretation Service (Latest - September 2025)
+- ✅ Built FastAPI server with four optimized endpoints
+- ✅ Implemented smart row counting (≤1000 vs >1000) for performance
+- ✅ Reduced cache size from 200 to 100 rows (LLM-optimized)
+- ✅ Simplified interpretation service: single visualization vs multiple
+- ✅ Removed over-engineered fallbacks: LLM-first approach
+- ✅ Graceful error handling with user-friendly messages
+- ✅ Separated interpretation success from visualization parsing
+
+### 2. Documentation & Structure Improvements (September 2025)
 - ✅ Updated project structure documentation in README.md and CLAUDE.md
 - ✅ Refined node descriptions for accuracy (validator.py now correctly describes safety-only validation)
 - ✅ Cleaned up import statements in pipeline nodes
@@ -249,9 +301,15 @@ DATABASE_URL=sqlite:///data/infrastructure.db
 
 ```bash
 # Development
-python scripts/create_sample_data.py          # Create sample data (REQUIRED for CLI/Python API)
+python scripts/create_sample_data.py          # Create sample data (REQUIRED for CLI/API)
 python gemini_cli.py "your query"             # Test queries via CLI
 python -m src.text_to_sql.mcp_server          # Start MCP server (auto-creates data if missing)
+
+# FastAPI Server (NEW)
+python -m uvicorn src.api.server:app --reload --port 8000   # Start API server
+python test_api.py                            # Test all endpoints
+python test_llm_interpretation.py             # Test LLM interpretation specifically
+python test_large_query.py                    # Test with large datasets
 
 # Testing with Charts & Exports
 python gemini_cli.py "Show me all load balancers"

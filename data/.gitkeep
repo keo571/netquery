@@ -1,0 +1,2 @@
+# This file ensures the data/ directory is preserved in git
+# Database files (*.db, *.sqlite, *.sqlite3) are ignored by .gitignore

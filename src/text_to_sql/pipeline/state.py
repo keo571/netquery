@@ -15,7 +15,7 @@ class ReasoningStep(TypedDict):
 
 class TextToSQLState(TypedDict):
     """State for the Text-to-SQL pipeline workflow."""
-    
+
     # Core Input/Output
     original_query: str
     generated_sql: str
@@ -25,6 +25,7 @@ class TextToSQLState(TypedDict):
     show_explanation: bool
     export_csv: Optional[bool]
     export_html: Optional[bool]
+    execute: Optional[bool]  # Whether to execute the SQL query
     
     # Schema Analysis
     schema_context: str

@@ -286,14 +286,17 @@ site/
 
 # Netquery specific files
 .embeddings_cache/
-outputs/
-testing/
+outputs/query_data/
+outputs/query_reports/
+testing/evaluations/
+testing/table_exports/
 query_exports/
 *evaluation_report_*.html
-data/
-*.db
-*.sqlite
-*.sqlite3
+
+# Database files (keep data/ structure but not actual DB files)
+data/*.db
+data/*.sqlite
+data/*.sqlite3
 
 # Local development
 .local/

@@ -100,6 +100,23 @@ python gemini_cli.py "Display server performance by datacenter" --csv
 python gemini_cli.py "Show unhealthy load balancers with their backend servers" --explain
 ```
 
+### FastAPI Server (for Web Applications)
+```bash
+# Start the server
+python -m uvicorn src.api.server:app --reload --port 8000
+
+# Test the endpoints
+python test_api.py                          # Full workflow test
+python test_llm_interpretation.py           # LLM interpretation test
+python test_large_query.py                  # Large dataset test
+```
+
+**API Endpoints:**
+- `POST /api/generate-sql` - Convert natural language to SQL
+- `GET /api/execute/{query_id}` - Execute SQL and return preview (30 rows)
+- `POST /api/interpret/{query_id}` - Get LLM analysis and visualization suggestions
+- `GET /api/download/{query_id}` - Download complete results as CSV
+
 ### MCP Server (for AI Assistants)
 ```bash
 python -m src.text_to_sql.mcp_server
@@ -135,24 +152,28 @@ DATABASE_URL=sqlite:///data/infrastructure.db
 ## Project Structure
 
 ```
-├── src/text_to_sql/           # Core pipeline implementation
-│   ├── pipeline/              # LangGraph processing stages
-│   │   ├── graph.py          # Main orchestration
-│   │   ├── state.py          # State management
-│   │   └── nodes/            # Six processing nodes
-│   ├── database/             # Database connection management
-│   ├── tools/                # Database and analysis tools
-│   │   ├── database_toolkit.py # Database operations
-│   │   ├── semantic_table_finder.py # Table relevance scoring
-│   │   └── safety_validator.py # Query safety validation
-│   ├── utils/                # Chart generation and utilities
-│   │   ├── chart_generator.py # SVG chart generation
-│   │   ├── html_exporter.py  # HTML report generation
-│   │   ├── llm_utils.py      # LLM configuration
-│   │   └── sql_utils.py      # SQL parsing utilities
-│   ├── prompts/              # LLM prompts for each stage
-│   ├── config.py             # Configuration management
-│   └── mcp_server.py         # MCP server implementation
+├── src/
+│   ├── api/                   # FastAPI server implementation
+│   │   ├── server.py          # Main API server with four endpoints
+│   │   └── interpretation_service.py # LLM-powered result interpretation
+│   └── text_to_sql/           # Core pipeline implementation
+│       ├── pipeline/          # LangGraph processing stages
+│       │   ├── graph.py      # Main orchestration
+│       │   ├── state.py      # State management
+│       │   └── nodes/        # Six processing nodes
+│       ├── database/         # Database connection management
+│       ├── tools/            # Database and analysis tools
+│       │   ├── database_toolkit.py # Database operations
+│       │   ├── semantic_table_finder.py # Table relevance scoring
+│       │   └── safety_validator.py # Query safety validation
+│       ├── utils/            # Chart generation and utilities
+│       │   ├── chart_generator.py # SVG chart generation
+│       │   ├── html_exporter.py  # HTML report generation
+│       │   ├── llm_utils.py  # LLM configuration
+│       │   └── sql_utils.py  # SQL parsing utilities
+│       ├── prompts/          # LLM prompts for each stage
+│       ├── config.py         # Configuration management
+│       └── mcp_server.py     # MCP server implementation
 ├── scripts/                  # Data generation and evaluation
 │   ├── create_sample_data.py # Sample data generator
 │   ├── evaluate_queries.py   # Query evaluation framework
@@ -168,6 +189,9 @@ DATABASE_URL=sqlite:///data/infrastructure.db
 ├── docs/                     # Documentation and examples
 │   ├── SAMPLE_QUERIES.md     # Comprehensive query examples
 │   └── EVALUATION.md         # Evaluation framework documentation
+├── test_api.py               # API endpoint testing
+├── test_llm_interpretation.py # LLM interpretation testing
+├── test_large_query.py       # Large dataset testing
 └── gemini_cli.py             # Command-line interface
 ```
 
