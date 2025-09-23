@@ -11,12 +11,13 @@ This guide explains how to switch between different demo environments for Netque
 - **Use Case**: Network infrastructure operations demo
 - **Data**: Generated sample data with realistic network metrics
 
-### 🛒 **Production Environment** (E-commerce)
-- **Database**: PostgreSQL (your real database)
+### 🏢 **Production Environment** (PostgreSQL)
+- **Database**: PostgreSQL (your production database)
 - **Schema**: Excel-defined schema (no database introspection)
-- **Tables**: Users, orders, products, reviews, shopping cart, etc.
-- **Use Case**: Real production data demo
+- **Tables**: Your real business tables defined in Excel
+- **Use Case**: Production data with any domain (not limited to e-commerce)
 - **Data**: Your actual PostgreSQL data
+- **SQL Syntax**: Auto-detects PostgreSQL and uses `CURRENT_DATE + INTERVAL`, `ILIKE`, etc.
 
 ## Quick Switching
 
@@ -93,10 +94,11 @@ TABLE_DESCRIPTIONS_FILE=table_descriptions_ecommerce.yaml
 | Aspect | Sample Environment | Production Environment |
 |--------|-------------------|----------------------|
 | Database | SQLite | PostgreSQL |
+| SQL Syntax | SQLite (`DATE('now')`) | PostgreSQL (`CURRENT_DATE + INTERVAL`) |
 | Schema Source | Database introspection | Excel file |
-| Tables | Network infrastructure | E-commerce |
+| Tables | Network infrastructure | Your business domain |
 | Data | Generated samples | Real production data |
-| Queries | "Show load balancers" | "Show top customers" |
+| Queries | "Show load balancers" | Your business queries |
 | Setup | Auto-generated | Manual configuration |
 
 ## Benefits of This Approach
@@ -104,15 +106,16 @@ TABLE_DESCRIPTIONS_FILE=table_descriptions_ecommerce.yaml
 ### ✅ **Advantages**
 1. **Clean separation**: No mixing of sample and real data
 2. **Easy switching**: One command to switch environments
-3. **Different demos**: Infrastructure vs E-commerce use cases
-4. **Schema flexibility**: SQLite introspection vs Excel definitions
-5. **Safe testing**: Sample environment for experimentation
+3. **Database flexibility**: SQLite development, PostgreSQL production
+4. **Schema flexibility**: Database introspection vs Excel definitions
+5. **SQL compatibility**: Auto-detects database type and generates correct syntax
+6. **Safe testing**: Sample environment for experimentation
 
 ### 🎯 **Use Cases**
-- **Sample**: Demo to network engineers, infrastructure teams
-- **Production**: Demo to business users, e-commerce teams
+- **Sample**: Demo to network engineers, development teams
+- **Production**: Demo to business users, production deployment
 - **Development**: Test schema parsing vs database introspection
-- **Presentations**: Switch based on audience
+- **SQL Testing**: Verify PostgreSQL vs SQLite syntax compatibility
 
 ## Troubleshooting
 

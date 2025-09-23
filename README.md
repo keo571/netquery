@@ -76,13 +76,27 @@ flowchart TD
    # Edit .env and add your GEMINI_API_KEY
    ```
 
-3. **Create sample data** (Required):
+3. **Choose your database setup:**
+
+   **Option A: SQLite (Development)**
    ```bash
-   python scripts/create_sample_data.py
+   python scripts/create_sample_data.py  # Creates data/infrastructure.db
    ```
-   This creates `data/infrastructure.db` with realistic network infrastructure data.
-   
-   **Note:** This step is required for CLI and direct Python usage. Only the MCP server auto-creates sample data if missing.
+
+   **Option B: PostgreSQL (Production)**
+   ```bash
+   # Switch to production environment with PostgreSQL
+   python scripts/switch_environment.py production
+
+   # Update .env with your PostgreSQL connection:
+   # DATABASE_URL=postgresql://user:password@host:5432/database
+   # EXCEL_SCHEMA_PATH=your_schema.xlsx  # Define your tables in Excel
+   ```
+
+   **Database Compatibility:**
+   - ✅ **SQLite**: Auto-detected, uses `DATE('now')` functions
+   - ✅ **PostgreSQL**: Auto-detected, uses `CURRENT_DATE + INTERVAL` syntax
+   - 🔄 **Environment Switching**: Seamlessly toggle between development and production
 
 ## Usage Examples
 
