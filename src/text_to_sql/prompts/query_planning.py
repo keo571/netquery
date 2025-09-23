@@ -18,7 +18,11 @@ Instructions:
 1. Identify intent, tables, columns, filters, joins, aggregations
 2. For vague terms: "high" = >80%, "low" = <30%, "recent" = last 7 days
 3. Add LIMIT 50-100 for broad queries like "show all [table]"
-4. Include key columns: id, name, status, datacenter for infrastructure queries
+4. Column selection strategy:
+   - Analyze the query to determine what information is actually needed
+   - Include only columns that directly answer the question asked
+   - Add identifier columns (like name, id) only if needed for clarity
+   - Avoid metadata columns (created_at, updated_at) unless specifically requested
 
 Return ONLY valid JSON with these fields:
 - intent: query type (select_with_filter, join_and_aggregate, etc.)

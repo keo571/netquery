@@ -242,8 +242,8 @@ logs/
 backend/logs/
 
 # Configuration files with sensitive data
+.env
 .env.local
-.env.production
 .env.staging
 
 # API keys and secrets

@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 query_cache: Dict[str, Dict[str, Any]] = {}
 CACHE_TTL = 600  # 10 minutes default
 MAX_CACHE_ROWS = 100
-PREVIEW_ROWS = 30
+PREVIEW_ROWS = 100  # Return all cached rows - client can paginate if needed
 
 def get_cache_entry(query_id: str) -> Dict[str, Any]:
     """Get cache entry or raise 404 if not found."""
@@ -230,6 +230,10 @@ async def execute_and_preview(query_id: str) -> PreviewResponse:
         # Convert to list of dicts
         data = [dict(zip(columns, row)) for row in rows]
 
+        # Format data for better display (import the function)
+        from .data_utils import format_data_for_display
+        data = format_data_for_display(data)
+
         # Update cache
         cache_entry["data"] = data
         cache_entry["total_count"] = total_count
@@ -269,7 +273,6 @@ async def interpret_results(query_id: str) -> InterpretationResponse:
         # Get LLM-powered interpretation
         interpretation_result = await get_interpretation(
             query=cache_entry["original_query"],
-            sql=cache_entry["sql"],
             results=data,  # All cached data (≤100 rows)
             total_rows=total_count
         )

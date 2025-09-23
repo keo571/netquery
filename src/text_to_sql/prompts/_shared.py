@@ -9,7 +9,8 @@ DATABASE_INSTRUCTIONS = """
 3. Use explicit JOIN syntax, not implicit joins
 4. Handle dates with DATE() function: DATE('now', '+30 days'), DATE('now', '-1 week')
 5. For case-insensitive matching use UPPER() or LOWER()
-6. Optimize: select specific columns, use indexes, prefer JOINs over subqueries
+6. Column optimization: select only the minimum columns needed to answer the query
+7. Prefer essential data columns over metadata/system columns unless specifically requested
 """
 
 # Network infrastructure context
@@ -69,7 +70,11 @@ Instructions:
 1. Identify intent, tables, columns, filters, joins, aggregations
 2. For vague terms: "high" = >80%, "low" = <30%, "recent" = last 7 days
 3. Add LIMIT 50-100 for broad queries like "show all [table]"
-4. Include key columns: id, name, status, datacenter for infrastructure queries
+4. Column selection strategy:
+   - Analyze the query to determine what information is actually needed
+   - Include only columns that directly answer the question asked
+   - Add identifier columns (like name, id) only if needed for clarity
+   - Avoid metadata columns (created_at, updated_at) unless specifically requested
 
 {JSON_FORMAT}"""
 
