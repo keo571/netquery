@@ -8,7 +8,8 @@ import time
 
 from ..state import TextToSQLState
 from ...utils.sql_utils import extract_sql_from_response
-from ...prompts.sql_generation import SQL_GENERATION_PROMPT
+from ...prompts.sql_generation import SQL_GENERATION_PROMPT_FUNC
+from ...config import config
 from ...utils.llm_utils import get_llm
 
 logger = logging.getLogger(__name__)
@@ -84,10 +85,7 @@ def sql_generator_node(state: TextToSQLState) -> Dict[str, Any]:
 
 def _create_sql_generation_prompt(query: str, schema_context: str, query_plan: Dict[str, Any]) -> str:
     """Create the SQL generation prompt for the LLM."""
-    return SQL_GENERATION_PROMPT.format(
-        schema_context=schema_context,
-        query_plan=query_plan,
-        query=query
-    )
+    database_url = config.database.database_url
+    return SQL_GENERATION_PROMPT_FUNC(query, schema_context, query_plan, database_url)
 
 

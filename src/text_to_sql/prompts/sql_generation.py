@@ -4,9 +4,9 @@ SQL generation prompt templates.
 from ._shared import create_sql_prompt
 
 # Main SQL generation prompt - uses shared utilities
-def SQL_GENERATION_PROMPT_FUNC(query: str, schema_context: str, query_plan: str) -> str:
+def SQL_GENERATION_PROMPT_FUNC(query: str, schema_context: str, query_plan: str, database_url: str = "") -> str:
     """Generate SQL generation prompt with query plan context."""
-    return create_sql_prompt(query, schema_context, str(query_plan))
+    return create_sql_prompt(query, schema_context, str(query_plan), database_url)
 
 # Legacy string template for backward compatibility
 SQL_GENERATION_PROMPT = """Generate SQL for this query using the schema and plan provided.

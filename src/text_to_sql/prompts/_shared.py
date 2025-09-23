@@ -2,13 +2,37 @@
 Shared prompt components and utilities.
 """
 
-# Core database instructions for SQLite
-DATABASE_INSTRUCTIONS = """
+def get_database_instructions(database_url: str = "") -> str:
+    """Get database-specific SQL instructions."""
+    if database_url.startswith('sqlite'):
+        return """
 1. Generate syntactically correct SQLite queries (SELECT only)
 2. Use only tables and columns from the provided schema
 3. Use explicit JOIN syntax, not implicit joins
 4. Handle dates with DATE() function: DATE('now', '+30 days'), DATE('now', '-1 week')
 5. For case-insensitive matching use UPPER() or LOWER()
+6. Column optimization: select only the minimum columns needed to answer the query
+7. Prefer essential data columns over metadata/system columns unless specifically requested
+"""
+    elif 'postgresql' in database_url.lower():
+        return """
+1. Generate syntactically correct PostgreSQL queries (SELECT only)
+2. Use only tables and columns from the provided schema
+3. Use explicit JOIN syntax, not implicit joins
+4. Handle dates with CURRENT_DATE, INTERVAL: CURRENT_DATE + INTERVAL '30 days', CURRENT_DATE - INTERVAL '1 week'
+5. For case-insensitive matching use ILIKE or UPPER()/LOWER()
+6. Use double quotes for identifiers if needed: "column_name"
+7. Column optimization: select only the minimum columns needed to answer the query
+8. Prefer essential data columns over metadata/system columns unless specifically requested
+"""
+    else:
+        # Generic SQL instructions
+        return """
+1. Generate syntactically correct SQL queries (SELECT only)
+2. Use only tables and columns from the provided schema
+3. Use explicit JOIN syntax, not implicit joins
+4. Handle dates appropriately for your database system
+5. For case-insensitive matching use appropriate functions for your database
 6. Column optimization: select only the minimum columns needed to answer the query
 7. Prefer essential data columns over metadata/system columns unless specifically requested
 """
@@ -45,8 +69,9 @@ Return ONLY valid JSON with these fields:
 - estimated_complexity: "simple"/"medium"/"complex"
 """
 
-def create_sql_prompt(query: str, schema_context: str, query_plan: str) -> str:
+def create_sql_prompt(query: str, schema_context: str, query_plan: str, database_url: str = "") -> str:
     """Create optimized SQL generation prompt."""
+    database_instructions = get_database_instructions(database_url)
     return f"""Generate SQL for this query using the schema and plan provided.
 
 Schema: {schema_context}
@@ -55,7 +80,7 @@ Plan: {query_plan}
 
 Query: "{query}"
 
-{DATABASE_INSTRUCTIONS}
+{database_instructions}
 {NETWORK_CONTEXT}
 {RESPONSE_FORMAT}"""
 

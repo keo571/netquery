@@ -20,7 +20,7 @@ pydantic>=2.0.0
 fastapi>=0.100.0
 uvicorn[standard]>=0.23.0
 
-# Optional database drivers (uncomment as needed):
-# psycopg2-binary>=2.9.0  # For PostgreSQL
-# pymysql>=1.0.0          # For MySQL
-# cx_oracle>=8.0.0        # For Oracle
+# Database drivers
+psycopg2-binary>=2.9.0  # For PostgreSQL
+# pymysql>=1.0.0          # For MySQL (uncomment if needed)
+# cx_oracle>=8.0.0        # For Oracle (uncomment if needed)

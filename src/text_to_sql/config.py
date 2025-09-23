@@ -66,8 +66,15 @@ class SafetyConfig(BaseModel):
     )
     
     blocked_tables: list = Field(
-        default=["sqlite_master", "sqlite_sequence", "information_schema"],
-        description="Blocked table names"
+        default=[
+            # SQLite system tables
+            "sqlite_master", "sqlite_sequence",
+            # PostgreSQL system tables
+            "information_schema", "pg_catalog", "pg_stat_*", "pg_tables", "pg_views",
+            # Generic system/metadata tables
+            "sys", "system", "metadata"
+        ],
+        description="Blocked table names and patterns"
     )
     
     blocked_columns: list = Field(
