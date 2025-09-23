@@ -122,6 +122,36 @@ python test_large_query.py                  # Large dataset test
 python -m src.text_to_sql.mcp_server
 ```
 
+## 🌟 Complete Ecosystem
+
+Netquery is part of a three-repository ecosystem for easy deployment:
+
+### 📦 **Repository Structure**
+- **[netquery](https://github.com/keo571/netquery)** *(this repo)* - Core AI pipeline and FastAPI backend
+- **[universal-agent-chat](https://github.com/keo571/universal-agent-chat)** - React frontend with beautiful chat interface
+- **[netquery-docker](https://github.com/keo571/netquery-docker)** - Docker orchestration for the complete stack
+
+### 🚀 **Quick Start with Docker**
+```bash
+# Clone all repositories
+git clone https://github.com/keo571/netquery.git
+git clone https://github.com/keo571/universal-agent-chat.git
+git clone https://github.com/keo571/netquery-docker.git
+
+# Setup and start the complete stack
+cd netquery && cp .env.sample .env  # Add your GEMINI_API_KEY
+cd ../netquery-docker && ./start.sh
+
+# Access the web interface
+open http://localhost:3000
+```
+
+**Docker Stack Includes:**
+- **Backend (port 8000)**: FastAPI server with AI pipeline
+- **Frontend (port 3000)**: React chat interface with charts
+- **Adapter (port 3001)**: Bridge between frontend and backend
+- **Auto-setup**: Sample data creation and hot-reload development
+
 ### Direct Python API
 ```python
 from src.text_to_sql.pipeline.graph import text_to_sql_graph
