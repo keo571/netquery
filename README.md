@@ -5,14 +5,16 @@ An AI-powered assistant that converts natural language queries into SQL. Optimiz
 ## Quick Start
 
 ```bash
-# 1. Build schema from your database (once)
-./schema build <database-url>
+# 1. Setup environment (dev or prod)
+./profile.sh dev init    # SQLite for quick testing
+./profile.sh prod init   # PostgreSQL for production-like testing
 
-# 2. Query in natural language (many times)
-./schema query <database-url> "your question"
+# 2. Query in natural language
+python gemini_cli.py "Show me all load balancers"
+python gemini_cli.py "What servers are unhealthy?"
 ```
 
-**📖 [Getting Started Guide](GETTING_STARTED.md)** | **📚 [Complete Documentation](docs/guides/SIMPLE_GUIDE.md)**
+**📖 [Profiles Guide](docs/PROFILES.md)** - Environment management (dev/prod switching)
 
 ## Architecture Overview
 

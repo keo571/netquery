@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 - Application code in `src/`: `api` (FastAPI server), `text_to_sql` (Gemini pipeline), `common` (database + utilities), `schema_ingestion` (reflection tooling).
 - CLI entry `gemini_cli.py`; persistent data and generated exports live in `data/`, `schema_files/`, and `outputs/`.
-- Support scripts sit in `setup/` for bootstrapping and environment switching; docs live in `docs/` with fast-start recipes in `GETTING_STARTED.md`.
+- Support scripts sit in `setup/` for bootstrapping and environment switching; see `docs/PROFILES.md` for dev/prod setup.
 
 ## Build, Test, and Development Commands
 - `pip install -r requirements.txt` installs dependencies inside your virtualenv.
