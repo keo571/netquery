@@ -4,120 +4,39 @@ An AI-powered assistant that converts natural language queries into SQL. Optimiz
 
 ## Quick Start
 
-```bash
-# 1. Setup environment (dev or prod)
-./profile.sh dev init    # SQLite for quick testing
-./profile.sh prod init   # PostgreSQL for production-like testing
-
-# 2. Query in natural language
-python gemini_cli.py "Show me all load balancers"
-python gemini_cli.py "What servers are unhealthy?"
-```
-
-**📖 [Profiles Guide](docs/PROFILES.md)** - Environment management (dev/prod switching)
-
-## Architecture Overview
-
-```mermaid
-flowchart TD
-    A([Natural Language Query]) --> B[Schema Analysis<br/>Semantic Similarity]
-    B --> C[Query Planning<br/>JSON Structure]
-    C --> D[SQL Generation<br/>No CTEs]
-    D --> E[Safety Validation<br/>Read-Only Check]
-    E -->|✅ Pass| F[Query Execution<br/>Timeout Handling]
-    E -->|❌ Block| I[Error Response]
-    F --> G[Result Interpretation<br/>Chart Generation]
-    G --> H([Response with Charts])
-
-    DB[(Database)] -.->|schema reflection<br/>at startup| CACHE
-    CACHE[(Embedding Cache)] -.->|table similarity<br/>scoring| B
-    LLM[Gemini API] --> C
-    LLM --> D
-    LLM --> G
-    DB --> F
-
-    style A fill:#4FC3F7,color:#000
-    style H fill:#81C784,color:#000
-    style I fill:#FF8A65,color:#000
-    style E fill:#FFB74D,color:#000
-    style CACHE fill:#E1BEE7,color:#000
-```
-
-## Key Features
-
-### 🎯 **Smart Query Understanding**
-- **Semantic Table Discovery**: Automatically finds relevant database tables using sentence transformer embeddings
-- **Excel Schema Support**: Import table definitions and relationships from Excel for databases without introspectable schemas
-- **Network Infrastructure Focused**: Specialized for load balancers, servers, VIPs, and monitoring data
-- **Multi-Table Support**: Handles complex relationships using database schema reflection
-- **Structured Planning**: Creates JSON execution plans with joins, filters, and aggregations
-
-### 🛡️ **Safety & Performance**
-- **Read-Only Architecture**: Blocks all destructive operations (DELETE, DROP, UPDATE, CREATE)
-- **Timeout Protection**: Dual-level timeouts (30s evaluation, 45s database) prevent hangs
-- **Smart Limits**: Automatic LIMIT clauses and performance warnings for large datasets
-- **Error Recovery**: Multi-layer validation with retry logic for failed SQL generation
-
-### 📊 **Automatic Visualizations**
-- **Smart Chart Detection**: Automatically detects optimal chart types based on data patterns
-- **Time-Series Support**: Built-in support for performance trends and monitoring metrics
-- **Static SVG Output**: Charts work everywhere without JavaScript dependencies
-- **HTML Reports**: Integrated visualizations in exported HTML reports
-
-### 🔌 **Multiple Interfaces**
-- **MCP Protocol**: Works with Claude, ChatGPT, and other AI assistants
-- **Command Line**: CLI with export options (--html, --csv) and detailed explanations (--explain)
-- **Export Formats**: HTML reports with charts, CSV data, structured JSON responses
-- **Testing Framework**: Built-in evaluation suite with comprehensive performance metrics
-
-## Quick Start
-
 ### Prerequisites
-- Python 3.8+
-- Gemini API key from [Google AI Studio](https://aistudio.google.com/)
+- Python 3.9+
+- pip
+- Gemini API key from Google AI Studio (exported as `GEMINI_API_KEY`)
 
-### Installation
+### Install dependencies
+```bash
+git clone https://github.com/keo571/netquery.git
+cd netquery
+python3 -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
 
-1. **Clone and setup:**
-   ```bash
-   git clone https://github.com/keo571/netquery.git
-   cd netquery
-   pip install -r requirements.txt
-   ```
+### Initialize the development profile (SQLite)
+```bash
+./profile.sh dev init
+python gemini_cli.py "Show me all load balancers"
+```
+`profile.sh` copies `.env.dev` to `.env`, preserves your API key, seeds the SQLite demo database via `setup/create_data_sqlite.py`, and rebuilds embeddings with `python -m src.schema_ingestion`. Run `./profile.sh status` at any time to check the active profile and database URL.
 
-2. **Configure environment:**
-   ```bash
-   cp .env.example .env
-   # Edit .env and add your GEMINI_API_KEY
-   ```
+### Switch to PostgreSQL (optional)
+```bash
+./profile.sh prod          # Copies .env.prod → .env (edit DATABASE_URL first)
+./profile.sh prod init     # Seeds PostgreSQL using setup/create_data_postgres.py
+```
+Ensure your PostgreSQL instance is running and that `.env` points to it. The init command also writes `schema_files/prod_schema.json` and refreshes embeddings.
 
-3. **Choose your database setup:**
-
-   **Option A: SQLite (Development)**
-   ```bash
-   python setup/create_data_sqlite.py  # Creates data/infrastructure.db
-   ```
-
-   **Option B: PostgreSQL (Production)**
-   ```bash
-   # Switch to production environment with PostgreSQL
-   ./setup/switch_database.sh postgres
-
-   # Update .env with your PostgreSQL connection:
-   # DATABASE_URL=postgresql://user:password@host:5432/database
-   # EXCEL_SCHEMA_PATH=your_schema.xlsx  # Define your tables in Excel
-   ```
-
-   **Or use the complete setup script:**
-   ```bash
-   ./setup/setup_complete.sh sqlite    # Complete SQLite setup
-   ./setup/setup_complete.sh postgres  # Complete PostgreSQL setup
-   ```
-
-   **Database Compatibility:**
-   - ✅ **SQLite**: Auto-detected, uses `DATE('now')` functions
-   - ✅ **PostgreSQL**: Auto-detected, uses `CURRENT_DATE + INTERVAL` syntax
-   - 🔄 **Environment Switching**: Seamlessly toggle between development and production
+### Run the API server
+```bash
+python -m uvicorn src.api.server:app --reload --port 8000
+```
+Visit `http://localhost:8000/docs` for interactive OpenAPI documentation.
 
 ## Usage Examples
 
@@ -145,9 +64,9 @@ python gemini_cli.py "Display orders by customer" --excel-schema schema.xlsx --h
 python -m uvicorn src.api.server:app --reload --port 8000
 
 # Test the endpoints
-python test_api.py                          # Full workflow test
-python test_llm_interpretation.py           # LLM interpretation test
-python test_large_query.py                  # Large dataset test
+python -m pytest testing/api_tests/test_api.py                # Full workflow test
+python -m pytest testing/api_tests/test_llm_interpretation.py   # LLM interpretation test
+python -m pytest testing/api_tests/test_large_query.py          # Large dataset test
 ```
 
 **API Endpoints:**
@@ -162,37 +81,13 @@ python test_large_query.py                  # Large dataset test
 python -m src.text_to_sql.mcp_server
 ```
 
-## 🌟 Complete Ecosystem
+## Optional Integrations
 
-Netquery is part of a three-repository ecosystem for easy deployment:
+Netquery can plug into additional tooling when you need a richer experience:
+- **[universal-agent-chat](https://github.com/keo571/universal-agent-chat)** adds a TypeScript/React front end for the text-to-SQL workflow.
+- **[netquery-docker](https://github.com/keo571/netquery-docker)** offers a containerized demo environment. It is optional and no longer part of the default quick start.
 
-### 📦 **Repository Structure**
-- **[netquery](https://github.com/keo571/netquery)** *(this repo)* - Core AI pipeline and FastAPI backend
-- **[universal-agent-chat](https://github.com/keo571/universal-agent-chat)** - React frontend with beautiful chat interface
-- **[netquery-docker](https://github.com/keo571/netquery-docker)** - Docker orchestration for the complete stack
-
-### 🚀 **Quick Start with Docker**
-```bash
-# Clone all repositories
-git clone https://github.com/keo571/netquery.git
-git clone https://github.com/keo571/universal-agent-chat.git
-git clone https://github.com/keo571/netquery-docker.git
-
-# Setup and start the complete stack
-cd netquery && cp .env.sample .env  # Add your GEMINI_API_KEY
-cd ../netquery-docker && ./start.sh
-
-# Access the web interface
-open http://localhost:3000
-```
-
-**Docker Stack Includes:**
-- **Backend (port 8000)**: FastAPI server with AI pipeline
-- **Frontend (port 3000)**: React chat interface with charts
-- **Adapter (port 3001)**: Bridge between frontend and backend
-- **Auto-setup**: Sample data creation and hot-reload development
-
-### Direct Python API
+## Direct Python API
 ```python
 from src.text_to_sql.pipeline.graph import text_to_sql_graph
 from langchain_core.messages import HumanMessage
@@ -209,74 +104,58 @@ For comprehensive query examples organized by complexity level, see **[docs/SAMP
 
 ## Configuration
 
-Environment variables:
+`profile.sh` switches between `.env.dev` (SQLite) and `.env.prod` (PostgreSQL) while keeping your `GEMINI_API_KEY`. The active configuration is always stored in `.env`.
+
+Key variables:
 
 ```bash
-# Required: Gemini API Key for Text-to-SQL generation
-GEMINI_API_KEY=your_api_key_here
-
-# Optional: Override default database location
-DATABASE_URL=sqlite:///data/infrastructure.db
+GEMINI_API_KEY=your_api_key_here          # Required for all LLM calls
+DATABASE_URL=sqlite:///data/infrastructure.db  # Overridden when you switch profiles
+EXCEL_SCHEMA_PATH=schema_files/load_balancer_schema.xlsx  # Optional metadata source
+CANONICAL_SCHEMA_PATH=schema_files/dev_schema.json        # Generated by schema ingestion
+SCHEMA_ID=dev                                              # Embedding namespace (defaults to NETQUERY_ENV)
 ```
+
+See `docs/PROFILES.md` for environment workflows and `docs/TROUBLESHOOTING.md` for common fixes.
 
 ## Project Structure
 
 ```
-├── src/
-│   ├── schema_ingestion/      # Schema extraction and embedding generation
-│   │   ├── __main__.py        # CLI tool (run: python -m src.schema_ingestion)
-│   │   ├── formats/           # Canonical schema format
-│   │   ├── pipeline/          # Schema building and enrichment
-│   │   └── tools/             # Graph analysis and Excel parsing
-│   ├── api/                   # FastAPI server implementation
-│   │   ├── server.py          # Main API server with four endpoints
-│   │   └── interpretation_service.py # LLM-powered result interpretation
-│   ├── common/                # Shared utilities
-│   │   ├── database/          # Database connection management
-│   │   └── stores/            # Embedding storage (local/pgvector)
-│   └── text_to_sql/           # Core query pipeline
-│       ├── pipeline/          # LangGraph processing stages
-│       │   ├── graph.py       # Main orchestration
-│       │   ├── state.py       # State management
-│       │   └── nodes/         # Six processing nodes
-│       ├── database/          # Database connection management
-│       ├── tools/             # Database and analysis tools
-│       │   ├── database_toolkit.py # Database operations
-│       │   ├── semantic_table_finder.py # Table relevance scoring
-│       │   └── safety_validator.py # Query safety validation
-│       ├── utils/             # Chart generation and utilities
-│       │   ├── chart_generator.py # SVG chart generation
-│       │   ├── html_exporter.py  # HTML report generation
-│       │   ├── llm_utils.py   # LLM configuration
-│       │   └── sql_utils.py   # SQL parsing utilities
-│       ├── prompts/           # LLM prompts for each stage
-│       ├── config.py          # Configuration management
-│       └── mcp_server.py      # MCP server implementation
-├── setup/                     # Setup and configuration
-│   ├── create_data_sqlite.py  # SQLite sample data generator
-│   ├── create_data_postgres.py # PostgreSQL sample data generator
-│   ├── switch_database.sh     # Switch between SQLite/PostgreSQL
-│   ├── ingest_schema.py       # Schema ingestion wrapper
-│   └── setup_complete.sh      # Complete end-to-end setup
-├── testing/                   # Testing and debugging
-│   ├── evaluate_queries.py    # Query evaluation framework
-│   └── export_database_tables.py # Database export utility
-├── docs/                      # Documentation and examples
-│   ├── ARCHITECTURE_DECISION.md # System architecture documentation
-│   ├── SAMPLE_QUERIES.md      # Comprehensive query examples
-│   └── EVALUATION.md          # Evaluation framework documentation
-├── data/                      # Database files (DB files git-ignored)
-│   └── infrastructure.db      # SQLite database (auto-created)
-├── outputs/                   # Query results (content git-ignored)
-│   ├── query_data/            # CSV exports from queries
-│   └── query_reports/         # HTML reports with charts
-├── testing/                   # Testing and development artifacts
-│   ├── api_tests/             # API endpoint tests
-│   ├── table_exports/         # Database table exports (git-ignored)
-│   └── evaluations/           # Evaluation reports (git-ignored)
-├── gemini_cli.py              # Command-line interface
-├── requirements.txt           # Python dependencies
-└── README.md                  # Project documentation
+├── dev-start.sh                 # Local helper to launch the FastAPI server
+├── gemini_cli.py                # Command-line entry point
+├── profile.sh                   # Profile manager (dev/prod switching)
+├── data/                        # Generated databases (gitignored contents)
+│   └── infrastructure.db
+├── docs/                        # Architecture notes, guides, troubleshooting
+│   ├── PROFILES.md
+│   ├── TROUBLESHOOTING.md
+│   └── ...
+├── outputs/                     # Generated CSV/HTML exports (gitignored contents)
+│   ├── query_data/
+│   └── query_reports/
+├── schema_files/                # Canonical schema JSON + Excel templates
+│   ├── dev_schema.json
+│   ├── prod_schema.json
+│   └── load_balancer_schema.xlsx
+├── setup/                       # Data and schema automation
+│   ├── create_data_sqlite.py
+│   ├── create_data_postgres.py
+│   ├── ingest_schema.py
+│   ├── setup_complete.sh
+│   └── switch_database.sh
+├── src/                         # Application code
+│   ├── api/
+│   ├── common/
+│   ├── components/
+│   ├── hooks/
+│   ├── schema_ingestion/
+│   └── text_to_sql/
+├── testing/                     # Evaluation tools and fixtures
+│   ├── evaluate_queries.py
+│   ├── export_database_tables.py
+│   ├── api_tests/
+│   └── query_sets/
+└── requirements.txt             # Python dependencies
 ```
 
 ## Pipeline Architecture
@@ -290,15 +169,17 @@ DATABASE_URL=sqlite:///data/infrastructure.db
 
 ## Development & Testing
 
-### Run Tests
 ```bash
-# Test with CLI queries
+# Smoke test the CLI (generates HTML report in outputs/query_reports/)
 python gemini_cli.py "Show server performance by datacenter" --html
 
-# Comprehensive pipeline evaluation
+# Run the evaluation harness (writes testing/evaluations/query_evaluation_report.html)
 python testing/evaluate_queries.py
 
-# Export database tables for analysis
+# Evaluate a single query quickly
+python testing/evaluate_queries.py --single "Show all load balancers"
+
+# Export current database tables to CSV for inspection
 python testing/export_database_tables.py
 ```
 
