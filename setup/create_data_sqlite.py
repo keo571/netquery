@@ -1,11 +1,23 @@
 """
 Network infrastructure sample data generator.
-Creates realistic network operations data using pure SQLite.
+Creates realistic network operations data using PostgreSQL or SQLite.
 """
 import random
-import sqlite3
 import os
+import argparse
 from datetime import datetime, timedelta, date
+from urllib.parse import urlparse
+
+# Try importing psycopg2 for PostgreSQL support
+try:
+    import psycopg2
+    from psycopg2.extras import execute_batch
+    POSTGRES_AVAILABLE = True
+except ImportError:
+    POSTGRES_AVAILABLE = False
+
+# SQLite support
+import sqlite3
 
 # Configure SQLite to handle datetime properly (fixes Python 3.12 warnings)
 def adapt_datetime(dt):
@@ -47,96 +59,114 @@ SSL_PROVIDERS = ["DigiCert", "GlobalSign", "Let's Encrypt", "Cloudflare", "AWS"]
 PROTOCOLS = ["HTTP", "HTTPS", "TCP", "UDP", "GRPC"]
 
 
-def create_database_schema(cursor):
-    """Create all database tables with proper schema."""
-    
+def create_database_schema(cursor, db_type='sqlite'):
+    """Create all database tables with proper schema.
+
+    Args:
+        cursor: Database cursor
+        db_type: 'sqlite' or 'postgres'
+    """
+    # Adjust data types based on database
+    if db_type == 'postgres':
+        int_type = 'SERIAL'
+        text_type = 'TEXT'
+        datetime_type = 'TIMESTAMP'
+        real_type = 'REAL'
+        default_timestamp = 'DEFAULT NOW()'
+    else:
+        int_type = 'INTEGER'
+        text_type = 'TEXT'
+        datetime_type = 'DATETIME'
+        real_type = 'REAL'
+        default_timestamp = 'DEFAULT CURRENT_TIMESTAMP'
+
     # Load balancers
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS load_balancers (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        status TEXT NOT NULL,
-        vip_address TEXT,
-        datacenter TEXT,
-        lb_type TEXT,
-        algorithm TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        id {int_type} PRIMARY KEY,
+        name {text_type} NOT NULL,
+        status {text_type} NOT NULL,
+        vip_address {text_type},
+        datacenter {text_type},
+        lb_type {text_type},
+        algorithm {text_type},
+        created_at {datetime_type} {default_timestamp}
     )
     ''')
     
     # Servers
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS servers (
-        id INTEGER PRIMARY KEY,
-        hostname TEXT NOT NULL,
-        status TEXT NOT NULL,
-        cpu_utilization REAL,
-        memory_usage REAL,
-        datacenter TEXT,
-        role TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        id {int_type} PRIMARY KEY,
+        hostname {text_type} NOT NULL,
+        status {text_type} NOT NULL,
+        cpu_utilization {real_type},
+        memory_usage {real_type},
+        datacenter {text_type},
+        role {text_type},
+        created_at {datetime_type} {default_timestamp}
     )
     ''')
-    
+
     # SSL certificates
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS ssl_certificates (
-        id INTEGER PRIMARY KEY,
-        domain TEXT NOT NULL,
-        issuer TEXT,
-        expiry_date DATETIME,
-        status TEXT,
-        provider TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        id {int_type} PRIMARY KEY,
+        domain {text_type} NOT NULL,
+        issuer {text_type},
+        expiry_date {datetime_type},
+        status {text_type},
+        provider {text_type},
+        created_at {datetime_type} {default_timestamp}
     )
     ''')
-    
+
     # VIP pools
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS vip_pools (
-        id INTEGER PRIMARY KEY,
-        vip_address TEXT NOT NULL,
+        id {int_type} PRIMARY KEY,
+        vip_address {text_type} NOT NULL,
         port INTEGER,
-        protocol TEXT,
+        protocol {text_type},
         load_balancer_id INTEGER,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at {datetime_type} {default_timestamp},
         FOREIGN KEY (load_balancer_id) REFERENCES load_balancers(id)
     )
     ''')
-    
+
     # Backend mappings
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS backend_mappings (
-        id INTEGER PRIMARY KEY,
+        id {int_type} PRIMARY KEY,
         load_balancer_id INTEGER,
         server_id INTEGER,
         weight INTEGER DEFAULT 100,
-        health_check_path TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        health_check_path {text_type},
+        created_at {datetime_type} {default_timestamp},
         FOREIGN KEY (load_balancer_id) REFERENCES load_balancers(id),
         FOREIGN KEY (server_id) REFERENCES servers(id)
     )
     ''')
-    
+
     # Network traffic monitoring
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS network_traffic (
-        id INTEGER PRIMARY KEY,
+        id {int_type} PRIMARY KEY,
         load_balancer_id INTEGER,
-        timestamp DATETIME,
+        timestamp {datetime_type},
         requests_per_second INTEGER,
-        response_time_ms REAL,
-        bandwidth_mbps REAL,
+        response_time_ms {real_type},
+        bandwidth_mbps {real_type},
         active_connections INTEGER,
-        error_rate_percent REAL,
+        error_rate_percent {real_type},
         FOREIGN KEY (load_balancer_id) REFERENCES load_balancers(id)
     )
     ''')
-    
+
     # SSL monitoring
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS ssl_monitoring (
-        id INTEGER PRIMARY KEY,
+        id {int_type} PRIMARY KEY,
         date DATE,
         certificates_expiring_30days INTEGER,
         certificates_expiring_7days INTEGER,
@@ -145,32 +175,32 @@ def create_database_schema(cursor):
         renewed_certificates INTEGER
     )
     ''')
-    
+
     # Load balancer health log
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS lb_health_log (
-        id INTEGER PRIMARY KEY,
+        id {int_type} PRIMARY KEY,
         load_balancer_id INTEGER,
-        timestamp DATETIME,
+        timestamp {datetime_type},
         healthy_backends INTEGER,
         total_backends INTEGER,
-        avg_response_time_ms REAL,
+        avg_response_time_ms {real_type},
         total_requests INTEGER,
-        health_score_percent REAL,
+        health_score_percent {real_type},
         FOREIGN KEY (load_balancer_id) REFERENCES load_balancers(id)
     )
     ''')
-    
+
     # Network connectivity
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS network_connectivity (
-        id INTEGER PRIMARY KEY,
+        id {int_type} PRIMARY KEY,
         server_id INTEGER,
-        timestamp DATETIME,
-        latency_ms REAL,
-        packet_loss_percent REAL,
-        uptime_percent REAL,
-        bandwidth_utilization_percent REAL,
+        timestamp {datetime_type},
+        latency_ms {real_type},
+        packet_loss_percent {real_type},
+        uptime_percent {real_type},
+        bandwidth_utilization_percent {real_type},
         connection_count INTEGER,
         FOREIGN KEY (server_id) REFERENCES servers(id)
     )
@@ -413,21 +443,46 @@ def generate_network_connectivity(cursor):
     return len(data)
 
 
-def create_infrastructure_database():
-    """Create complete network infrastructure database."""
+def create_infrastructure_database(database_url=None):
+    """Create complete network infrastructure database.
+
+    Args:
+        database_url: Database connection URL. Supports:
+                     - PostgreSQL: postgresql://user:pass@host:port/dbname
+                     - SQLite: sqlite:///path/to/db.db or None (defaults to data/infrastructure.db)
+
+    Returns:
+        dict: Table names and record counts
+    """
     print("Creating network infrastructure database...")
-    
-    # Ensure data directory exists
-    os.makedirs('data', exist_ok=True)
-    
+
+    # Determine database type
+    if database_url and database_url.startswith('postgresql'):
+        if not POSTGRES_AVAILABLE:
+            raise ImportError("psycopg2 is not installed. Install with: pip install psycopg2-binary")
+        db_type = 'postgres'
+        print(f"Using PostgreSQL: {database_url}")
+    else:
+        db_type = 'sqlite'
+        if not database_url or database_url.startswith('sqlite'):
+            # Ensure data directory exists
+            os.makedirs('data', exist_ok=True)
+            database_url = 'data/infrastructure.db'
+        print(f"Using SQLite: {database_url}")
+
     # Connect to database
-    conn = sqlite3.connect('data/infrastructure.db')
+    if db_type == 'postgres':
+        conn = psycopg2.connect(database_url)
+        conn.autocommit = False
+    else:
+        conn = sqlite3.connect(database_url)
+
     cursor = conn.cursor()
-    
+
     try:
         # Create schema
         print("Creating database schema...")
-        create_database_schema(cursor)
+        create_database_schema(cursor, db_type=db_type)
 
         # Clear existing data to prevent duplicates
         print("Clearing existing data...")
@@ -447,36 +502,46 @@ def create_infrastructure_database():
         results['ssl_certificates'] = generate_ssl_certificates(cursor)
         results['vip_pools'] = generate_vip_pools(cursor)
         results['backend_mappings'] = generate_backend_mappings(cursor)
-        
+
         # Generate monitoring data
         print("Generating monitoring data...")
         results['network_traffic'] = generate_network_traffic(cursor)
         results['ssl_monitoring'] = generate_ssl_monitoring(cursor)
         results['lb_health_log'] = generate_lb_health_log(cursor)
         results['network_connectivity'] = generate_network_connectivity(cursor)
-        
+
         # Commit all changes
         conn.commit()
-        
+
         return results
-        
+
     finally:
         conn.close()
 
 
 if __name__ == "__main__":
-    print("Creating network infrastructure database...")
-    print(f"Database will be created at: data/infrastructure.db")
-    
-    result = create_infrastructure_database()
-    
+    parser = argparse.ArgumentParser(description='Create network infrastructure sample data')
+    parser.add_argument(
+        '--database-url',
+        type=str,
+        help='Database URL (postgresql://... or sqlite:///...). Defaults to SQLite at data/infrastructure.db'
+    )
+    args = parser.parse_args()
+
+    # Use DATABASE_URL environment variable if not provided
+    database_url = args.database_url or os.getenv('DATABASE_URL')
+
+    result = create_infrastructure_database(database_url)
+
     print(f"✅ Successfully created network infrastructure database!")
     print(f"📊 Tables and record counts: {result}")
-    print(f"📁 Database location: ./data/infrastructure.db")
-    
-    # Verify the database file was created
-    if os.path.exists("data/infrastructure.db"):
-        size = os.path.getsize("data/infrastructure.db")
-        print(f"💾 Database file size: {size:,} bytes")
-    else:
-        print("⚠️  Database file not found!")
+
+    # Verify SQLite database file if applicable
+    if not database_url or database_url.startswith('sqlite') or not database_url.startswith('postgresql'):
+        db_path = database_url if database_url and not database_url.startswith('sqlite') else 'data/infrastructure.db'
+        if os.path.exists(db_path):
+            size = os.path.getsize(db_path)
+            print(f"💾 Database file size: {size:,} bytes")
+            print(f"📁 Database location: {db_path}")
+        else:
+            print(f"⚠️  Database file not found: {db_path}")

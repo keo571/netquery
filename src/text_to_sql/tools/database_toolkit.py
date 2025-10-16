@@ -8,8 +8,8 @@ from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from sqlalchemy import text
 
-from ..database.engine import get_engine, get_metadata
-from ..config import config
+from ...common.database.engine import get_engine, get_metadata
+from ...common.config import config
 
 logger = logging.getLogger(__name__)
 

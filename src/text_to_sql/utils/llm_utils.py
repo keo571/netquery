@@ -2,7 +2,7 @@
 Shared LLM utilities to avoid multiple model initializations.
 """
 from langchain_google_genai import ChatGoogleGenerativeAI
-from ..config import config
+from ...common.config import config
 
 # Global LLM instance
 _llm_instance = None

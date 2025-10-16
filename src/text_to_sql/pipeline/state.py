@@ -1,9 +1,12 @@
 """
 State definition for the Text-to-SQL pipeline.
 """
-from typing import TypedDict, List, Dict, Any, Optional
+from typing import TypedDict, List, Dict, Any, Optional, TYPE_CHECKING
 from typing_extensions import Annotated
 import operator
+
+if TYPE_CHECKING:
+    from src.schema_ingestion.formats.canonical import CanonicalSchema
 
 
 class ReasoningStep(TypedDict):
@@ -26,7 +29,12 @@ class TextToSQLState(TypedDict):
     export_csv: Optional[bool]
     export_html: Optional[bool]
     execute: Optional[bool]  # Whether to execute the SQL query
-    
+
+    # Schema Input (supports both legacy and new formats)
+    excel_schema_path: Optional[str]  # DEPRECATED: Legacy Excel schema path
+    canonical_schema_path: Optional[str]  # NEW: Path to canonical schema JSON
+    canonical_schema: Optional[Any]  # NEW: Loaded CanonicalSchema object (use Any to avoid TypedDict issues)
+
     # Schema Analysis
     schema_context: str
     schema_analysis_error: Optional[str]

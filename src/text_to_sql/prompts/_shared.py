@@ -13,6 +13,13 @@ def get_database_instructions(database_url: str = "") -> str:
 5. For case-insensitive matching use UPPER() or LOWER()
 6. Column optimization: select only the minimum columns needed to answer the query
 7. Prefer essential data columns over metadata/system columns unless specifically requested
+
+**CRITICAL ID/Name Rule:**
+- When returning an entity's ID, ALWAYS include its human-readable identifier (name, address, title, etc.)
+- Example: SELECT id, name FROM load_balancers (NOT just SELECT id)
+- Example: SELECT vip_id, vip_address FROM virtual_ips (NOT just SELECT vip_id)
+- If ONLY returning the name/address (no id), then id is not needed
+- This ensures results are meaningful and understandable to users
 """
     elif 'postgresql' in database_url.lower():
         return """
@@ -24,6 +31,13 @@ def get_database_instructions(database_url: str = "") -> str:
 6. Use double quotes for identifiers if needed: "column_name"
 7. Column optimization: select only the minimum columns needed to answer the query
 8. Prefer essential data columns over metadata/system columns unless specifically requested
+
+**CRITICAL ID/Name Rule:**
+- When returning an entity's ID, ALWAYS include its human-readable identifier (name, address, title, etc.)
+- Example: SELECT id, name FROM load_balancers (NOT just SELECT id)
+- Example: SELECT vip_id, vip_address FROM virtual_ips (NOT just SELECT vip_id)
+- If ONLY returning the name/address (no id), then id is not needed
+- This ensures results are meaningful and understandable to users
 """
     else:
         # Generic SQL instructions
@@ -35,6 +49,13 @@ def get_database_instructions(database_url: str = "") -> str:
 5. For case-insensitive matching use appropriate functions for your database
 6. Column optimization: select only the minimum columns needed to answer the query
 7. Prefer essential data columns over metadata/system columns unless specifically requested
+
+**CRITICAL ID/Name Rule:**
+- When returning an entity's ID, ALWAYS include its human-readable identifier (name, address, title, etc.)
+- Example: SELECT id, name FROM load_balancers (NOT just SELECT id)
+- Example: SELECT vip_id, vip_address FROM virtual_ips (NOT just SELECT vip_id)
+- If ONLY returning the name/address (no id), then id is not needed
+- This ensures results are meaningful and understandable to users
 """
 
 # Network infrastructure context

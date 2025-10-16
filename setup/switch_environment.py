@@ -18,14 +18,8 @@ def switch_environment(mode: str):
 
     # Environment file mapping
     env_files = {
-        'sample': '.env.sample',
-        'production': '.env.production'
-    }
-
-    # Description file mapping
-    desc_files = {
-        'sample': 'table_descriptions.yaml',
-        'production': 'table_descriptions_production.yaml'
+        'sample': '.env.dev',
+        'production': '.env.prod'
     }
 
     try:
@@ -40,16 +34,6 @@ def switch_environment(mode: str):
             print(f"❌ Environment file not found: {source_env}")
             sys.exit(1)
 
-        # Copy table descriptions file
-        desc_source = project_root / 'src' / 'text_to_sql' / desc_files[mode]
-        desc_target = project_root / 'src' / 'text_to_sql' / 'table_descriptions.yaml'
-
-        if desc_source.exists():
-            shutil.copy2(desc_source, desc_target)
-            print(f"✅ Updated table descriptions for {mode}")
-        else:
-            print(f"⚠️  Table descriptions file not found: {desc_source}")
-
         # Print configuration summary
         print(f"\n📋 {mode.title()} Environment Active:")
         print("-" * 40)
@@ -58,23 +42,22 @@ def switch_environment(mode: str):
             print("🗄️  Database: SQLite (data/infrastructure.db)")
             print("📊 Tables: Load balancers, servers, network monitoring")
             print("🎯 Use Case: Network infrastructure demo")
-            print("📝 Schema: Auto-detected from SQLite")
+            print("📝 Schema: Auto-detected from SQLite or `schema_files/dev_schema.json`")
         else:
             print("🗄️  Database: PostgreSQL (configure in .env)")
             print("📊 Tables: Your Excel-defined tables")
             print("🎯 Use Case: Real production data demo")
-            print("📝 Schema: Excel-defined schema")
+            print("📝 Schema: Use canonical JSON via `setup/ingest_schema.py`")
 
         print(f"\n🔄 Next Steps:")
         if mode == 'sample':
-            print("1. Run: python scripts/create_sample_data.py")
+            print("1. (Optional) Refresh demo DB: python setup/create_data_sqlite.py")
             print("2. Start server: python -m uvicorn src.api.server:app --reload")
-            print("3. Try queries like: 'Show me all load balancers'")
+            print("3. Exercise CLI: python gemini_cli.py \"Show me all load balancers\"")
         else:
-            print("1. Update DATABASE_URL in .env with your PostgreSQL connection")
-            print("2. Update EXCEL_SCHEMA_PATH in .env with your Excel file path")
-            print("3. Start server: python -m uvicorn src.api.server:app --reload")
-            print("4. Try queries like: 'Show me top customers'")
+            print("1. Build schema JSON: python setup/ingest_schema.py build --output schema_files/prod_schema.json")
+            print("2. Start server: python -m uvicorn src.api.server:app --reload")
+            print("3. Test pipeline: python gemini_cli.py \"Show me top customers\"")
 
     except Exception as e:
         print(f"❌ Error switching environment: {e}")
@@ -122,7 +105,7 @@ if __name__ == "__main__":
             switch_environment(mode)
     else:
         print("Usage:")
-        print("  python switch_environment.py              # Show current status")
-        print("  python switch_environment.py sample       # Switch to sample data")
-        print("  python switch_environment.py production   # Switch to production data")
-        print("  python switch_environment.py status       # Show current status")
+        print("  python setup/switch_environment.py              # Show current status")
+        print("  python setup/switch_environment.py sample       # Switch to sample data")
+        print("  python setup/switch_environment.py production   # Switch to production data")
+        print("  python setup/switch_environment.py status       # Show current status")

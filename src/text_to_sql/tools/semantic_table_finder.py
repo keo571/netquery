@@ -1,17 +1,19 @@
 """
 Semantic table finder using sentence-transformers.
-Finds relevant tables using semantic similarity instead of keyword matching.
+Finds relevant tables using semantic similarity with human-provided descriptions from Excel.
 """
 import logging
-import pickle
-import yaml
-from pathlib import Path
-from typing import List, Tuple, Dict, Optional
+import os
+from typing import List, Tuple, Dict, Optional, TYPE_CHECKING
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
 
 from .database_toolkit import db_toolkit
+from ...common.stores.embedding_store import create_embedding_store, EmbeddingStore
+
+if TYPE_CHECKING:
+    from src.schema_ingestion.tools.excel_schema_parser import ExcelSchemaParser
+    from src.schema_ingestion.formats.canonical import CanonicalSchema
 
 logger = logging.getLogger(__name__)
 
@@ -19,91 +21,233 @@ logger = logging.getLogger(__name__)
 class SemanticTableFinder:
     """
     Find semantically relevant tables using sentence embeddings.
+
+    Supports three schema sources (in priority order):
+    1. CanonicalSchema (NEW - preferred)
+    2. ExcelSchemaParser (legacy)
+    3. Database introspection (fallback)
     """
-    
-    def __init__(self, engine, model_name: str = "all-mpnet-base-v2", cache_dir: str = ".embeddings_cache"):
-        """Initialize with sentence transformer model."""
+
+    def __init__(
+        self,
+        engine,
+        model_name: str = "all-mpnet-base-v2",
+        cache_dir: str = ".embeddings_cache",
+        excel_schema: Optional['ExcelSchemaParser'] = None,
+        canonical_schema: Optional['CanonicalSchema'] = None,
+        embedding_store: Optional[EmbeddingStore] = None
+    ):
+        """
+        Initialize with sentence transformer model.
+
+        Args:
+            engine: Database engine (kept for compatibility)
+            model_name: Name of the sentence transformer model
+            cache_dir: Directory to cache embeddings (for local file store)
+            excel_schema: DEPRECATED - Optional Excel schema parser
+            canonical_schema: NEW - Optional canonical schema (preferred)
+            embedding_store: Optional pre-configured embedding store (pgvector or local file)
+        """
         # Note: engine parameter kept for compatibility but not used
         self.model = SentenceTransformer(model_name)
-        self.cache_file = Path(cache_dir) / "table_embeddings.pkl"
-        self.table_embeddings: Dict[str, np.ndarray] = {}
+        self.excel_schema = excel_schema
+        self.canonical_schema = canonical_schema
+
+        # Determine namespace for embedding isolation
+        if canonical_schema:
+            self.namespace = canonical_schema.get_embedding_namespace()
+            logger.info(f"Using embedding namespace: {self.namespace}")
+        elif excel_schema:
+            # Legacy: Use hash of excel schema tables
+            excel_hash = hash(frozenset(excel_schema.tables.keys()))
+            self.namespace = f"excel_{excel_hash}"
+        else:
+            self.namespace = "default"
+
+        env_namespace = os.getenv("SCHEMA_ID")
+        if env_namespace:
+            self.namespace = env_namespace
+
+        # Create or use provided embedding store
+        if embedding_store:
+            self.embedding_store = embedding_store
+            logger.info(f"Using provided embedding store: {type(embedding_store).__name__}")
+        else:
+            # Auto-detect: PostgreSQL pgvector or local file cache
+            database_url = os.getenv('EMBEDDING_DATABASE_URL')
+            self.embedding_store = create_embedding_store(
+                database_url=database_url,
+                cache_dir=cache_dir
+            )
+            logger.info(f"Created embedding store: {type(self.embedding_store).__name__}")
+
+        # Cache for in-memory lookups (for performance)
         self.table_descriptions: Dict[str, str] = {}
-        self.custom_descriptions: Optional[Dict[str, str]] = None
-        
-        # Load table descriptions from config
-        self._load_table_descriptions()
-        
-        # Load cached embeddings if available
-        self._load_cache()
-        
-        logger.info(f"SemanticTableFinder initialized with model: {model_name}")
-    
+
+        # Build embeddings if using legacy Excel schema (for backward compatibility)
+        if excel_schema:
+            # Check if embeddings already exist in cache
+            if self._embeddings_exist():
+                logger.info(f"Using cached embeddings for namespace: {self.namespace}")
+            else:
+                logger.info("Excel schema provided - building fresh embeddings with human-provided descriptions")
+                self.build_embeddings()
+
+        logger.info(f"SemanticTableFinder initialized with model: {model_name}, namespace: {self.namespace}")
+
+    def _embeddings_exist(self) -> bool:
+        """Check if embeddings already exist in cache for this namespace."""
+        try:
+            # Try to get one table's embedding to verify cache exists
+            table_names = db_toolkit.get_table_names()
+            if not table_names:
+                return False
+
+            # Check if first table has cached embedding
+            first_table = table_names[0]
+            embedding = self.embedding_store.get_embedding(first_table, namespace=self.namespace)
+            return embedding is not None
+        except Exception as e:
+            logger.debug(f"Error checking embeddings cache: {e}")
+            return False
+
     def build_embeddings(self) -> None:
-        """Build embeddings for all database tables."""
+        """Build embeddings for all database tables and store them."""
         logger.info("Building table embeddings...")
-        
+
         for table_name in db_toolkit.get_table_names():
             description = self._create_table_description(table_name)
-            embedding = self.model.encode([description])[0]
-            
+            embedding = self.model.encode(description)
+
+            # Store in embedding store
+            self.embedding_store.store(
+                table_name=table_name,
+                description=description,
+                embedding=embedding,
+                namespace=self.namespace
+            )
+
+            # Cache description for in-memory lookups
             self.table_descriptions[table_name] = description
-            self.table_embeddings[table_name] = embedding
-            
-        logger.info(f"Built embeddings for {len(self.table_embeddings)} tables")
-        
-        # Save to cache
-        self._save_cache()
+
+        logger.info(f"Built embeddings for {len(self.table_descriptions)} tables")
     
     def find_relevant_tables(self, query: str, max_tables: int, threshold: float) -> List[Tuple[str, float, str]]:
         """
         Find tables relevant to query using semantic similarity.
-        
+
         Returns: List of (table_name, similarity_score, description)
         """
-        if not self.table_embeddings:
-            self.build_embeddings()
-        
         # Get query embedding
-        query_embedding = self.model.encode([query])
-        
-        # Calculate similarities with all table embeddings
-        table_names = list(self.table_embeddings.keys())
-        table_embeds = np.array(list(self.table_embeddings.values()))
-        
-        similarities = cosine_similarity(query_embedding, table_embeds)[0]
-        
-        # Filter and sort results
+        query_embedding = self.model.encode(query)
+
+        # Search for similar tables using embedding store
+        # The store handles the similarity computation (in-database for pgvector)
+        similar_tables = self.embedding_store.search_similar(
+            query_embedding=query_embedding,
+            namespace=self.namespace,
+            limit=max_tables,
+            min_similarity=threshold
+        )
+
+        # Format results: (table_name, similarity_score, description)
         results = []
-        for i, similarity in enumerate(similarities):
-            if similarity >= threshold:
-                table_name = table_names[i]
-                description = self.table_descriptions[table_name]
-                results.append((table_name, float(similarity), description))
-        
-        # Sort by similarity (descending) and return top results
-        results.sort(key=lambda x: x[1], reverse=True)
-        return results[:max_tables]
+        for table_name, similarity in similar_tables:
+            # Get description from cache or create it
+            if table_name not in self.table_descriptions:
+                self.table_descriptions[table_name] = self._create_table_description(table_name)
+            description = self.table_descriptions[table_name]
+            results.append((table_name, similarity, description))
+
+        logger.info(f"Found {len(results)} relevant tables for query (threshold: {threshold})")
+        return results
     
     def _create_table_description(self, table_name: str) -> str:
-        """Create text description of table for embedding - focus on semantic meaning."""
+        """
+        Create text description of table for embedding - focus on semantic meaning.
+
+        Priority order for descriptions:
+        1. CanonicalSchema (LLM/human-provided descriptions) - HIGHEST PRIORITY
+        2. Excel schema (human-provided descriptions) - LEGACY
+        3. Auto-generated from database reflection
+        """
+        # Priority 1: Use CanonicalSchema (NEW - preferred)
+        if self.canonical_schema and table_name in self.canonical_schema.tables:
+            table_schema = self.canonical_schema.tables[table_name]
+
+            # Start with canonical description (from LLM or human)
+            parts = [f"Table: {table_name} - {table_schema.description}"]
+
+            # Add column descriptions
+            if table_schema.columns:
+                col_descs = []
+                for col_name, col in table_schema.columns.items():
+                    col_desc = col.description
+                    # Only include if not placeholder
+                    if col_desc and not col_desc.startswith("Column:"):
+                        col_descs.append(f"{col_name}: {col_desc}")
+                    else:
+                        col_descs.append(col_name)
+
+                if col_descs:
+                    parts.append(f"Columns: {', '.join(col_descs)}")
+
+            # Add relationship context
+            if table_schema.relationships:
+                related = [rel.referenced_table for rel in table_schema.relationships]
+                parts.append(f"Related to: {', '.join(related)}")
+
+            logger.debug(f"Using canonical schema description for {table_name}")
+            return ". ".join(parts)
+
+        # Priority 2: Use Excel schema description if available (LEGACY)
         table_info = db_toolkit.get_table_info(table_name)
-        
-        # Start with semantic purpose based on table name
-        semantic_context = self._get_semantic_context(table_name)
-        parts = [f"Table: {table_name} - {semantic_context}"]
-        
+        if self.excel_schema and table_name in self.excel_schema.tables:
+            excel_table = self.excel_schema.tables[table_name]
+            excel_desc = excel_table['description']
+
+            # Start with rich Excel description
+            parts = [f"Table: {table_name} - {excel_desc}"]
+
+            # Add Excel column descriptions (human-provided semantic info)
+            excel_columns = excel_table['columns']
+            if excel_columns:
+                col_descs = []
+                for col in excel_columns:
+                    col_name = col['name']
+                    col_desc = col.get('description', '')
+                    if col_desc:
+                        col_descs.append(f"{col_name}: {col_desc}")
+                    else:
+                        col_descs.append(col_name)
+
+                if col_descs:
+                    parts.append(f"Columns: {', '.join(col_descs)}")
+
+            # Add relationship context from Excel
+            related_tables = self.excel_schema.get_related_tables(table_name)
+            if related_tables:
+                parts.append(f"Related to: {', '.join(related_tables)}")
+
+            logger.debug(f"Using Excel schema description for {table_name}")
+            return ". ".join(parts)
+
+        # Priority 2: Fall back to database reflection only (no Excel schema provided)
+        # Simple description based on table name
+        parts = [f"Table: {table_name}"]
+
         # Add column names with semantic meaning
         if table_info.get('columns'):
             column_names = [col['name'] for col in table_info['columns']]
             # Group columns by semantic meaning
-            key_columns = [col for col in column_names if any(keyword in col.lower() 
-                          for keyword in ['usage', 'memory', 'cpu', 'utilization', 'performance', 
-                                        'health', 'status', 'datacenter', 'location', 'time', 
+            key_columns = [col for col in column_names if any(keyword in col.lower()
+                          for keyword in ['usage', 'memory', 'cpu', 'utilization', 'performance',
+                                        'health', 'status', 'datacenter', 'location', 'time',
                                         'rate', 'bandwidth', 'response', 'error', 'latency'])]
             if key_columns:
                 parts.append(f"Key metrics: {', '.join(key_columns)}")
             parts.append(f"All columns: {', '.join(column_names)}")
-        
+
         # Add sample data for semantic context
         sample_data = db_toolkit.get_sample_data(table_name, limit=2)
         if sample_data:
@@ -113,70 +257,5 @@ class SemanticTableFinder:
                 row_text = ", ".join([f"{k}: {v}" for k, v in row.items() if v is not None])
                 sample_parts.append(row_text)
             parts.append(f"Sample data: {'; '.join(sample_parts)}")
-        
+
         return ". ".join(parts)
-    
-    def _load_table_descriptions(self) -> None:
-        """Load table descriptions from YAML config file."""
-        config_paths = [
-            Path(__file__).parent.parent / 'table_descriptions.yaml',
-            Path('src/text_to_sql/table_descriptions.yaml'),
-            Path('table_descriptions.yaml')
-        ]
-        
-        for config_path in config_paths:
-            if config_path.exists():
-                try:
-                    with open(config_path, 'r') as f:
-                        self.custom_descriptions = yaml.safe_load(f)
-                        logger.info(f"Loaded table descriptions from {config_path}")
-                        return
-                except Exception as e:
-                    logger.warning(f"Failed to load descriptions from {config_path}: {e}")
-        
-        logger.info("No table descriptions config found, using defaults")
-    
-    def _get_semantic_context(self, table_name: str) -> str:
-        """Get semantic context for a table based on its name."""
-        # First try custom descriptions from YAML
-        if self.custom_descriptions and table_name in self.custom_descriptions:
-            return self.custom_descriptions[table_name]
-        
-        # Fallback to hardcoded defaults for backward compatibility
-        contexts = {
-            'servers': 'Infrastructure servers with CPU, memory, and performance metrics by datacenter',
-            'load_balancers': 'Load balancing infrastructure with health status and datacenter locations',
-            'network_traffic': 'Time-series network traffic data with bandwidth, requests, and performance metrics',
-            'ssl_certificates': 'SSL certificate management with expiry dates and certificate providers',
-            'lb_health_log': 'Load balancer health monitoring with backend status and response times over time',
-            'network_connectivity': 'Server network connectivity metrics including latency, packet loss, and uptime over time',
-            'ssl_monitoring': 'SSL certificate monitoring trends with expiration tracking over time',
-            'vip_pools': 'Virtual IP pools associated with load balancers and network services',
-            'backend_mappings': 'Mapping between load balancers and their backend servers'
-        }
-        return contexts.get(table_name, f'{table_name} data')
-    
-    def _load_cache(self) -> None:
-        """Load cached embeddings if available."""
-        try:
-            if self.cache_file.exists():
-                with open(self.cache_file, 'rb') as f:
-                    cache_data = pickle.load(f)
-                    self.table_embeddings = cache_data.get('embeddings', {})
-                    self.table_descriptions = cache_data.get('descriptions', {})
-                    logger.info(f"Loaded {len(self.table_embeddings)} cached embeddings")
-        except Exception as e:
-            logger.warning(f"Failed to load cache: {e}")
-    
-    def _save_cache(self) -> None:
-        """Save embeddings to cache."""
-        try:
-            self.cache_file.parent.mkdir(exist_ok=True)
-            with open(self.cache_file, 'wb') as f:
-                cache_data = {
-                    'embeddings': self.table_embeddings,
-                    'descriptions': self.table_descriptions
-                }
-                pickle.dump(cache_data, f)
-        except Exception as e:
-            logger.warning(f"Failed to save cache: {e}")

@@ -1,32 +1,84 @@
 """
 Schema analyzer node for Text-to-SQL pipeline.
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import logging
 import os
 import time
+from pathlib import Path
 
 from ...tools.semantic_table_finder import SemanticTableFinder
 from ...tools.database_toolkit import db_toolkit
-from ...config import config
+from src.schema_ingestion.tools.excel_schema_parser import ExcelSchemaParser
+from src.schema_ingestion.formats.canonical import CanonicalSchema
+from ....common.config import config
+from ....common.schema_summary import get_schema_overview
 from ..state import TextToSQLState
-from ...database.engine import get_engine
+from ....common.database.engine import get_engine
 
 logger = logging.getLogger(__name__)
 
 
 class SchemaAnalyzer:
     """Schema analyzer using embeddings for semantic table selection."""
-    
-    def __init__(self):
+
+    def __init__(self, excel_schema_path: Optional[str] = None, canonical_schema_path: Optional[str] = None):
         """Initialize the analyzer with embedding support (required)."""
         engine = get_engine()
+
+        # Load Excel schema if provided (before creating SemanticTableFinder)
+        self.excel_schema: Optional[ExcelSchemaParser] = None
+        if excel_schema_path:
+            self._load_excel_schema(excel_schema_path)
+
+        self.canonical_schema: Optional[CanonicalSchema] = None
+        if canonical_schema_path:
+            self._load_canonical_schema(canonical_schema_path)
+
+        # Create SemanticTableFinder with Excel schema for embedding
         self.semantic_finder = SemanticTableFinder(
             engine=engine,
             model_name=os.getenv("EMBEDDING_MODEL", "all-mpnet-base-v2"),
-            cache_dir=os.getenv("EMBEDDING_CACHE_DIR", ".embeddings_cache")
+            cache_dir=os.getenv("EMBEDDING_CACHE_DIR", ".embeddings_cache"),
+            excel_schema=self.excel_schema,
+            canonical_schema=self.canonical_schema
         )
-        logger.info("Initialized embedding-based schema analyzer")
+
+        logger.info(
+            "Initialized embedding-based schema analyzer (excel_schema: %s, canonical_schema: %s)",
+            self.excel_schema is not None,
+            self.canonical_schema is not None
+        )
+
+    def _load_excel_schema(self, excel_schema_path: str):
+        """Load Excel schema for enhanced table descriptions."""
+        try:
+            if not Path(excel_schema_path).exists():
+                logger.warning(f"Excel schema file not found: {excel_schema_path}")
+                return
+
+            self.excel_schema = ExcelSchemaParser(excel_schema_path)
+            logger.info(f"Loaded Excel schema with {len(self.excel_schema.tables)} tables")
+        except Exception as e:
+            logger.error(f"Failed to load Excel schema: {e}")
+            self.excel_schema = None
+
+    def _load_canonical_schema(self, canonical_schema_path: str):
+        """Load canonical schema for enhanced descriptions and namespace isolation."""
+        try:
+            if not Path(canonical_schema_path).exists():
+                logger.warning(f"Canonical schema file not found: {canonical_schema_path}")
+                return
+
+            self.canonical_schema = CanonicalSchema.load(canonical_schema_path)
+            logger.info(
+                "Loaded canonical schema '%s' with %s tables",
+                self.canonical_schema.schema_id,
+                self.canonical_schema.total_tables
+            )
+        except Exception as exc:
+            logger.error(f"Failed to load canonical schema: {exc}")
+            self.canonical_schema = None
     
     def analyze_schema(self, query: str) -> Dict[str, Any]:
         """
@@ -133,25 +185,41 @@ class SchemaAnalyzer:
         Helper function for schema formatting.
         """
         schema_parts = ["Database Schema:"]
-        
+
         for table_name in table_names:
             table_info = db_toolkit.get_table_info(table_name)
+            canonical_table = None
+            if self.canonical_schema and table_name in self.canonical_schema.tables:
+                canonical_table = self.canonical_schema.tables[table_name]
+
             schema_parts.append(f"\n## Table: {table_name}")
             schema_parts.append(f"Rows: {table_info.get('row_count', 'Unknown')}")
-            
-            # Format columns
+
+            if canonical_table:
+                schema_parts.append(f"Description: {canonical_table.description}")
+                if canonical_table.relationships:
+                    related = sorted({rel.referenced_table for rel in canonical_table.relationships})
+                    if related:
+                        schema_parts.append(f"Related tables: {', '.join(related)}")
+
             columns = table_info.get('columns', [])
             if columns:
                 schema_parts.append("Columns:")
                 for col in columns:
                     col_line = f"  - {col['name']} ({col['type']}"
-                    if col.get('nullable') == False:
+                    if col.get('nullable') is False:
                         col_line += ", NOT NULL"
                     if col.get('primary_key'):
                         col_line += ", PRIMARY KEY"
                     col_line += ")"
+
+                    if canonical_table and col['name'] in canonical_table.columns:
+                        description = canonical_table.columns[col['name']].description
+                        if description and not description.startswith("Column:"):
+                            col_line += f" - {description}"
+
                     schema_parts.append(col_line)
-            
+
             # Add sample data if requested
             if include_sample_data:
                 sample_data = db_toolkit.get_sample_data(table_name, limit=3)
@@ -159,49 +227,68 @@ class SchemaAnalyzer:
                     schema_parts.append("Sample data:")
                     for i, row in enumerate(sample_data, 1):
                         schema_parts.append(f"  {i}. {row}")
-        
+
         return "\n".join(schema_parts)
 
 
-# Global instance
-analyzer_instance = None
+# Global instance cache
+_analyzer_cache: Dict[tuple, SchemaAnalyzer] = {}
 
-def get_analyzer() -> SchemaAnalyzer:
-    """Get or create the analyzer instance."""
-    global analyzer_instance
-    if analyzer_instance is None:
-        analyzer_instance = SchemaAnalyzer()
-    return analyzer_instance
+
+def get_analyzer(
+    excel_schema_path: Optional[str] = None,
+    canonical_schema_path: Optional[str] = None
+) -> SchemaAnalyzer:
+    """Get or create the analyzer instance (cached by schema paths)."""
+    global _analyzer_cache
+
+    # Use cache key based on excel_schema_path
+    cache_key = (excel_schema_path, canonical_schema_path)
+
+    if cache_key not in _analyzer_cache:
+        _analyzer_cache[cache_key] = SchemaAnalyzer(
+            excel_schema_path=excel_schema_path,
+            canonical_schema_path=canonical_schema_path
+        )
+
+    return _analyzer_cache[cache_key]
 
 
 def schema_analyzer_node(state: TextToSQLState) -> Dict[str, Any]:
     """
     Schema analyzer node that uses embeddings for semantic table selection.
     """
-    def create_reasoning_step(tables: list, scores: dict) -> dict:
+    def create_reasoning_step(tables: list, scores: dict, excel_enhanced: bool = False) -> dict:
         """Create reasoning step for the analysis."""
         if tables:
             detail = (
                 f"Used semantic embeddings to identify {len(tables)} relevant tables. "
                 f"Top match: {tables[0]} ({scores.get(tables[0], 0):.1%} similarity)"
             )
+            if excel_enhanced:
+                detail += " (Enhanced with curated schema metadata)"
         else:
             detail = "No relevant tables found for the query."
-        
+
         return {
             "step_name": "Schema Analysis",
             "details": detail,
             "status": "✅" if tables else "⚠️"
         }
-    
+
     query = state["original_query"]
-    
+    excel_schema_path = state.get("excel_schema_path") or os.getenv("EXCEL_SCHEMA_PATH")
+    canonical_schema_path = state.get("canonical_schema_path") or os.getenv("CANONICAL_SCHEMA_PATH")
+
     try:
         # Measure schema analysis time
         start_time = time.time()
-        
-        # Analyze schema using embeddings
-        analyzer = get_analyzer()
+
+        # Analyze schema using embeddings (with optional Excel schema)
+        analyzer = get_analyzer(
+            excel_schema_path=excel_schema_path,
+            canonical_schema_path=canonical_schema_path
+        )
         analysis_result = analyzer.analyze_schema(query=query)
         
         schema_analysis_time_ms = (time.time() - start_time) * 1000
@@ -211,29 +298,34 @@ def schema_analyzer_node(state: TextToSQLState) -> Dict[str, Any]:
             return {
                 "schema_analysis_error": analysis_result["schema_analysis_error"],
                 "schema_analysis_time_ms": schema_analysis_time_ms,
-                "reasoning_log": analysis_result.get("reasoning_log", [])
+                "reasoning_log": analysis_result.get("reasoning_log", []),
+                "schema_overview": get_schema_overview(canonical_schema_path)
             }
         
         # Extract results for successful analysis
-        schema_context = analysis_result["schema_context"] 
+        schema_context = analysis_result["schema_context"]
         relevance_scores = analysis_result.get("relevance_scores", {})
         relevant_tables = list(relevance_scores.keys()) if relevance_scores else []
-        
-        # Create reasoning step
-        reasoning_step = create_reasoning_step(relevant_tables, relevance_scores)
-        
+
+        # Create reasoning step (indicate if Excel-enhanced)
+        metadata_enhanced = analyzer.canonical_schema is not None
+        reasoning_step = create_reasoning_step(relevant_tables, relevance_scores, metadata_enhanced)
+
         return {
             "schema_context": schema_context,
             "relevance_scores": relevance_scores,
             "schema_analysis_time_ms": schema_analysis_time_ms,
-            "reasoning_log": [reasoning_step]
+            "reasoning_log": [reasoning_step],
+            "canonical_schema_path": canonical_schema_path,
+            "canonical_schema": analyzer.canonical_schema
         }
         
     except Exception as e:
         logger.error(f"Schema analysis failed: {str(e)}")
-        
+
         # Return error state - graph will route to error handler
         return {
             "schema_analysis_error": str(e),
-            "reasoning_log": []
+            "reasoning_log": [],
+            "schema_overview": get_schema_overview(canonical_schema_path)
         }

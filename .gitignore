@@ -246,6 +246,10 @@ backend/logs/
 .env.local
 .env.staging
 
+# BUT keep the profile config templates (these don't have real API keys)
+!.env.dev
+!.env.prod
+
 # API keys and secrets
 secrets.json
 config.json
@@ -283,7 +287,6 @@ site/
 
 # Claude Code specific
 .claude/
-CLAUDE.md
 
 # Netquery specific files
 .embeddings_cache/

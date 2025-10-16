@@ -44,7 +44,22 @@ def error_handler_node(state: TextToSQLState) -> dict:
         error = "Unknown error"
         msg = "Something went wrong processing your query."
         hint = "Please try again."
-    
+    overview = state.get("schema_overview") or {}
+    overview_tables = overview.get("tables", [])
+    suggested = overview.get("suggested_queries", [])
+
+    if overview_tables:
+        table_lines = []
+        for table in overview_tables[:5]:
+            description = table.get("description") or table.get("name")
+            table_lines.append(f"- {table.get('name', 'unknown')}: {description}")
+        msg += "\n\nHere are some datasets I know:\n" + "\n".join(table_lines)
+
+    if suggested:
+        hint = "Here are a few example prompts you can try:\n" + "\n".join(
+            f"- {s}" for s in suggested[:5]
+        )
+
     return {
         "final_response": f"{msg}\n\n{hint}",
         "execution_error": error

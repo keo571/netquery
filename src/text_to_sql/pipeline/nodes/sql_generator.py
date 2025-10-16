@@ -7,9 +7,9 @@ import logging
 import time
 
 from ..state import TextToSQLState
-from ...utils.sql_utils import extract_sql_from_response
+from ...utils.sql_utils import extract_sql_from_response, adapt_sql_for_database
 from ...prompts.sql_generation import SQL_GENERATION_PROMPT_FUNC
-from ...config import config
+from ....common.config import config
 from ...utils.llm_utils import get_llm
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,7 @@ def sql_generator_node(state: TextToSQLState) -> Dict[str, Any]:
 
     response = llm.invoke(sql_prompt)
     sql_generation_time_ms = (time.time() - start_time) * 1000
+    database_url = config.database.database_url
 
     for attempt in range(2):  # Try twice for LLM non-determinism
         try:
@@ -42,6 +43,7 @@ def sql_generator_node(state: TextToSQLState) -> Dict[str, Any]:
                 current_response = retry_response.content.strip()
 
             generated_sql = extract_sql_from_response(current_response)
+            generated_sql = adapt_sql_for_database(generated_sql, database_url)
 
             # Basic validation
             if not generated_sql or not generated_sql.strip():
@@ -87,5 +89,4 @@ def _create_sql_generation_prompt(query: str, schema_context: str, query_plan: D
     """Create the SQL generation prompt for the LLM."""
     database_url = config.database.database_url
     return SQL_GENERATION_PROMPT_FUNC(query, schema_context, query_plan, database_url)
-
 

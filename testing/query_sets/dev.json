@@ -1,0 +1,79 @@
+{
+  "Basic Queries": [
+    "Show me all load balancers",
+    "List all servers",
+    "What SSL certificates do we have?",
+    "Display VIP pools",
+    "List servers in us-east-1"
+  ],
+  "Aggregations": [
+    "How many load balancers do we have?",
+    "Count servers by datacenter",
+    "What's the average CPU utilization by datacenter?",
+    "What's the total bandwidth consumption?",
+    "Show top 3 load balancers by traffic volume in each region"
+  ],
+  "Comparative Queries": [
+    "Which servers have higher CPU than average?",
+    "Find load balancers with more backends than typical",
+    "Show datacenters with above-average server counts"
+  ],
+  "Multi-Table Joins": [
+    "Show load balancers with their backend servers and current status",
+    "List servers with their load balancer connections and roles",
+    "Show load balancers with backend mappings and monitoring metrics",
+    "Find servers with their monitoring data and SSL certificate status",
+    "Show servers with their load balancers and SSL certificate details"
+  ],
+  "Set Operations & Existence": [
+    "Are there any servers without SSL certificates?",
+    "Find load balancers with no backend servers assigned",
+    "Show servers that have never been monitored"
+  ],
+  "Conditional Logic": [
+    "Categorize servers as High/Medium/Low based on CPU usage",
+    "Show load balancers with traffic status (Heavy/Normal/Light)",
+    "Display server health as Critical/Warning/OK based on metrics"
+  ],
+  "HAVING & Advanced Filters": [
+    "Show datacenters with more than 5 unhealthy servers",
+    "Find load balancers where average response time exceeds 500ms",
+    "List SSL providers managing more than 10 certificates"
+  ],
+  "Window Functions & Analytics": [
+    "Rank servers by CPU utilization within each datacenter",
+    "Compare each server's current CPU to its previous measurement",
+    "Calculate moving average of response times over the last 5 measurements"
+  ],
+  "Time-based Queries": [
+    "Show certificates expiring in the next 30 days",
+    "Find servers with high CPU for the last 3 consecutive monitoring periods",
+    "Show network traffic trends over the past week"
+  ],
+  "Troubleshooting": [
+    "What's the health status by datacenter?",
+    "Find servers with connection issues"
+  ],
+  "Performance Testing": [
+    "Show all monitoring metrics without any filtering",
+    "Display comprehensive server details with all related data"
+  ],
+  "Subqueries & Advanced Patterns": [
+    "Find servers in datacenters that have more than 5 load balancers",
+    "Show load balancers with more backends than the average",
+    "List servers that are monitored but not assigned to any load balancer"
+  ],
+  "String Operations & NULL Handling": [
+    "Find servers with hostnames containing 'web'",
+    "Show certificates with domains ending in '.com'",
+    "Display servers where hostname is not recorded",
+    "List load balancers with missing health score data"
+  ],
+  "Edge Cases": [
+    "Show me nonexistent table data",
+    "List servers in Mars datacenter",
+    "Delete all servers",
+    "Show me everything",
+    "What's broken?"
+  ]
+}
