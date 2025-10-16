@@ -27,35 +27,7 @@ flowchart TD
     style I fill:#FF8A65,color:#000
     style E fill:#FFB74D,color:#000
     style CACHE fill:#E1BEE7,color:#000
-## Quick Start
-
-### Prerequisites
-- Python 3.9+
-- pip
-- Gemini API key from Google AI Studio (exported as `GEMINI_API_KEY`)
-
-### Install dependencies
-```bash
-git clone https://github.com/keo571/netquery.git
-cd netquery
-python3 -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
 ```
-
-### Initialize the development profile (SQLite)
-```bash
-./profile.sh dev init
-python gemini_cli.py "Show me all load balancers"
-```
-`profile.sh` copies `.env.dev` to `.env`, preserves your API key, seeds the SQLite demo database via `setup/create_data_sqlite.py`, and rebuilds embeddings with `python -m src.schema_ingestion`. Run `./profile.sh status` at any time to check the active profile and database URL.
-
-### Switch to PostgreSQL (optional)
-```bash
-./profile.sh prod          # Copies .env.prod → .env (edit DATABASE_URL first)
-./profile.sh prod init     # Seeds PostgreSQL using setup/create_data_postgres.py
-```
-Ensure your PostgreSQL instance is running and that `.env` points to it. The init command also writes `schema_files/prod_schema.json` and refreshes embeddings.
 
 ## Quick Start
 
