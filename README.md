@@ -111,7 +111,7 @@ python -m src.text_to_sql.mcp_server
 ## Optional Integrations
 
 Netquery can plug into additional tooling when you need a richer experience:
-- **[universal-agent-chat](https://github.com/keo571/universal-agent-chat)** adds a TypeScript/React front end for the text-to-SQL workflow.
+- **[netquery-insight-chat](https://github.com/keo571/netquery-insight-chat)** adds a TypeScript/React front end for the text-to-SQL workflow.
 - **[netquery-docker](https://github.com/keo571/netquery-docker)** offers a containerized demo environment. It is optional and no longer part of the default quick start.
 
 ## Direct Python API
