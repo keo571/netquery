@@ -77,13 +77,13 @@ show_status() {
         dev)
             echo -e "${BLUE}Details:${NC}"
             echo "  • Database: SQLite (file-based)"
-            echo "  • Data script: scripts/create_data_sqlite.py"
+            echo "  • Data script: setup/create_data_sqlite.py"
             echo "  • Use case: Quick testing, local development"
             ;;
         prod)
             echo -e "${BLUE}Details:${NC}"
             echo "  • Database: PostgreSQL (Docker)"
-            echo "  • Data script: scripts/create_data_postgres.py"
+            echo "  • Data script: setup/create_data_postgres.py"
             echo "  • Use case: Production-like testing"
             echo ""
             # Check if Docker is running
@@ -92,7 +92,7 @@ show_status() {
                     echo -e "  ${GREEN}✓ PostgreSQL container running${NC}"
                 else
                     echo -e "  ${YELLOW}⚠ PostgreSQL container not running${NC}"
-                    echo "    Start with: docker-compose up -d"
+                    echo "    Start your PostgreSQL instance (container, cloud, etc.)"
                 fi
             else
                 echo -e "  ${RED}✗ Docker not running${NC}"
@@ -156,7 +156,7 @@ switch_profile() {
             ;;
         prod)
             echo -e "${BLUE}Next steps:${NC}"
-            echo "  1. Start DB:   docker-compose up -d"
+            echo "  1. Ensure DB:  Start your PostgreSQL instance (see README)"
             echo "  2. Initialize: $0 init"
             echo "  3. Query:      python gemini_cli.py \"Show me all servers\""
             ;;
@@ -191,31 +191,23 @@ initialize_profile() {
             if [ -f ".venv/bin/activate" ]; then
                 source .venv/bin/activate
             fi
-            python scripts/create_data_sqlite.py
+            python setup/create_data_sqlite.py
             echo ""
 
             echo -e "${GREEN}[2/2] Building schema...${NC}"
-            python scripts/schema_ingest.py build --output schema_files/dev_schema.json
+            python -m src.schema_ingestion build --output schema_files/dev_schema.json
             ;;
 
         prod)
-            # Check if PostgreSQL is running
-            if ! docker ps | grep -q "netquery-postgres"; then
-                echo -e "${YELLOW}PostgreSQL not running. Starting...${NC}"
-                docker-compose up -d postgres
-                echo "Waiting for PostgreSQL to be ready..."
-                sleep 3
-            fi
-
             echo -e "${GREEN}[1/2] Creating PostgreSQL data from Excel...${NC}"
             if [ -f ".venv/bin/activate" ]; then
                 source .venv/bin/activate
             fi
-            python scripts/create_data_postgres.py
+            python setup/create_data_postgres.py
             echo ""
 
             echo -e "${GREEN}[2/2] Building schema...${NC}"
-            python scripts/schema_ingest.py build --output schema_files/prod_schema.json
+            python -m src.schema_ingestion build --output schema_files/prod_schema.json
             ;;
     esac
 

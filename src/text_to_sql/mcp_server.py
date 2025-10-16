@@ -13,7 +13,7 @@ from langchain_core.messages import HumanMessage
 # Import pipeline and tools
 from .pipeline.graph import text_to_sql_graph
 from .tools.database_toolkit import db_toolkit
-from scripts.create_sample_data import create_infrastructure_database
+from setup.create_data_sqlite import create_infrastructure_database
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')

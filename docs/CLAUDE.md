@@ -52,8 +52,8 @@ User Query → Schema Analysis → Query Planning → SQL Generation → Validat
    - `mcp_server.py` - Standard MCP implementation
 
 7. **Scripts & CLI**
-   - `scripts/create_sample_data.py` - Pure SQL sample data generator
-   - `scripts/evaluate_queries.py` - Comprehensive query evaluation framework
+   - `setup/create_data_sqlite.py` - Pure SQL sample data generator
+   - `testing/evaluate_queries.py` - Comprehensive query evaluation framework
 
 8. **API Layer** (`src/api/`)
    - `server.py` - FastAPI server with four main endpoints
@@ -143,7 +143,7 @@ The system now includes a FastAPI server providing a clean separation between SQ
 - ✅ Improved project structure clarity with proper directory hierarchy
 
 ### 2. Database & Code Simplification
-- ✅ Refactored create_sample_data.py to use pure raw SQL (eliminated SQLAlchemy complexity)
+- ✅ Refactored setup/create_data_sqlite.py to use pure raw SQL (eliminated SQLAlchemy complexity)
 - ✅ Fixed SQLite path resolution to use data/ folder consistently
 - ✅ Fixed datetime/float type conversion errors in sample data generation
 - ✅ Reorganized SAMPLE_QUERIES.md for better clarity and removed redundancies
@@ -359,7 +359,7 @@ EMBEDDING_CACHE_DIR=.embeddings_cache        # Local cache directory (default)
 # See SIMPLE_GUIDE.md for complete usage
 
 # Development (Alternative - Advanced)
-python scripts/create_sample_data.py          # Create sample data (REQUIRED for CLI/API)
+python setup/create_data_sqlite.py          # Create sample data (REQUIRED for CLI/API)
 python gemini_cli.py "your query"             # Test queries via CLI
 python -m src.text_to_sql.mcp_server          # Start MCP server (auto-creates data if missing)
 
@@ -378,13 +378,13 @@ python gemini_cli.py "Display server performance by datacenter" --csv --explain
 python gemini_cli.py "Show all users" --excel-schema examples/my_schema.xlsx
 python gemini_cli.py "Display orders by customer" --excel-schema schema.xlsx --html
 
-# Building Excel Schema (Interactive - Human-in-the-Loop)
-python scripts/build_schema_interactive.py --database sqlite:///data/mydb.db
-python scripts/build_schema_interactive.py --database postgresql://user:pass@host/db --output my_schema.xlsx
+# Building Canonical Schema (Human-in-the-Loop Friendly)
+python -m src.schema_ingestion build --database-url sqlite:///data/mydb.db --output schema_files/my_sqlite_schema.json
+python -m src.schema_ingestion build --database-url postgresql://user:pass@host/db --output schema_files/my_postgres_schema.json
 
 # Testing & Evaluation
-python scripts/evaluate_queries.py          # Run comprehensive pipeline evaluation
-python scripts/export_database_tables.py    # Export all database tables
+python testing/evaluate_queries.py          # Run comprehensive pipeline evaluation
+python testing/export_database_tables.py    # Export all database tables
 python test_excel_integration.py            # Test Excel schema integration
 ```
 
@@ -408,14 +408,14 @@ Works automatically for databases with meaningful names:
 **For databases with cryptic names**, use the interactive schema builder:
 
 ```bash
-# Step 1: Build Excel schema interactively
-python scripts/build_schema_interactive.py --database sqlite:///data/mydb.db
+# Step 1: Build schema JSON
+python -m src.schema_ingestion build --database-url sqlite:///data/mydb.db --output schema_files/my_schema.json
 
 # The script will:
 # - Show each table with sample data
 # - Prompt you for table/column descriptions
 # - Auto-detect relationships
-# - Generate Excel file
+# - Generate canonical schema JSON (edit or convert to Excel as needed)
 
 # Step 2: Review and edit the generated Excel file if needed
 
@@ -464,9 +464,9 @@ python gemini_cli.py "your query" --excel-schema schema_output.xlsx
 
 6. **CLI & Testing**
    - `gemini_cli.py` - Command-line interface with export options
-   - `scripts/evaluate_queries.py` - Comprehensive evaluation framework
-   - `scripts/create_sample_data.py` - Sample data generation
-   - `scripts/export_database_tables.py` - Database export utilities
+   - `testing/evaluate_queries.py` - Comprehensive evaluation framework
+   - `setup/create_data_sqlite.py` - Sample data generation
+   - `testing/export_database_tables.py` - Database export utilities
 
 7. **MCP Integration**
    - `src/text_to_sql/mcp_server.py` - Model Context Protocol server implementation

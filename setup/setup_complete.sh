@@ -50,21 +50,7 @@ echo -e "${BLUE}═════════════════════�
 if [ "$DB_TYPE" = "sqlite" ]; then
     python "$PROJECT_ROOT/setup/create_data_sqlite.py"
 else
-    # Check if Docker is running
-    if ! docker ps > /dev/null 2>&1; then
-        echo -e "${RED}Error: Docker is not running${NC}"
-        echo "Please start Docker Desktop first"
-        exit 1
-    fi
-
-    # Check if postgres container exists
-    if ! docker ps -a | grep -q "netquery-postgres"; then
-        echo -e "${YELLOW}Starting PostgreSQL container...${NC}"
-        cd "$PROJECT_ROOT"
-        docker-compose up -d
-        sleep 3
-    fi
-
+    echo -e "${BLUE}Checking PostgreSQL connection (DATABASE_URL)...${NC}"
     python "$PROJECT_ROOT/setup/create_data_postgres.py"
 fi
 
@@ -107,7 +93,7 @@ echo -e "${BLUE}What was created:${NC}"
 if [ "$DB_TYPE" = "sqlite" ]; then
     echo "  📁 data/infrastructure.db - Sample SQLite database"
 else
-    echo "  🐳 PostgreSQL container running on port 5432"
+    echo "  🐳 PostgreSQL database seeded (see DATABASE_URL in .env)"
 fi
 echo "  📄 schema_files/dev_schema.json - Canonical schema"
 echo "  🧠 .embeddings_cache/default/ - Table embeddings"

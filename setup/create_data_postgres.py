@@ -4,7 +4,7 @@ Generate sample production data from Excel schema file.
 Creates tables and inserts data based on schema_files/load_balancer_schema.xlsx
 
 Usage:
-    python scripts/create_prod_data_from_excel.py
+    python setup/create_data_postgres.py
 """
 import os
 import sys
@@ -230,7 +230,7 @@ def main():
     print("✅ Sample production data created!")
     print(f"{'='*60}")
     print("\nNext:")
-    print("  python scripts/schema_ingest.py build --output schemas/prod.json")
+    print("  python -m src.schema_ingestion build --output schema_files/prod_schema.json")
     print("  python gemini_cli.py 'Show me all load balancers'")
 
 

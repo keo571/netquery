@@ -3,8 +3,8 @@
 Comprehensive query evaluation framework with both single query and batch testing modes.
 
 Usage:
-  python scripts/evaluate_queries.py                           # Batch test all queries with HTML report
-  python scripts/evaluate_queries.py --single "your query"     # Test single query (pass/fail only)
+  python testing/evaluate_queries.py                           # Batch test all queries with HTML report
+  python testing/evaluate_queries.py --single "your query"     # Test single query (pass/fail only)
 
 Batch testing includes:
 - HTML report generation
@@ -475,8 +475,8 @@ async def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python scripts/evaluate_queries.py                           # Batch test all queries with HTML report
-  python scripts/evaluate_queries.py --single "Show all servers"  # Test single query (pass/fail only)
+  python testing/evaluate_queries.py                           # Batch test all queries with HTML report
+  python testing/evaluate_queries.py --single "Show all servers"  # Test single query (pass/fail only)
         """
     )
 

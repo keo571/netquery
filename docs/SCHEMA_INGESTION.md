@@ -321,12 +321,12 @@ All embeddings are stored in local file cache with namespace isolation:
 
 3. **Validate after manual edits**
    ```bash
-   python scripts/schema_ingest.py validate schema_files/dev_schema.json
+   python -m src.schema_ingestion validate schema_files/dev_schema.json
    ```
 
 4. **Compare before deploying**
    ```bash
-   python scripts/schema_ingest.py diff schema_files/old.json schema_files/new.json
+   python -m src.schema_ingestion diff schema_files/old.json schema_files/new.json
    ```
 
 ## Troubleshooting

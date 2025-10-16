@@ -6,8 +6,8 @@ Quick reference for managing dev and prod environments.
 
 | Profile | Database | Data Script | Use Case |
 |---------|----------|-------------|----------|
-| **dev** | SQLite (file) | `create_data_sqlite.py` | Quick testing, local development |
-| **prod** | PostgreSQL (Docker) | `create_data_postgres.py` | Production-like testing |
+| **dev** | SQLite (file) | `setup/create_data_sqlite.py` | Quick testing, local development |
+| **prod** | PostgreSQL (self-hosted or container) | `setup/create_data_postgres.py` | Production-like testing |
 
 ## Quick Commands
 
@@ -52,8 +52,8 @@ python gemini_cli.py "your question"
 
 ### Prod Workflow (Production Testing)
 ```bash
-# Start PostgreSQL
-docker-compose up -d
+# Ensure PostgreSQL is running (container, managed service, etc.)
+# Example: docker compose up -d     # if you maintain a compose file
 
 # Initialize prod
 ./profile.sh prod init
@@ -61,8 +61,7 @@ docker-compose up -d
 # Query
 python gemini_cli.py "your question"
 
-# When done
-docker-compose down
+# When done, stop PostgreSQL however you started it
 ```
 
 ## What profile.sh Does
@@ -84,15 +83,15 @@ These still work if you prefer manual control:
 
 ```bash
 # Manual database switching (without data creation)
-./scripts/switch_database.sh sqlite
-./scripts/switch_database.sh postgres
+./setup/switch_database.sh sqlite
+./setup/switch_database.sh postgres
 
 # Manual data creation
-python scripts/create_data_sqlite.py
-python scripts/create_data_postgres.py
+python setup/create_data_sqlite.py
+python setup/create_data_postgres.py
 
 # Manual schema building
-python scripts/schema_ingest.py build --output schema_files/dev_schema.json
+python -m src.schema_ingestion build --output schema_files/dev_schema.json
 ```
 
 ## Tips

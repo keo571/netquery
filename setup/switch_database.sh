@@ -1,6 +1,6 @@
 #!/bin/bash
 # Database Configuration Switcher
-# Usage: ./scripts/switch_database.sh [sqlite|postgres]
+# Usage: ./setup/switch_database.sh [sqlite|postgres]
 
 set -e
 
@@ -11,7 +11,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Get the project root directory (parent of scripts/)
+# Get the project root directory (parent of setup/)
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 show_usage() {
@@ -61,7 +61,7 @@ switch_to_sqlite() {
     echo -e "${GREEN}✅ Switched to SQLite${NC}"
     echo ""
     echo -e "${BLUE}Next steps:${NC}"
-    echo "  1. Create sample data:  python scripts/create_data_sqlite.py"
+    echo "  1. Create sample data:  python setup/create_data_sqlite.py"
     echo "  2. Run queries:         python gemini_cli.py \"Show me all servers\""
 }
 
@@ -76,13 +76,10 @@ switch_to_postgres() {
     # Check if Docker is running
     if ! docker ps > /dev/null 2>&1; then
         echo -e "${YELLOW}Warning: Docker is not running${NC}"
-        echo "Start Docker Desktop before using PostgreSQL"
-    fi
-
-    # Check if postgres container is running
-    if ! docker ps | grep -q "netquery-postgres"; then
-        echo -e "${YELLOW}Warning: PostgreSQL container is not running${NC}"
-        echo "Start it with: docker-compose up -d"
+        echo "Start your PostgreSQL instance manually before creating data"
+    elif ! docker ps | grep -q "netquery-postgres"; then
+        echo -e "${YELLOW}Hint:${NC} PostgreSQL container 'netquery-postgres' not detected"
+        echo "Ensure your DATABASE_URL in .env points to a running PostgreSQL database"
     fi
 
     # Preserve GEMINI_API_KEY if it exists
@@ -101,10 +98,10 @@ switch_to_postgres() {
     echo -e "${GREEN}✅ Switched to PostgreSQL${NC}"
     echo ""
     echo -e "${BLUE}Next steps:${NC}"
-    echo "  1. Ensure DB is running: docker-compose up -d"
-    echo "  2. Create sample data:   python scripts/create_data_postgres.py"
+    echo "  1. Ensure DB is running: start your PostgreSQL instance"
+    echo "  2. Create sample data:   python setup/create_data_postgres.py"
     echo "  3. Run queries:          python gemini_cli.py \"Show me all servers\""
-    echo "  4. View in pgAdmin:      http://localhost:5050"
+    echo "  4. (Optional) View in pgAdmin or your preferred tool"
 }
 
 # Main script
