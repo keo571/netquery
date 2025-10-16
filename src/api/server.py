@@ -9,6 +9,7 @@ FastAPI server for Netquery Text-to-SQL system.
 import uuid
 import logging
 import asyncio
+import os
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
@@ -16,22 +17,23 @@ from contextlib import asynccontextmanager
 import pandas as pd  # Only used for CSV download
 from io import StringIO
 from sqlalchemy import text
-from dotenv import load_dotenv
+from src.common.env import load_environment
 from pydantic import BaseModel, Field
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.text_to_sql.database.engine import get_engine
+# Load environment variables before importing pipeline components
+load_environment()
+
+from src.common.database.engine import get_engine
+from src.common.schema_summary import get_schema_overview
 from src.text_to_sql.pipeline.graph import text_to_sql_graph
 from src.api.interpretation_service import get_interpretation
 
 # ================================
 # CONFIGURATION & SETUP
 # ================================
-
-# Load environment variables
-load_dotenv()
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -132,9 +134,42 @@ class InterpretationResponse(BaseModel):
     visualization: Optional[Dict[str, Any]] = Field(None, description="Single best chart specification")
     data_truncated: bool = Field(..., description="Whether data was truncated for interpretation")
 
+
+class SchemaOverviewTable(BaseModel):
+    name: str
+    description: str
+    key_columns: List[str] = Field(default_factory=list)
+    related_tables: List[str] = Field(default_factory=list)
+
+
+class SchemaOverviewResponse(BaseModel):
+    schema_id: Optional[str]
+    tables: List[SchemaOverviewTable]
+    suggested_queries: List[str]
+
 # ================================
 # API ENDPOINTS
 # ================================
+
+
+@app.get("/api/schema/overview", response_model=SchemaOverviewResponse)
+async def schema_overview() -> SchemaOverviewResponse:
+    """Return a high-level overview of available tables and sample prompts."""
+    overview = get_schema_overview()
+    tables = overview.get("tables", [])
+    if not tables:
+        detail = overview.get("error") or {
+            "message": "Schema overview not available",
+            "environment": os.getenv("NETQUERY_ENV", "dev")
+        }
+        raise HTTPException(status_code=404, detail=detail)
+
+    return SchemaOverviewResponse(
+        schema_id=overview.get("schema_id"),
+        tables=[SchemaOverviewTable(**table) for table in tables],
+        suggested_queries=overview.get("suggested_queries", [])
+    )
+
 
 @app.post("/api/generate-sql", response_model=GenerateSQLResponse)
 async def generate_sql(request: GenerateSQLRequest) -> GenerateSQLResponse:
@@ -151,12 +186,22 @@ async def generate_sql(request: GenerateSQLRequest) -> GenerateSQLResponse:
             "show_explanation": False
         })
 
-        if not result.get("generated_sql"):
-            raise HTTPException(status_code=400, detail="Failed to generate SQL")
+        generated_sql = result.get("generated_sql")
+
+        if not generated_sql:
+            overview = result.get("schema_overview") or get_schema_overview()
+            detail_payload = {
+                "message": result.get("final_response") or "Failed to generate SQL",
+                "schema_overview": overview,
+                "schema_analysis_error": result.get("schema_analysis_error"),
+                "planning_error": result.get("planning_error"),
+                "generation_error": result.get("generation_error"),
+            }
+            raise HTTPException(status_code=422, detail=detail_payload)
 
         # Store in cache
         query_cache[query_id] = {
-            "sql": result["generated_sql"],
+            "sql": generated_sql,
             "original_query": request.query,
             "data": None,  # No data yet
             "total_count": None,
@@ -165,10 +210,12 @@ async def generate_sql(request: GenerateSQLRequest) -> GenerateSQLResponse:
 
         return GenerateSQLResponse(
             query_id=query_id,
-            sql=result["generated_sql"],
+            sql=generated_sql,
             original_query=request.query
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating SQL: {e}")
         raise HTTPException(status_code=500, detail=str(e))

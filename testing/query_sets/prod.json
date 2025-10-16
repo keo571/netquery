@@ -1,0 +1,26 @@
+{
+  "Inventory & Filtering": [
+    "Show the ten most recently added load balancers, their datacenters, and current status.",
+    "Which backend servers in us-east-1 are failing health checks, and which load balancer routes traffic to them?",
+    "List virtual IP endpoints that rely on the least-connections policy, along with the pool and load balancer responsible.",
+    "Which global wide IP domains are currently disabled, and what TTL and load-balancing method do they use?"
+  ],
+  "Relationship-Focused Queries": [
+    "For every load balancer, list its backend servers with hostnames and health state.",
+    "Show each virtual IP alongside its load balancer and any wide IP domains that reference it.",
+    "For each wide IP, list the virtual IP members, including their traffic priority, weight, and whether the member is active.",
+    "Which virtual IPs appear in more than one wide IP pool, and how many pools reference each one?"
+  ],
+  "Aggregations & Summaries": [
+    "Count load balancers per datacenter and include how many backend servers each site supports.",
+    "Summarize inbound and outbound traffic totals per datacenter by linking traffic stats to virtual IPs and load balancers.",
+    "What is the average request rate per protocol during the last 30 days?",
+    "Which virtual IPs recorded the highest peak connection counts in the past week?"
+  ],
+  "Time-Series & Diagnostics": [
+    "Show the hourly average request rate for each virtual IP over the past six hours.",
+    "Identify timestamps where outbound traffic exceeded 500000 bytes, and include the virtual IP and load balancer involved.",
+    "List recent health check failures with the affected virtual IPs and the load balancers that own them.",
+    "Graph request rate and active connections for the virtual IP with the largest recent data transfer."
+  ]
+}

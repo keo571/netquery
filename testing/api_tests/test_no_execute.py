@@ -5,11 +5,12 @@ This tests that the pipeline can generate SQL without executing it.
 """
 import asyncio
 import os
-from dotenv import load_dotenv
-from src.text_to_sql.pipeline.graph import text_to_sql_graph
+from src.common.env import load_environment
 
-# Load environment variables
-load_dotenv()
+# Load environment variables before importing pipeline graph
+load_environment()
+
+from src.text_to_sql.pipeline.graph import text_to_sql_graph
 
 async def test_no_execute():
     """Test SQL generation without execution."""

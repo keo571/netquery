@@ -2,6 +2,20 @@
 
 An AI-powered assistant that converts natural language queries into SQL. Optimized for network infrastructure monitoring with automatic chart generation and comprehensive safety validation.
 
+## Quick Start
+
+```bash
+# 1. Setup environment (dev or prod)
+./profile.sh dev init    # SQLite for quick testing
+./profile.sh prod init   # PostgreSQL for production-like testing
+
+# 2. Query in natural language
+python gemini_cli.py "Show me all load balancers"
+python gemini_cli.py "What servers are unhealthy?"
+```
+
+**📖 [Profiles Guide](docs/PROFILES.md)** - Environment management (dev/prod switching)
+
 ## Architecture Overview
 
 ```mermaid
@@ -33,6 +47,7 @@ flowchart TD
 
 ### 🎯 **Smart Query Understanding**
 - **Semantic Table Discovery**: Automatically finds relevant database tables using sentence transformer embeddings
+- **Excel Schema Support**: Import table definitions and relationships from Excel for databases without introspectable schemas
 - **Network Infrastructure Focused**: Specialized for load balancers, servers, VIPs, and monitoring data
 - **Multi-Table Support**: Handles complex relationships using database schema reflection
 - **Structured Planning**: Creates JSON execution plans with joins, filters, and aggregations
@@ -80,17 +95,23 @@ flowchart TD
 
    **Option A: SQLite (Development)**
    ```bash
-   python scripts/create_sample_data.py  # Creates data/infrastructure.db
+   python setup/create_data_sqlite.py  # Creates data/infrastructure.db
    ```
 
    **Option B: PostgreSQL (Production)**
    ```bash
    # Switch to production environment with PostgreSQL
-   python scripts/switch_environment.py production
+   ./setup/switch_database.sh postgres
 
    # Update .env with your PostgreSQL connection:
    # DATABASE_URL=postgresql://user:password@host:5432/database
    # EXCEL_SCHEMA_PATH=your_schema.xlsx  # Define your tables in Excel
+   ```
+
+   **Or use the complete setup script:**
+   ```bash
+   ./setup/setup_complete.sh sqlite    # Complete SQLite setup
+   ./setup/setup_complete.sh postgres  # Complete PostgreSQL setup
    ```
 
    **Database Compatibility:**
@@ -110,8 +131,12 @@ python gemini_cli.py "Which servers have high CPU usage?"
 python gemini_cli.py "Show network traffic trends over time" --html
 python gemini_cli.py "Display server performance by datacenter" --csv
 
-# Complex multi-table queries  
+# Complex multi-table queries
 python gemini_cli.py "Show unhealthy load balancers with their backend servers" --explain
+
+# With Excel schema for enhanced metadata
+python gemini_cli.py "Show all users" --excel-schema examples/my_schema.xlsx
+python gemini_cli.py "Display orders by customer" --excel-schema schema.xlsx --html
 ```
 
 ### FastAPI Server (for Web Applications)
@@ -130,6 +155,7 @@ python test_large_query.py                  # Large dataset test
 - `GET /api/execute/{query_id}` - Execute SQL and return preview (30 rows)
 - `POST /api/interpret/{query_id}` - Get LLM analysis and visualization suggestions
 - `GET /api/download/{query_id}` - Download complete results as CSV
+- `GET /api/schema/overview` - Discover available tables and suggested starter prompts
 
 ### MCP Server (for AI Assistants)
 ```bash
@@ -197,10 +223,18 @@ DATABASE_URL=sqlite:///data/infrastructure.db
 
 ```
 ├── src/
+│   ├── schema_ingestion/      # Schema extraction and embedding generation
+│   │   ├── __main__.py        # CLI tool (run: python -m src.schema_ingestion)
+│   │   ├── formats/           # Canonical schema format
+│   │   ├── pipeline/          # Schema building and enrichment
+│   │   └── tools/             # Graph analysis and Excel parsing
 │   ├── api/                   # FastAPI server implementation
 │   │   ├── server.py          # Main API server with four endpoints
 │   │   └── interpretation_service.py # LLM-powered result interpretation
-│   └── text_to_sql/           # Core pipeline implementation
+│   ├── common/                # Shared utilities
+│   │   ├── database/          # Database connection management
+│   │   └── stores/            # Embedding storage (local/pgvector)
+│   └── text_to_sql/           # Core query pipeline
 │       ├── pipeline/          # LangGraph processing stages
 │       │   ├── graph.py       # Main orchestration
 │       │   ├── state.py       # State management
@@ -218,8 +252,13 @@ DATABASE_URL=sqlite:///data/infrastructure.db
 │       ├── prompts/           # LLM prompts for each stage
 │       ├── config.py          # Configuration management
 │       └── mcp_server.py      # MCP server implementation
-├── scripts/                   # Data generation and evaluation
-│   ├── create_sample_data.py  # Sample data generator
+├── setup/                     # Setup and configuration
+│   ├── create_data_sqlite.py  # SQLite sample data generator
+│   ├── create_data_postgres.py # PostgreSQL sample data generator
+│   ├── switch_database.sh     # Switch between SQLite/PostgreSQL
+│   ├── ingest_schema.py       # Schema ingestion wrapper
+│   └── setup_complete.sh      # Complete end-to-end setup
+├── testing/                   # Testing and debugging
 │   ├── evaluate_queries.py    # Query evaluation framework
 │   └── export_database_tables.py # Database export utility
 ├── docs/                      # Documentation and examples
@@ -257,10 +296,10 @@ DATABASE_URL=sqlite:///data/infrastructure.db
 python gemini_cli.py "Show server performance by datacenter" --html
 
 # Comprehensive pipeline evaluation
-python scripts/evaluate_queries.py
+python testing/evaluate_queries.py
 
-# Export database tables for analysis  
-python scripts/export_database_tables.py
+# Export database tables for analysis
+python testing/export_database_tables.py
 ```
 
 ## License

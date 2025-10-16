@@ -6,7 +6,7 @@ import re
 from typing import List, Tuple
 import logging
 
-from ..config import config
+from ...common.config import config
 from ..pipeline.state import ValidationResult
 
 logger = logging.getLogger(__name__)

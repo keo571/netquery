@@ -1,6 +1,6 @@
 # Netquery Query Evaluation Framework
 
-This document describes the comprehensive evaluation system for testing and validating the Netquery text-to-SQL pipeline using `scripts/evaluate_queries.py`.
+This document describes the comprehensive evaluation system for testing and validating the Netquery text-to-SQL pipeline using `testing/evaluate_queries.py`.
 
 ## Purpose
 
@@ -65,14 +65,14 @@ Each query is evaluated through all pipeline stages:
 
 ```bash
 # Run complete batch evaluation (all 49 queries with HTML report)
-python scripts/evaluate_queries.py
+python testing/evaluate_queries.py
 
 # Test a single query (pass/fail only, console output)
-python scripts/evaluate_queries.py --single "Show me all load balancers"
+python testing/evaluate_queries.py --single "Show me all load balancers"
 
 # Check GEMINI_API_KEY is set
 export GEMINI_API_KEY=your_key_here
-python scripts/evaluate_queries.py
+python testing/evaluate_queries.py
 ```
 
 **Example Batch Output:**
@@ -102,7 +102,7 @@ Testing: "Show me all load balancers"
 ### Pre-commit Hooks
 ```bash
 # Add to .git/hooks/pre-commit
-python scripts/evaluate_queries.py
+python testing/evaluate_queries.py
 if [ $? -ne 0 ]; then
     echo "Query evaluation failed"
     exit 1
@@ -113,7 +113,7 @@ fi
 ```yaml
 # Add to GitHub Actions
 - name: Run Query Evaluation
-  run: python scripts/evaluate_queries.py
+  run: python testing/evaluate_queries.py
   env:
     GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 ```
@@ -128,7 +128,7 @@ fi
 
 ## Files and Locations
 
-- **Query Evaluation Script**: `scripts/evaluate_queries.py`
+- **Query Evaluation Script**: `testing/evaluate_queries.py`
 - **Test Queries**: Defined in `docs/SAMPLE_QUERIES.md`
 - **Reports**: Saved to `testing/evaluations/`
 - **Configuration**: Uses `.env` for API keys

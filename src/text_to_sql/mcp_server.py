@@ -13,7 +13,7 @@ from langchain_core.messages import HumanMessage
 # Import pipeline and tools
 from .pipeline.graph import text_to_sql_graph
 from .tools.database_toolkit import db_toolkit
-from scripts.create_sample_data import create_infrastructure_database
+from setup.create_data_sqlite import create_infrastructure_database
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -39,15 +39,17 @@ async def text_to_sql(
     query: str,
     show_explanation: bool = False,
     export_csv: bool = False,
-    export_html: bool = False
+    export_html: bool = False,
+    excel_schema_path: Optional[str] = None
 ) -> str:
     """Query network infrastructure data using natural language.
-    
+
     Args:
         query: Natural language query about infrastructure (load balancers, servers, VIPs, etc.)
         show_explanation: Show detailed explanations of SQL generation and results
         export_csv: Export results to CSV file
         export_html: Generate HTML report with charts and visualizations
+        excel_schema_path: Path to Excel file with schema metadata for enhanced table descriptions
     """
     if not query.strip():
         # Show available tables and examples
@@ -67,16 +69,17 @@ async def text_to_sql(
 • List all VIP addresses in production"""
 
     logger.info(f"Processing query: {query[:80]}...")
-    
+
     # Run the multi-step pipeline
     initial_state = {
         "messages": [HumanMessage(content=query)],
         "original_query": query,
         "show_explanation": show_explanation,
         "export_csv": export_csv,
-        "export_html": export_html
+        "export_html": export_html,
+        "excel_schema_path": excel_schema_path
     }
-    
+
     try:
         result = await text_to_sql_graph.ainvoke(initial_state)
         return result.get("formatted_response", "No results generated")

@@ -3,8 +3,8 @@
 Comprehensive query evaluation framework with both single query and batch testing modes.
 
 Usage:
-  python scripts/evaluate_queries.py                           # Batch test all queries with HTML report
-  python scripts/evaluate_queries.py --single "your query"     # Test single query (pass/fail only)
+  python testing/evaluate_queries.py                           # Batch test all queries with HTML report
+  python testing/evaluate_queries.py --single "your query"     # Test single query (pass/fail only)
 
 Batch testing includes:
 - HTML report generation
@@ -21,119 +21,71 @@ import asyncio
 import time
 import os
 import sys
+import json
 import argparse
 from typing import List, Dict, Any
 from datetime import datetime
 from pathlib import Path
-from dotenv import load_dotenv
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-# Load environment variables
-load_dotenv()
+from src.common.env import load_environment
+
+# Load environment variables based on NETQUERY_ENV or DOTENV_PATH
+load_environment()
 
 from src.text_to_sql.pipeline.graph import text_to_sql_graph
-from src.text_to_sql.database.engine import cleanup_database_connections
+from src.common.database.engine import cleanup_database_connections
+
+QUERY_SETS_DIR = Path(__file__).parent / "query_sets"
 
 
-# Comprehensive Text-to-SQL evaluation queries (49 total)
-EVALUATION_QUERIES = {
-    "Basic Queries": [
-        "Show me all load balancers",
-        "List all servers",
-        "What SSL certificates do we have?",
-        "Display VIP pools",
-        "List servers in us-east-1",
-    ],
+def _validate_query_sets(data: Dict[str, Any], source: Path) -> Dict[str, List[str]]:
+    """Validate and normalize loaded query sets."""
+    normalized: Dict[str, List[str]] = {}
+    for category, queries in data.items():
+        if not isinstance(queries, list):
+            raise ValueError(f"Category '{category}' in {source} must map to a list of queries")
+        normalized[str(category)] = [str(q) for q in queries if str(q).strip()]
+    return normalized
 
-    "Aggregations": [
-        "How many load balancers do we have?",
-        "Count servers by datacenter",
-        "What's the average CPU utilization by datacenter?",
-        "What's the total bandwidth consumption?",
-        "Show top 3 load balancers by traffic volume in each region",
-    ],
 
-    "Comparative Queries": [
-        "Which servers have higher CPU than average?",
-        "Find load balancers with more backends than typical",
-        "Show datacenters with above-average server counts",
-    ],
+def load_query_sets(query_file: Path) -> Dict[str, List[str]]:
+    """Load evaluation queries from JSON file."""
+    if not query_file.exists():
+        raise FileNotFoundError(f"Query file not found: {query_file}")
+    with query_file.open('r', encoding='utf-8') as handle:
+        data = json.load(handle)
+    if not isinstance(data, dict):
+        raise ValueError(f"Query file {query_file} must contain a JSON object")
+    return _validate_query_sets(data, query_file)
 
-    "Multi-Table Joins": [
-        "Show load balancers with their backend servers and current status",
-        "List servers with their load balancer connections and roles",
-        "Show load balancers with backend mappings and monitoring metrics",
-        "Find servers with their monitoring data and SSL certificate status",
-        "Show servers with their load balancers and SSL certificate details",
-    ],
 
-    "Set Operations & Existence": [
-        "Are there any servers without SSL certificates?",
-        "Find load balancers with no backend servers assigned",
-        "Show servers that have never been monitored",
-    ],
+def resolve_query_file(explicit_path: str | None = None) -> Path:
+    """Resolve which query set file to use based on CLI override or NETQUERY_ENV."""
+    if explicit_path:
+        candidate = Path(explicit_path).expanduser()
+    else:
+        env_name = os.getenv("NETQUERY_ENV", "dev")
+        candidate = QUERY_SETS_DIR / f"{env_name}.json"
 
-    "Conditional Logic": [
-        "Categorize servers as High/Medium/Low based on CPU usage",
-        "Show load balancers with traffic status (Heavy/Normal/Light)",
-        "Display server health as Critical/Warning/OK based on metrics",
-    ],
+    if candidate.exists():
+        return candidate
 
-    "HAVING & Advanced Filters": [
-        "Show datacenters with more than 5 unhealthy servers",
-        "Find load balancers where average response time exceeds 500ms",
-        "List SSL providers managing more than 10 certificates",
-    ],
+    if explicit_path:
+        raise FileNotFoundError(f"Query set override not found: {candidate}")
 
-    "Window Functions & Analytics": [
-        "Rank servers by CPU utilization within each datacenter",
-        "Compare each server's current CPU to its previous measurement",
-        "Calculate moving average of response times over the last 5 measurements",
-    ],
-
-    "Time-based Queries": [
-        "Show certificates expiring in the next 30 days",
-        "Find servers with high CPU for the last 3 consecutive monitoring periods",
-        "Show network traffic trends over the past week",
-    ],
-
-    "Troubleshooting": [
-        "What's the health status by datacenter?",
-        "Find servers with connection issues",
-    ],
-
-    "Performance Testing": [
-        "Show all monitoring metrics without any filtering",
-        "Display comprehensive server details with all related data",
-    ],
-
-    "Subqueries & Advanced Patterns": [
-        "Find servers in datacenters that have more than 5 load balancers",
-        "Show load balancers with more backends than the average",
-        "List servers that are monitored but not assigned to any load balancer",
-    ],
-
-    "String Operations & NULL Handling": [
-        "Find servers with hostnames containing 'web'",
-        "Show certificates with domains ending in '.com'",
-        "Display servers where hostname is not recorded",
-        "List load balancers with missing health score data",
-    ],
-
-    "Edge Cases": [
-        "Show me nonexistent table data",
-        "List servers in Mars datacenter",
-        "Delete all servers",
-        "Show me everything",
-        "What's broken?",
-    ]
-}
+    raise FileNotFoundError(
+        f"Query set for NETQUERY_ENV='{os.getenv('NETQUERY_ENV', 'dev')}' not found at {candidate}."
+    )
 
 
 class QueryEvaluator:
-    def __init__(self):
+    def __init__(self, query_sets: Dict[str, List[str]], environment: str, query_file: Path):
+        self.query_sets = query_sets
+        self.environment = environment
+        self.query_file = query_file
         self.results: List[Dict[str, Any]] = []
         self.summary: Dict[str, int] = {
             "total": 0,
@@ -148,6 +100,7 @@ class QueryEvaluator:
             "error": 0,
             "charts_generated": 0
         }
+        self.total_queries = sum(len(queries) for queries in self.query_sets.values())
     
     async def evaluate_query(self, query: str, category: str) -> Dict[str, Any]:
         """Evaluate a single query and return results."""
@@ -240,10 +193,12 @@ class QueryEvaluator:
     async def run_evaluation(self):
         """Run evaluation on all queries."""
         print("🚀 Starting Netquery Evaluation...")
-        print(f"📊 Testing {sum(len(queries) for queries in EVALUATION_QUERIES.values())} queries across {len(EVALUATION_QUERIES)} categories")
+        print(f"   Environment: {self.environment}")
+        print(f"   Query file:  {self.query_file}")
+        print(f"📊 Testing {self.total_queries} queries across {len(self.query_sets)} categories")
         print("=" * 80)
         
-        for category, queries in EVALUATION_QUERIES.items():
+        for category, queries in self.query_sets.items():
             print(f"\n📂 {category} ({len(queries)} queries)")
             
             for i, query in enumerate(queries, 1):
@@ -320,8 +275,8 @@ class QueryEvaluator:
             if result["status"] == "SUCCESS":
                 category_stats[cat]["success"] += 1
 
-        # Use EVALUATION_QUERIES order instead of alphabetical
-        for category in EVALUATION_QUERIES.keys():
+        # Use configured query order instead of alphabetical
+        for category in self.query_sets.keys():
             if category in category_stats:
                 stats = category_stats[category]
                 rate = (stats["success"] / stats["total"] * 100) if stats["total"] > 0 else 0
@@ -448,8 +403,8 @@ class QueryEvaluator:
                 category_stats[cat]["success"] += 1
 
         html_rows = []
-        # Use EVALUATION_QUERIES order instead of alphabetical
-        for category in EVALUATION_QUERIES.keys():
+        # Use configured query order instead of alphabetical
+        for category in self.query_sets.keys():
             if category in category_stats:
                 stats = category_stats[category]
                 rate = (stats["success"] / stats["total"] * 100) if stats["total"] > 0 else 0
@@ -520,8 +475,8 @@ async def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python scripts/evaluate_queries.py                           # Batch test all queries with HTML report
-  python scripts/evaluate_queries.py --single "Show all servers"  # Test single query (pass/fail only)
+  python testing/evaluate_queries.py                           # Batch test all queries with HTML report
+  python testing/evaluate_queries.py --single "Show all servers"  # Test single query (pass/fail only)
         """
     )
 
@@ -529,6 +484,12 @@ Examples:
         "--single",
         type=str,
         help="Test a single query (pass/fail only, no HTML report)"
+    )
+
+    parser.add_argument(
+        "--queries",
+        type=str,
+        help="Path to JSON file containing evaluation query sets (defaults to env-specific file)"
     )
 
     args = parser.parse_args()
@@ -546,7 +507,10 @@ Examples:
     else:
         # Batch testing mode - HTML report generation
         print("📊 Batch Evaluation Mode")
-        evaluator = QueryEvaluator()
+        query_file = resolve_query_file(args.queries)
+        query_sets = load_query_sets(query_file)
+        environment = os.getenv("NETQUERY_ENV", "dev")
+        evaluator = QueryEvaluator(query_sets=query_sets, environment=environment, query_file=query_file)
         await evaluator.run_evaluation()
 
 
