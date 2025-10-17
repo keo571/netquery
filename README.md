@@ -47,8 +47,8 @@ pip install -r requirements.txt
 
 ### 2. Configure API Key
 ```bash
-# Copy example config
-cp .env.example .env
+# Copy dev environment template
+cp .env.dev .env
 
 # Edit .env and add your API key
 # GEMINI_API_KEY=your_actual_key_here
@@ -74,9 +74,17 @@ python gemini_cli.py "Show me all load balancers"
 
 ### 4. Try Some Queries
 ```bash
-# Basic queries
+# Basic queries (work in both modes)
 python gemini_cli.py "Show me all load balancers"
+python gemini_cli.py "Which servers are unhealthy?"
+
+# Dev mode specific (SQLite has SSL certificates)
 python gemini_cli.py "Which SSL certificates expire soon?"
+python gemini_cli.py "Show network connectivity issues"
+
+# Prod mode specific (PostgreSQL has wide IPs)
+python gemini_cli.py "Show all wide IPs and their pools"
+python gemini_cli.py "List virtual IP traffic statistics"
 
 # With visualizations
 python gemini_cli.py "Show network traffic trends over time" --html
@@ -165,8 +173,12 @@ python gemini_cli.py "Display server performance by datacenter" --csv
 # Complex multi-table queries
 python gemini_cli.py "Show unhealthy load balancers with their backend servers" --explain
 
-# With custom schema for enhanced metadata
-python gemini_cli.py "Show all users" --schema schema_files/custom_schema.json
+# Environment-specific queries
+# Dev mode (SQLite): SSL certificates, network monitoring
+python gemini_cli.py "Show SSL certificates expiring in 30 days"
+
+# Prod mode (PostgreSQL): Wide IPs, global load balancing
+python gemini_cli.py "Show wide IP pools with their virtual IP members"
 ```
 
 ### FastAPI Server (for Web Applications)
@@ -194,24 +206,42 @@ python -m src.text_to_sql.mcp_server
 
 ## Optional Integrations
 
-Netquery can plug into additional tooling when you need a richer experience:
-- **[netquery-insight-chat](https://github.com/keo571/netquery-insight-chat)** adds a TypeScript/React front end for the text-to-SQL workflow.
-- **[netquery-docker](https://github.com/keo571/netquery-docker)** offers a containerized demo environment. It is optional and no longer part of the default quick start.
+**Frontend Application:**
+- **[netquery-insight-chat](https://github.com/keo571/netquery-insight-chat)** - TypeScript/React web interface for the text-to-SQL workflow with data visualization and insights.
 
 ## Direct Python API
 ```python
 from src.text_to_sql.pipeline.graph import text_to_sql_graph
-from langchain_core.messages import HumanMessage
 
+# Async usage
 result = await text_to_sql_graph.ainvoke({
-    "messages": [HumanMessage(content="Show load balancer health over time")],
-    "original_query": "Show load balancer health over time"
+    "original_query": "Show load balancer health over time",
+    "show_explanation": False,
+    "export_csv": False,
+    "export_html": False
 })
+
+# Sync usage
+result = text_to_sql_graph.invoke({
+    "original_query": "Show all unhealthy servers",
+})
+
+# Access results
+print(result.get("formatted_response"))     # Human-readable response
+print(result.get("generated_sql"))          # Generated SQL
+print(result.get("query_results"))          # Query results
+print(result.get("chart_html"))             # Chart HTML (if generated)
 ```
 
 ## Query Examples
 
 For comprehensive query examples organized by complexity level, see **[docs/SAMPLE_QUERIES.md](docs/SAMPLE_QUERIES.md)**.
+
+**Mode-Specific Features:**
+- **Dev Mode (SQLite)**: SSL certificate management, network connectivity monitoring, detailed health scores
+- **Prod Mode (PostgreSQL)**: Wide IP global load balancing, virtual IP pools, traffic statistics
+
+See the [Mode Differences Table](docs/SAMPLE_QUERIES.md#differences-between-dev-and-prod) for complete feature comparison.
 
 ## Configuration
 
