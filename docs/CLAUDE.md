@@ -342,7 +342,7 @@ EMBEDDING_DATABASE_URL=postgresql://localhost/your-embedding-db  # Use pgvector 
 # See EMBEDDING_CACHE_STRATEGY.md for details
 
 # Model Configuration (Optional)
-EMBEDDING_MODEL=all-mpnet-base-v2            # Sentence transformer model (default)
+EMBEDDING_MODEL=gemini-embedding-001         # Gemini embedding model (default)
 EMBEDDING_CACHE_DIR=.embeddings_cache        # Local cache directory (default)
 ```
 

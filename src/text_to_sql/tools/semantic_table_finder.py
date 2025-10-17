@@ -1,15 +1,16 @@
 """
-Semantic table finder using sentence-transformers.
-Finds relevant tables using semantic similarity with human-provided descriptions from Excel.
+Semantic table finder using Gemini embeddings.
+Requires curated CanonicalSchema descriptions for all tables.
 """
 import logging
 import os
-from typing import List, Tuple, Dict, Optional, TYPE_CHECKING
-import numpy as np
-from sentence_transformers import SentenceTransformer
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
-from .database_toolkit import db_toolkit
+import numpy as np
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
 from ...common.stores.embedding_store import create_embedding_store, EmbeddingStore
+from ..config import config
 
 if TYPE_CHECKING:
     from src.schema_ingestion.canonical import CanonicalSchema
@@ -18,32 +19,30 @@ logger = logging.getLogger(__name__)
 
 
 class SemanticTableFinder:
-    """
-    Find semantically relevant tables using sentence embeddings.
-
-    Uses CanonicalSchema for enhanced table descriptions or falls back to database introspection.
-    """
+    """Find semantically relevant tables using Gemini embeddings and canonical schema metadata."""
 
     def __init__(
         self,
-        engine,
-        model_name: str = "all-mpnet-base-v2",
+        model_name: str = "gemini-embedding-001",
         cache_dir: str = ".embeddings_cache",
         canonical_schema: Optional['CanonicalSchema'] = None,
         embedding_store: Optional[EmbeddingStore] = None
     ):
         """
-        Initialize with sentence transformer model.
+        Initialize with Gemini embeddings model.
 
         Args:
-            engine: Database engine (kept for compatibility)
-            model_name: Name of the sentence transformer model
+            model_name: Name of the Gemini embedding model
             cache_dir: Directory to cache embeddings (for local file store)
             canonical_schema: Optional canonical schema (preferred)
             embedding_store: Optional pre-configured embedding store (pgvector or local file)
         """
-        # Note: engine parameter kept for compatibility but not used
-        self.model = SentenceTransformer(model_name)
+        api_key = config.llm.effective_api_key
+        self.embedding_model = GoogleGenerativeAIEmbeddings(
+            model=model_name,
+            google_api_key=api_key
+        )
+        self.model_name = model_name
         self.canonical_schema = canonical_schema
 
         # Determine namespace for embedding isolation
@@ -51,7 +50,9 @@ class SemanticTableFinder:
             self.namespace = canonical_schema.get_embedding_namespace()
             logger.info(f"Using embedding namespace: {self.namespace}")
         else:
-            self.namespace = "default"
+            raise ValueError(
+                "SemanticTableFinder requires a canonical schema with table and column descriptions."
+            )
 
         env_namespace = os.getenv("SCHEMA_ID")
         if env_namespace:
@@ -73,31 +74,19 @@ class SemanticTableFinder:
         # Cache for in-memory lookups (for performance)
         self.table_descriptions: Dict[str, str] = {}
 
-        logger.info(f"SemanticTableFinder initialized with model: {model_name}, namespace: {self.namespace}")
-
-    def _embeddings_exist(self) -> bool:
-        """Check if embeddings already exist in cache for this namespace."""
-        try:
-            # Try to get one table's embedding to verify cache exists
-            table_names = db_toolkit.get_table_names()
-            if not table_names:
-                return False
-
-            # Check if first table has cached embedding
-            first_table = table_names[0]
-            embedding = self.embedding_store.get_embedding(first_table, namespace=self.namespace)
-            return embedding is not None
-        except Exception as e:
-            logger.debug(f"Error checking embeddings cache: {e}")
-            return False
+        logger.info(
+            "SemanticTableFinder initialized with Gemini model: %s, namespace: %s",
+            self.model_name,
+            self.namespace
+        )
 
     def build_embeddings(self) -> None:
         """Build embeddings for all database tables and store them."""
         logger.info("Building table embeddings...")
 
-        for table_name in db_toolkit.get_table_names():
+        for table_name in self.canonical_schema.tables:
             description = self._create_table_description(table_name)
-            embedding = self.model.encode(description)
+            embedding = self._embed_text(description)
 
             # Store in embedding store
             self.embedding_store.store(
@@ -119,7 +108,7 @@ class SemanticTableFinder:
         Returns: List of (table_name, similarity_score, description)
         """
         # Get query embedding
-        query_embedding = self.model.encode(query)
+        query_embedding = self._embed_query(query)
 
         # Search for similar tables using embedding store
         # The store handles the similarity computation (in-database for pgvector)
@@ -146,9 +135,7 @@ class SemanticTableFinder:
         """
         Create text description of table for embedding - focus on semantic meaning.
 
-        Priority order for descriptions:
-        1. CanonicalSchema (LLM/human-provided descriptions) - HIGHEST PRIORITY
-        2. Auto-generated from database reflection (fallback)
+        Requires CanonicalSchema (LLM/human-provided descriptions).
         """
         # Priority 1: Use CanonicalSchema (preferred)
         if self.canonical_schema and table_name in self.canonical_schema.tables:
@@ -179,33 +166,16 @@ class SemanticTableFinder:
             logger.debug(f"Using canonical schema description for {table_name}")
             return ". ".join(parts)
 
-        # Priority 2: Fall back to database reflection only
-        # Simple description based on table name
-        parts = [f"Table: {table_name}"]
+        raise KeyError(
+            f"Table '{table_name}' is missing from the canonical schema. Ensure all tables include descriptions."
+        )
 
-        # Get table info from database
-        table_info = db_toolkit.get_table_info(table_name)
+    def _embed_text(self, text: str) -> np.ndarray:
+        """Generate an embedding for table descriptions."""
+        embedding = self.embedding_model.embed_documents([text])[0]
+        return np.array(embedding, dtype=np.float32)
 
-        # Add column names with semantic meaning
-        if table_info.get('columns'):
-            column_names = [col['name'] for col in table_info['columns']]
-            # Group columns by semantic meaning
-            key_columns = [col for col in column_names if any(keyword in col.lower()
-                          for keyword in ['usage', 'memory', 'cpu', 'utilization', 'performance',
-                                        'health', 'status', 'datacenter', 'location', 'time',
-                                        'rate', 'bandwidth', 'response', 'error', 'latency'])]
-            if key_columns:
-                parts.append(f"Key metrics: {', '.join(key_columns)}")
-            parts.append(f"All columns: {', '.join(column_names)}")
-
-        # Add sample data for semantic context
-        sample_data = db_toolkit.get_sample_data(table_name, limit=2)
-        if sample_data:
-            sample_parts = []
-            for row in sample_data:
-                # Include actual values for semantic understanding
-                row_text = ", ".join([f"{k}: {v}" for k, v in row.items() if v is not None])
-                sample_parts.append(row_text)
-            parts.append(f"Sample data: {'; '.join(sample_parts)}")
-
-        return ". ".join(parts)
+    def _embed_query(self, query: str) -> np.ndarray:
+        """Generate an embedding for incoming queries."""
+        embedding = self.embedding_model.embed_query(query)
+        return np.array(embedding, dtype=np.float32)

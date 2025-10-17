@@ -84,9 +84,11 @@ Extracts schema from a data source and converts to canonical format.
 Generates and stores semantic embeddings for table descriptions. **This happens automatically during build**.
 
 **What it does:**
-1. Load embedding model (sentence-transformers/all-mpnet-base-v2)
+1. Load Gemini embedding model (`gemini-embedding-001`)
 2. Generate embeddings for each table description
 3. Store in local file cache (`.embeddings_cache/`)
+
+> Requires `GEMINI_API_KEY` to be set for the Gemini embedding service.
 
 **Storage:**
 - All embeddings stored locally in `.embeddings_cache/{schema_id}/`
@@ -226,9 +228,11 @@ schema = CanonicalSchema.load('schema_files/dev_schema.json')
 # Use in semantic table finder
 from src.text_to_sql.tools.semantic_table_finder import SemanticTableFinder
 
-finder = SemanticTableFinder(schema)
+finder = SemanticTableFinder(canonical_schema=schema)
 relevant_tables = finder.find_relevant_tables("show me all servers")
 ```
+
+> Semantic table finding now **requires** complete table and column descriptions in the canonical schema. There is no automatic fallback to raw database metadata.
 
 **Workflow:**
 1. **Schema Ingestion** (this pipeline) → generates `schema_files/dev_schema.json`

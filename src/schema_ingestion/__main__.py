@@ -16,6 +16,7 @@ import logging
 import sys
 import os
 from pathlib import Path
+import numpy as np
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -28,7 +29,7 @@ from src.schema_ingestion.canonical import CanonicalSchema
 from src.schema_ingestion.builder import SchemaBuilder
 from src.common.database.engine import get_engine
 from src.common.stores.embedding_store import create_embedding_store
-from sentence_transformers import SentenceTransformer
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -47,8 +48,16 @@ def store_embeddings(schema: CanonicalSchema, embedding_database_url: str = None
     store = create_embedding_store(database_url=embedding_database_url)
 
     # Load embedding model
-    logger.info("Loading embedding model (sentence-transformers/all-mpnet-base-v2)...")
-    model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
+    model_name = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY environment variable not set")
+
+    logger.info("Loading embedding model (%s)...", model_name)
+    embedding_client = GoogleGenerativeAIEmbeddings(
+        model=model_name,
+        google_api_key=api_key
+    )
 
     # Get namespace from schema
     namespace = schema.get_embedding_namespace()
@@ -67,7 +76,8 @@ def store_embeddings(schema: CanonicalSchema, embedding_database_url: str = None
             continue
 
         # Generate embedding
-        embedding = model.encode(table.description)
+        embedding_vector = embedding_client.embed_documents([table.description])[0]
+        embedding = np.array(embedding_vector, dtype=np.float32)
 
         # Store embedding
         store.store(

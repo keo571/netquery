@@ -13,7 +13,6 @@ from src.schema_ingestion.canonical import CanonicalSchema
 from ....common.config import config
 from ....common.schema_summary import get_schema_overview
 from ..state import TextToSQLState
-from ....common.database.engine import get_engine
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +22,19 @@ class SchemaAnalyzer:
 
     def __init__(self, canonical_schema_path: Optional[str] = None):
         """Initialize the analyzer with embedding support (required)."""
-        engine = get_engine()
-
         self.canonical_schema: Optional[CanonicalSchema] = None
         if canonical_schema_path:
             self._load_canonical_schema(canonical_schema_path)
 
         # Create SemanticTableFinder with canonical schema for embedding
+        if self.canonical_schema is None:
+            raise ValueError(
+                "SchemaAnalyzer requires a canonical schema with table and column descriptions. "
+                "Provide canonical_schema_path or set CANONICAL_SCHEMA_PATH."
+            )
+
         self.semantic_finder = SemanticTableFinder(
-            engine=engine,
-            model_name=os.getenv("EMBEDDING_MODEL", "all-mpnet-base-v2"),
+            model_name=os.getenv("EMBEDDING_MODEL", "gemini-embedding-001"),
             cache_dir=os.getenv("EMBEDDING_CACHE_DIR", ".embeddings_cache"),
             canonical_schema=self.canonical_schema
         )
