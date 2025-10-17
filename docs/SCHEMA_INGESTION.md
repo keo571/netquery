@@ -18,17 +18,15 @@ python -m src.schema_ingestion summary schema_files/dev_schema.json -v
 ### Package Structure
 
 ```
-src/schema_ingestion/            # Schema ingestion package (independent!)
-├── __main__.py                 # CLI tool (run: python -m src.schema_ingestion)
-├── formats/
-│   └── canonical.py            # Canonical schema format
-├── pipeline/
-│   └── builder.py              # Build schema from DB/Excel
-└── tools/
-    └── excel_schema_parser.py  # Parse Excel schemas
+src/schema_ingestion/          # Schema ingestion package (independent!)
+├── __main__.py               # CLI tool (run: python -m src.schema_ingestion)
+├── canonical.py              # Canonical schema format
+├── builder.py                # Build schema from DB/Excel
+└── excel_parser.py           # Parse Excel schemas
 
-schema_files/                   # Generated schemas
-└── dev_schema.json            # Development schema output
+schema_files/                  # Generated schemas
+├── dev_schema.json           # Development schema output
+└── prod_schema.json          # Production schema output
 ```
 
 ### Canonical Schema Format
@@ -221,7 +219,7 @@ The canonical schema is used by the text-to-SQL query pipeline:
 
 ```python
 # Query pipeline loads the schema
-from src.schema_ingestion.formats.canonical import CanonicalSchema
+from src.schema_ingestion.canonical import CanonicalSchema
 
 schema = CanonicalSchema.load('schema_files/dev_schema.json')
 
@@ -348,10 +346,10 @@ All embeddings are stored in local file cache with namespace isolation:
 | Task | File | Function/Class |
 |------|------|----------------|
 | CLI tool | [src/schema_ingestion/__main__.py](../src/schema_ingestion/__main__.py) | `main()` |
-| Build from DB | [src/schema_ingestion/pipeline/builder.py](../src/schema_ingestion/pipeline/builder.py) | `SchemaBuilder.build_from_database()` |
-| Build from Excel | [src/schema_ingestion/pipeline/builder.py](../src/schema_ingestion/pipeline/builder.py) | `SchemaBuilder.build_from_excel()` |
-| Canonical format | [src/schema_ingestion/formats/canonical.py](../src/schema_ingestion/formats/canonical.py) | `CanonicalSchema` |
-| Excel parser | [src/schema_ingestion/tools/excel_schema_parser.py](../src/schema_ingestion/tools/excel_schema_parser.py) | `ExcelSchemaParser` |
+| Build from DB | [src/schema_ingestion/builder.py](../src/schema_ingestion/builder.py) | `SchemaBuilder.build_from_database()` |
+| Build from Excel | [src/schema_ingestion/builder.py](../src/schema_ingestion/builder.py) | `SchemaBuilder.build_from_excel()` |
+| Canonical format | [src/schema_ingestion/canonical.py](../src/schema_ingestion/canonical.py) | `CanonicalSchema` |
+| Excel parser | [src/schema_ingestion/excel_parser.py](../src/schema_ingestion/excel_parser.py) | `ExcelSchemaParser` |
 
 ## Next Steps
 

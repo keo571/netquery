@@ -39,8 +39,7 @@ async def text_to_sql(
     query: str,
     show_explanation: bool = False,
     export_csv: bool = False,
-    export_html: bool = False,
-    excel_schema_path: Optional[str] = None
+    export_html: bool = False
 ) -> str:
     """Query network infrastructure data using natural language.
 
@@ -49,7 +48,6 @@ async def text_to_sql(
         show_explanation: Show detailed explanations of SQL generation and results
         export_csv: Export results to CSV file
         export_html: Generate HTML report with charts and visualizations
-        excel_schema_path: Path to Excel file with schema metadata for enhanced table descriptions
     """
     if not query.strip():
         # Show available tables and examples
@@ -76,8 +74,7 @@ async def text_to_sql(
         "original_query": query,
         "show_explanation": show_explanation,
         "export_csv": export_csv,
-        "export_html": export_html,
-        "excel_schema_path": excel_schema_path
+        "export_html": export_html
     }
 
     try:

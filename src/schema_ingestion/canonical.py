@@ -276,13 +276,7 @@ class CanonicalSchema:
             f"Generated: {self.generated_at}",
             f"Source: {self.source_type} ({self.source_location})",
             f"Database: {self.database_type}",
-            "",
-            "Statistics:",
-            f"  Total tables: {self.total_tables}",
-            f"  Core tables: {self.core_tables}",
-            f"  Detail tables: {self.detail_tables}",
-            f"  Junction tables: {self.junction_tables}",
-            f"  System tables: {self.system_tables}",
+            f"Tables: {self.total_tables}",
         ]
         return "\n".join(lines)
 

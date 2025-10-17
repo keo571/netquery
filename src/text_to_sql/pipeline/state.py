@@ -6,7 +6,7 @@ from typing_extensions import Annotated
 import operator
 
 if TYPE_CHECKING:
-    from src.schema_ingestion.formats.canonical import CanonicalSchema
+    from src.schema_ingestion.canonical import CanonicalSchema
 
 
 class ReasoningStep(TypedDict):
@@ -30,10 +30,9 @@ class TextToSQLState(TypedDict):
     export_html: Optional[bool]
     execute: Optional[bool]  # Whether to execute the SQL query
 
-    # Schema Input (supports both legacy and new formats)
-    excel_schema_path: Optional[str]  # DEPRECATED: Legacy Excel schema path
-    canonical_schema_path: Optional[str]  # NEW: Path to canonical schema JSON
-    canonical_schema: Optional[Any]  # NEW: Loaded CanonicalSchema object (use Any to avoid TypedDict issues)
+    # Schema Input
+    canonical_schema_path: Optional[str]  # Path to canonical schema JSON
+    canonical_schema: Optional[Any]  # Loaded CanonicalSchema object (use Any to avoid TypedDict issues)
 
     # Schema Analysis
     schema_context: str

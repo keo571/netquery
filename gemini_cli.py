@@ -24,7 +24,6 @@ async def main():
     parser.add_argument("--explain", action="store_true", help="Show detailed explanations of SQL generation and results")
     parser.add_argument("--html", action="store_true", help="Save results to HTML")
     parser.add_argument("--sql-only", action="store_true", help="Generate SQL only, don't execute it")
-    parser.add_argument("--excel-schema", type=str, help="Path to Excel schema file for enhanced table descriptions")
     parser.add_argument("--schema", type=str, help="Path to canonical schema JSON file")
     parser.add_argument("--app", type=str, help="Application/schema namespace (e.g., 'app_a', 'app_b'). Used for embedding isolation.")
     parser.add_argument("--database-url", type=str, help="Database URL (overrides DATABASE_URL env var)")
@@ -37,7 +36,6 @@ async def main():
         print("  python gemini_cli.py 'Which SSL certificates expire soon?' --csv")
         print("  python gemini_cli.py 'Show unhealthy servers' --explain")
         print("  python gemini_cli.py 'Show load balancers in us-east-1' --html")
-        print("  python gemini_cli.py 'Show all users' --excel-schema schema.xlsx")
         print("  python gemini_cli.py 'Show metrics' --schema schemas/app_a.json --app app_a")
         return
 
@@ -45,10 +43,6 @@ async def main():
     query = " ".join(args.query)
 
     # Apply environment defaults for schema inputs when flags are omitted
-    if not args.excel_schema:
-        env_excel = os.getenv("EXCEL_SCHEMA_PATH")
-        if env_excel:
-            args.excel_schema = env_excel
     if not args.schema:
         env_schema = os.getenv("CANONICAL_SCHEMA_PATH")
         if env_schema:
@@ -66,8 +60,6 @@ async def main():
         return
     
     print(f"Processing: {query}")
-    if args.excel_schema:
-        print(f"Using Excel schema: {args.excel_schema}")
     if args.schema:
         print(f"Using canonical schema: {args.schema}")
     if args.app:
@@ -85,8 +77,7 @@ async def main():
             "export_csv": args.csv,
             "export_html": args.html,
             "execute": not args.sql_only,  # Execute by default, unless --sql-only is set
-            "excel_schema_path": args.excel_schema,  # Pass Excel schema path if provided (legacy)
-            "canonical_schema_path": args.schema,  # Pass canonical schema path if provided (new)
+            "canonical_schema_path": args.schema,  # Pass canonical schema path if provided
         }
 
         result = await text_to_sql_graph.ainvoke(pipeline_input)

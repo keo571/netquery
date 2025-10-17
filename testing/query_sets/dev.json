@@ -4,76 +4,106 @@
     "List all servers",
     "What SSL certificates do we have?",
     "Display VIP pools",
-    "List servers in us-east-1"
+    "List servers in us-east-1",
+    "Show all backend mappings"
+  ],
+  "Health & Status": [
+    "Which servers are unhealthy?",
+    "Show load balancers with health score below 80",
+    "List servers with status 'maintenance'",
+    "Which load balancers have healthy status?",
+    "Show all SSL certificates that are expired"
   ],
   "Aggregations": [
     "How many load balancers do we have?",
     "Count servers by datacenter",
     "What's the average CPU utilization by datacenter?",
-    "What's the total bandwidth consumption?",
-    "Show top 3 load balancers by traffic volume in each region"
+    "What's the average memory usage across all servers?",
+    "Count SSL certificates by provider",
+    "How many backend mappings exist per load balancer?"
   ],
-  "Comparative Queries": [
-    "Which servers have higher CPU than average?",
-    "Find load balancers with more backends than typical",
-    "Show datacenters with above-average server counts"
+  "Traffic & Performance": [
+    "Show network traffic for the past 24 hours",
+    "Which load balancer has the highest average requests per second?",
+    "What's the average response time by load balancer?",
+    "Show load balancers with error rate above 1%",
+    "Display network traffic with bandwidth above 50 Mbps"
   ],
   "Multi-Table Joins": [
-    "Show load balancers with their backend servers and current status",
-    "List servers with their load balancer connections and roles",
-    "Show load balancers with backend mappings and monitoring metrics",
-    "Find servers with their monitoring data and SSL certificate status",
-    "Show servers with their load balancers and SSL certificate details"
+    "Show load balancers with their backend servers",
+    "List servers with their load balancer connections",
+    "Show load balancers with their VIP pools and protocols",
+    "Display servers with their network traffic metrics",
+    "List load balancers with health scores and backend counts"
   ],
-  "Set Operations & Existence": [
-    "Are there any servers without SSL certificates?",
-    "Find load balancers with no backend servers assigned",
-    "Show servers that have never been monitored"
+  "SSL Certificate Management": [
+    "Show certificates expiring in the next 30 days",
+    "Which certificates are from Let's Encrypt?",
+    "List certificates grouped by issuer",
+    "Show SSL monitoring stats for the past week",
+    "Which domains have active certificates?"
+  ],
+  "Network Monitoring": [
+    "Show servers with high latency (above 10ms)",
+    "Which servers have packet loss above 1%?",
+    "Display servers with uptime below 99%",
+    "List servers with high bandwidth utilization",
+    "Show network connectivity issues by datacenter"
+  ],
+  "Time-based Queries": [
+    "Show network traffic trends over the past week",
+    "Display health score changes for the past 3 days",
+    "List SSL certificates expiring in the next 7 days",
+    "Show hourly traffic patterns for load balancer id 1",
+    "Track server connectivity over the past 48 hours"
+  ],
+  "Comparative & Advanced": [
+    "Which servers have higher CPU than average?",
+    "Show load balancers with more backends than typical",
+    "Find servers with both high CPU and high memory usage",
+    "List load balancers with response time above datacenter average",
+    "Show servers that are unhealthy but have low CPU usage"
+  ],
+  "HAVING & Filters": [
+    "Show datacenters with more than 5 servers",
+    "Find load balancers where average response time exceeds 100ms",
+    "List SSL providers managing more than 5 certificates",
+    "Show VIP pools with more than 2 load balancers",
+    "Find datacenters with average server CPU above 70%"
+  ],
+  "Existence & NULL Checks": [
+    "Find load balancers with no backend servers",
+    "Show servers not mapped to any load balancer",
+    "List VIP pools without a load balancer",
+    "Display servers with missing datacenter information",
+    "Find SSL certificates without an issuer"
+  ],
+  "String Operations": [
+    "Find servers with hostnames containing 'web'",
+    "Show certificates with domains ending in '.com'",
+    "List load balancers with names starting with 'lb-prod'",
+    "Find servers with role 'api'",
+    "Show VIP pools using HTTPS protocol"
   ],
   "Conditional Logic": [
     "Categorize servers as High/Medium/Low based on CPU usage",
-    "Show load balancers with traffic status (Heavy/Normal/Light)",
-    "Display server health as Critical/Warning/OK based on metrics"
+    "Show load balancers with traffic status (Heavy/Normal/Light) based on requests per second",
+    "Display server health as Critical/Warning/OK based on health metrics",
+    "Classify SSL certificates as Expiring Soon/Active/Expired",
+    "Rate network connectivity as Good/Fair/Poor based on latency and packet loss"
   ],
-  "HAVING & Advanced Filters": [
-    "Show datacenters with more than 5 unhealthy servers",
-    "Find load balancers where average response time exceeds 500ms",
-    "List SSL providers managing more than 10 certificates"
-  ],
-  "Window Functions & Analytics": [
-    "Rank servers by CPU utilization within each datacenter",
-    "Compare each server's current CPU to its previous measurement",
-    "Calculate moving average of response times over the last 5 measurements"
-  ],
-  "Time-based Queries": [
-    "Show certificates expiring in the next 30 days",
-    "Find servers with high CPU for the last 3 consecutive monitoring periods",
-    "Show network traffic trends over the past week"
-  ],
-  "Troubleshooting": [
-    "What's the health status by datacenter?",
-    "Find servers with connection issues"
-  ],
-  "Performance Testing": [
-    "Show all monitoring metrics without any filtering",
-    "Display comprehensive server details with all related data"
-  ],
-  "Subqueries & Advanced Patterns": [
-    "Find servers in datacenters that have more than 5 load balancers",
-    "Show load balancers with more backends than the average",
-    "List servers that are monitored but not assigned to any load balancer"
-  ],
-  "String Operations & NULL Handling": [
-    "Find servers with hostnames containing 'web'",
-    "Show certificates with domains ending in '.com'",
-    "Display servers where hostname is not recorded",
-    "List load balancers with missing health score data"
+  "Complex Analytics": [
+    "Show comprehensive server health: CPU, memory, network connectivity, and load balancer status",
+    "List load balancers with traffic patterns, health scores, and backend distribution",
+    "Display datacenter overview: server count, average utilization, network health",
+    "Show SSL certificate status with monitoring alerts and expiry timeline",
+    "Analyze load balancer performance: traffic, health, response times, error rates"
   ],
   "Edge Cases": [
     "Show me nonexistent table data",
     "List servers in Mars datacenter",
-    "Delete all servers",
-    "Show me everything",
-    "What's broken?"
+    "What's the status of load balancer id 99999?",
+    "Show certificates expiring in the past",
+    "Find servers with negative CPU usage"
   ]
 }

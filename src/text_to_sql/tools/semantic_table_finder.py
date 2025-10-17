@@ -12,8 +12,7 @@ from .database_toolkit import db_toolkit
 from ...common.stores.embedding_store import create_embedding_store, EmbeddingStore
 
 if TYPE_CHECKING:
-    from src.schema_ingestion.tools.excel_schema_parser import ExcelSchemaParser
-    from src.schema_ingestion.formats.canonical import CanonicalSchema
+    from src.schema_ingestion.canonical import CanonicalSchema
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +21,7 @@ class SemanticTableFinder:
     """
     Find semantically relevant tables using sentence embeddings.
 
-    Supports three schema sources (in priority order):
-    1. CanonicalSchema (NEW - preferred)
-    2. ExcelSchemaParser (legacy)
-    3. Database introspection (fallback)
+    Uses CanonicalSchema for enhanced table descriptions or falls back to database introspection.
     """
 
     def __init__(
@@ -33,7 +29,6 @@ class SemanticTableFinder:
         engine,
         model_name: str = "all-mpnet-base-v2",
         cache_dir: str = ".embeddings_cache",
-        excel_schema: Optional['ExcelSchemaParser'] = None,
         canonical_schema: Optional['CanonicalSchema'] = None,
         embedding_store: Optional[EmbeddingStore] = None
     ):
@@ -44,23 +39,17 @@ class SemanticTableFinder:
             engine: Database engine (kept for compatibility)
             model_name: Name of the sentence transformer model
             cache_dir: Directory to cache embeddings (for local file store)
-            excel_schema: DEPRECATED - Optional Excel schema parser
-            canonical_schema: NEW - Optional canonical schema (preferred)
+            canonical_schema: Optional canonical schema (preferred)
             embedding_store: Optional pre-configured embedding store (pgvector or local file)
         """
         # Note: engine parameter kept for compatibility but not used
         self.model = SentenceTransformer(model_name)
-        self.excel_schema = excel_schema
         self.canonical_schema = canonical_schema
 
         # Determine namespace for embedding isolation
         if canonical_schema:
             self.namespace = canonical_schema.get_embedding_namespace()
             logger.info(f"Using embedding namespace: {self.namespace}")
-        elif excel_schema:
-            # Legacy: Use hash of excel schema tables
-            excel_hash = hash(frozenset(excel_schema.tables.keys()))
-            self.namespace = f"excel_{excel_hash}"
         else:
             self.namespace = "default"
 
@@ -83,15 +72,6 @@ class SemanticTableFinder:
 
         # Cache for in-memory lookups (for performance)
         self.table_descriptions: Dict[str, str] = {}
-
-        # Build embeddings if using legacy Excel schema (for backward compatibility)
-        if excel_schema:
-            # Check if embeddings already exist in cache
-            if self._embeddings_exist():
-                logger.info(f"Using cached embeddings for namespace: {self.namespace}")
-            else:
-                logger.info("Excel schema provided - building fresh embeddings with human-provided descriptions")
-                self.build_embeddings()
 
         logger.info(f"SemanticTableFinder initialized with model: {model_name}, namespace: {self.namespace}")
 
@@ -168,10 +148,9 @@ class SemanticTableFinder:
 
         Priority order for descriptions:
         1. CanonicalSchema (LLM/human-provided descriptions) - HIGHEST PRIORITY
-        2. Excel schema (human-provided descriptions) - LEGACY
-        3. Auto-generated from database reflection
+        2. Auto-generated from database reflection (fallback)
         """
-        # Priority 1: Use CanonicalSchema (NEW - preferred)
+        # Priority 1: Use CanonicalSchema (preferred)
         if self.canonical_schema and table_name in self.canonical_schema.tables:
             table_schema = self.canonical_schema.tables[table_name]
 
@@ -200,41 +179,12 @@ class SemanticTableFinder:
             logger.debug(f"Using canonical schema description for {table_name}")
             return ". ".join(parts)
 
-        # Priority 2: Use Excel schema description if available (LEGACY)
-        table_info = db_toolkit.get_table_info(table_name)
-        if self.excel_schema and table_name in self.excel_schema.tables:
-            excel_table = self.excel_schema.tables[table_name]
-            excel_desc = excel_table['description']
-
-            # Start with rich Excel description
-            parts = [f"Table: {table_name} - {excel_desc}"]
-
-            # Add Excel column descriptions (human-provided semantic info)
-            excel_columns = excel_table['columns']
-            if excel_columns:
-                col_descs = []
-                for col in excel_columns:
-                    col_name = col['name']
-                    col_desc = col.get('description', '')
-                    if col_desc:
-                        col_descs.append(f"{col_name}: {col_desc}")
-                    else:
-                        col_descs.append(col_name)
-
-                if col_descs:
-                    parts.append(f"Columns: {', '.join(col_descs)}")
-
-            # Add relationship context from Excel
-            related_tables = self.excel_schema.get_related_tables(table_name)
-            if related_tables:
-                parts.append(f"Related to: {', '.join(related_tables)}")
-
-            logger.debug(f"Using Excel schema description for {table_name}")
-            return ". ".join(parts)
-
-        # Priority 2: Fall back to database reflection only (no Excel schema provided)
+        # Priority 2: Fall back to database reflection only
         # Simple description based on table name
         parts = [f"Table: {table_name}"]
+
+        # Get table info from database
+        table_info = db_toolkit.get_table_info(table_name)
 
         # Add column names with semantic meaning
         if table_info.get('columns'):

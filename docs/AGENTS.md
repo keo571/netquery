@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 - Application code in `src/`: `api` (FastAPI server), `text_to_sql` (Gemini pipeline), `common` (database + utilities), `schema_ingestion` (reflection tooling).
 - CLI entry `gemini_cli.py`; persistent data and generated exports live in `data/`, `schema_files/`, and `outputs/`.
-- Support scripts sit in `setup/` for bootstrapping and environment switching; see `docs/PROFILES.md` for dev/prod setup.
+- Support scripts sit in `setup/` for bootstrapping and environment switching; see `docs/GETTING_STARTED.md` for dev/prod setup.
 
 ## Build, Test, and Development Commands
 - `pip install -r requirements.txt` installs dependencies inside your virtualenv.
@@ -29,5 +29,5 @@
 - Verify the API smoke tests (or the relevant subset) before requesting review and document anything skipped.
 
 ## Environment & Configuration Tips
-- Copy `.env.example` to `.env`, set `GEMINI_API_KEY`, and adjust `DATABASE_URL` / `EXCEL_SCHEMA_PATH` to match the target backend.
+- Copy `.env.example` to `.env`, set `GEMINI_API_KEY`, and adjust `DATABASE_URL` / `CANONICAL_SCHEMA_PATH` to match the target backend.
 - Use `./setup/switch_database.sh postgres` or `sqlite` to flip environments; commit hand-authored schema sources in `schema_files/` but ignore generated caches.

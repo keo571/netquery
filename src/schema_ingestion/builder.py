@@ -6,10 +6,10 @@ from typing import Optional, Dict, Set
 from sqlalchemy.engine import Engine
 from sqlalchemy import inspect
 
-from src.schema_ingestion.formats.canonical import (
+from src.schema_ingestion.canonical import (
     CanonicalSchema, TableSchema, ColumnSchema, RelationshipSchema
 )
-from src.schema_ingestion.tools.excel_schema_parser import ExcelSchemaParser
+from src.schema_ingestion.excel_parser import ExcelSchemaParser
 
 logger = logging.getLogger(__name__)
 

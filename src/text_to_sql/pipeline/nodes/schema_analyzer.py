@@ -9,8 +9,7 @@ from pathlib import Path
 
 from ...tools.semantic_table_finder import SemanticTableFinder
 from ...tools.database_toolkit import db_toolkit
-from src.schema_ingestion.tools.excel_schema_parser import ExcelSchemaParser
-from src.schema_ingestion.formats.canonical import CanonicalSchema
+from src.schema_ingestion.canonical import CanonicalSchema
 from ....common.config import config
 from ....common.schema_summary import get_schema_overview
 from ..state import TextToSQLState
@@ -22,46 +21,26 @@ logger = logging.getLogger(__name__)
 class SchemaAnalyzer:
     """Schema analyzer using embeddings for semantic table selection."""
 
-    def __init__(self, excel_schema_path: Optional[str] = None, canonical_schema_path: Optional[str] = None):
+    def __init__(self, canonical_schema_path: Optional[str] = None):
         """Initialize the analyzer with embedding support (required)."""
         engine = get_engine()
-
-        # Load Excel schema if provided (before creating SemanticTableFinder)
-        self.excel_schema: Optional[ExcelSchemaParser] = None
-        if excel_schema_path:
-            self._load_excel_schema(excel_schema_path)
 
         self.canonical_schema: Optional[CanonicalSchema] = None
         if canonical_schema_path:
             self._load_canonical_schema(canonical_schema_path)
 
-        # Create SemanticTableFinder with Excel schema for embedding
+        # Create SemanticTableFinder with canonical schema for embedding
         self.semantic_finder = SemanticTableFinder(
             engine=engine,
             model_name=os.getenv("EMBEDDING_MODEL", "all-mpnet-base-v2"),
             cache_dir=os.getenv("EMBEDDING_CACHE_DIR", ".embeddings_cache"),
-            excel_schema=self.excel_schema,
             canonical_schema=self.canonical_schema
         )
 
         logger.info(
-            "Initialized embedding-based schema analyzer (excel_schema: %s, canonical_schema: %s)",
-            self.excel_schema is not None,
+            "Initialized embedding-based schema analyzer (canonical_schema: %s)",
             self.canonical_schema is not None
         )
-
-    def _load_excel_schema(self, excel_schema_path: str):
-        """Load Excel schema for enhanced table descriptions."""
-        try:
-            if not Path(excel_schema_path).exists():
-                logger.warning(f"Excel schema file not found: {excel_schema_path}")
-                return
-
-            self.excel_schema = ExcelSchemaParser(excel_schema_path)
-            logger.info(f"Loaded Excel schema with {len(self.excel_schema.tables)} tables")
-        except Exception as e:
-            logger.error(f"Failed to load Excel schema: {e}")
-            self.excel_schema = None
 
     def _load_canonical_schema(self, canonical_schema_path: str):
         """Load canonical schema for enhanced descriptions and namespace isolation."""
@@ -236,18 +215,16 @@ _analyzer_cache: Dict[tuple, SchemaAnalyzer] = {}
 
 
 def get_analyzer(
-    excel_schema_path: Optional[str] = None,
     canonical_schema_path: Optional[str] = None
 ) -> SchemaAnalyzer:
-    """Get or create the analyzer instance (cached by schema paths)."""
+    """Get or create the analyzer instance (cached by schema path)."""
     global _analyzer_cache
 
-    # Use cache key based on excel_schema_path
-    cache_key = (excel_schema_path, canonical_schema_path)
+    # Use cache key based on canonical_schema_path
+    cache_key = (canonical_schema_path,)
 
     if cache_key not in _analyzer_cache:
         _analyzer_cache[cache_key] = SchemaAnalyzer(
-            excel_schema_path=excel_schema_path,
             canonical_schema_path=canonical_schema_path
         )
 
@@ -277,16 +254,14 @@ def schema_analyzer_node(state: TextToSQLState) -> Dict[str, Any]:
         }
 
     query = state["original_query"]
-    excel_schema_path = state.get("excel_schema_path") or os.getenv("EXCEL_SCHEMA_PATH")
     canonical_schema_path = state.get("canonical_schema_path") or os.getenv("CANONICAL_SCHEMA_PATH")
 
     try:
         # Measure schema analysis time
         start_time = time.time()
 
-        # Analyze schema using embeddings (with optional Excel schema)
+        # Analyze schema using embeddings
         analyzer = get_analyzer(
-            excel_schema_path=excel_schema_path,
             canonical_schema_path=canonical_schema_path
         )
         analysis_result = analyzer.analyze_schema(query=query)

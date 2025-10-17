@@ -24,8 +24,8 @@ from src.common.env import load_environment
 
 load_environment()
 
-from src.schema_ingestion.formats.canonical import CanonicalSchema
-from src.schema_ingestion.pipeline.builder import SchemaBuilder
+from src.schema_ingestion.canonical import CanonicalSchema
+from src.schema_ingestion.builder import SchemaBuilder
 from src.common.database.engine import get_engine
 from src.common.stores.embedding_store import create_embedding_store
 from sentence_transformers import SentenceTransformer

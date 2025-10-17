@@ -182,16 +182,15 @@ The system now includes a FastAPI server providing a clean separation between SQ
 ### 7. Excel Schema Integration with Human-in-the-Loop (October 2025)
 - ✅ Full Excel schema ingestion support for databases without introspectable schemas
 - ✅ Two-sheet format: table_schema (tables/columns) and mapping (relationships)
-- ✅ **Optional description columns**: `table_description` and `column_description` for human-provided semantic context
-- ✅ **Embedding integration**: Excel descriptions are embedded for semantic table discovery (NOT just SQL generation)
-- ✅ **Three-tier description priority**: Excel (human) > YAML config > Auto-generated
+- ✅ **Schema Ingestion**: Excel files can be converted to canonical JSON format for enhanced descriptions
+- ✅ **Embedding integration**: Canonical schema descriptions are embedded for semantic table discovery
+- ✅ **Two-tier description priority**: Canonical schema (human/LLM) > Auto-generated from database
 - ✅ Automatic column type inference from naming patterns (fallback)
 - ✅ Enhanced table descriptions with relationship context
-- ✅ CLI support: `--excel-schema` parameter
-- ✅ MCP server support: `excel_schema_path` parameter
+- ✅ CLI support: `--schema` parameter for canonical schema JSON
 - ✅ Seamless merge with live database reflection
-- ✅ Cached analyzer instances with Excel schema hash for performance
-- ✅ Helper script: `create_excel_with_descriptions.py` for template generation
+- ✅ Cached analyzer instances with schema hash for performance
+- ✅ Schema building tool: `python -m src.schema_ingestion build` to create canonical schemas from Excel or database
 
 ## Domain Focus: Network Infrastructure
 
@@ -374,11 +373,11 @@ python gemini_cli.py "Show me all load balancers"
 python gemini_cli.py "Show network traffic over time" --html
 python gemini_cli.py "Display server performance by datacenter" --csv --explain
 
-# Testing with Excel Schema
-python gemini_cli.py "Show all users" --excel-schema examples/my_schema.xlsx
-python gemini_cli.py "Display orders by customer" --excel-schema schema.xlsx --html
+# Testing with Canonical Schema
+python gemini_cli.py "Show all users" --schema schema_files/custom_schema.json
+python gemini_cli.py "Display orders by customer" --schema schema_files/custom_schema.json --html
 
-# Building Canonical Schema (Human-in-the-Loop Friendly)
+# Building Canonical Schema
 python -m src.schema_ingestion build --database-url sqlite:///data/mydb.db --output schema_files/my_sqlite_schema.json
 python -m src.schema_ingestion build --database-url postgresql://user:pass@host/db --output schema_files/my_postgres_schema.json
 
@@ -419,13 +418,19 @@ python -m src.schema_ingestion build --database-url sqlite:///data/mydb.db --out
 
 # Step 2: Review and edit the generated Excel file if needed
 
-# Step 3: Use with queries
-python gemini_cli.py "your query" --excel-schema schema_output.xlsx
+# Step 3: Convert to canonical format
+python -m src.schema_ingestion build \
+  --excel schema_output.xlsx \
+  --output schema_files/my_schema.json
+
+# Step 4: Use with queries
+python gemini_cli.py "your query" --schema schema_files/my_schema.json
 ```
 
 **Benefits**:
-- ✅ Human-in-the-loop for both database introspection AND Excel creation
+- ✅ Human-in-the-loop for both database introspection AND schema creation
 - ✅ Works with ANY database, regardless of naming
+- ✅ Canonical format ensures consistency
 - ✅ Descriptions are embedded for semantic table discovery
 - ✅ One-time effort, reusable forever
 

@@ -1,429 +1,557 @@
 # Architecture Decision Document
 
 ## Overview
-This document outlines the agreed-upon architecture for the Netquery system with React frontend, FastAPI backend, and LLM-powered interpretation.
+
+This document outlines the backend architecture for the Netquery text-to-SQL system, including the FastAPI server, LLM-powered interpretation, and API design.
+
+**Note**: The frontend (React application) is maintained in a separate repository: [netquery-insight-chat](https://github.com/keo571/netquery-insight-chat). This document focuses on the backend API architecture.
 
 ## Core Principles
+
 - **Simplicity First**: Direct Python calls, no unnecessary abstraction layers
 - **Performance Focused**: Minimize data loading and LLM calls
 - **User Controlled**: Interpretation is optional, user-triggered
 - **Clear Data Limits**: Well-defined boundaries for preview, interpretation, and export
+- **Stateless API**: RESTful design with session management via query IDs
 
 ## Architecture Components
 
-### 1. Frontend: React Application
-- User interface for query input
-- Displays SQL generation results
-- Shows data preview (30 rows)
-- Triggers interpretation when requested
-- Handles CSV download
+### 1. Core Pipeline: Text-to-SQL LangGraph
 
-### 2. Backend: FastAPI Server
+The main text-to-SQL pipeline (`src/text_to_sql/pipeline/graph.py`):
+- 6-stage processing workflow
+- Schema analysis and table selection
+- Query planning and complexity assessment
+- SQL generation with validation
+- Query execution and result formatting
+- Automatic visualization detection
+- Supports both execution and SQL-only generation modes
+
+### 2. Backend API: FastAPI Server
+
+RESTful API server (`api_server.py`):
 - Direct Python imports (no MCP layer)
-- Manages query sessions
-- Caches data to avoid re-execution
+- Manages query sessions and caching
 - Handles all LLM interactions
+- Streaming support for large downloads
+- Environment-aware (dev/prod modes)
 
-### 3. Core Pipeline: Netquery Text-to-SQL
-- Existing LangGraph pipeline
-- Modified to support SQL-only generation (no execution)
-- Maintains current 6-stage processing
+### 3. Database Layer
+
+- **Dev Mode**: SQLite (`data/infrastructure.db`)
+  - SSL certificates, network monitoring
+  - Detailed health tracking
+  - 9 tables with comprehensive metrics
+
+- **Prod Mode**: PostgreSQL (Docker)
+  - Wide IP global load balancing
+  - Traffic statistics
+  - 6 tables with production-like schema
+
+### 4. MCP Server (Optional)
+
+Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
+- Exposes text-to-SQL as MCP tool
+- Same pipeline as API server
+- Tool-based interface for Claude
 
 ## API Endpoints
 
 ### `/api/generate-sql`
-- **Input**: Natural language query
-- **Process**: Generate SQL without execution
-- **Output**:
-  - `query_id`: Unique identifier
-  - `sql`: Generated SQL query
-- **Data Handling**: None
+
+**Purpose**: Generate SQL from natural language without execution
+
+**Input**:
+```json
+{
+  "query": "Show me all unhealthy servers"
+}
+```
+
+**Process**:
+1. Run pipeline with `execute=False`
+2. Generate unique query ID
+3. Return SQL without execution
+
+**Output**:
+```json
+{
+  "query_id": "abc123",
+  "sql": "SELECT * FROM servers WHERE status = 'unhealthy'"
+}
+```
+
+**Data Handling**: None (no database access)
 
 ### `/api/execute/{query_id}`
-- **Input**: Query ID from generation step
-- **Process**:
-  1. Smart row counting (fast check for >1000 rows vs exact count ≤1000)
-  2. Execute SQL with `LIMIT 100`
-  3. Cache up to 100 rows in memory
-- **Output**:
-  - First 30 rows for display
-  - Total row count (exact if ≤1000, null if >1000)
-  - `truncated` flag indicating if preview is truncated to 30 rows
-- **Data Handling**:
-  - Fetches max 100 rows
-  - Returns max 30 rows
-  - Stores up to 100 rows in cache
+
+**Purpose**: Execute generated SQL and return preview data
+
+**Input**: Query ID from `/api/generate-sql`
+
+**Process**:
+1. Smart row counting:
+   - Fast check if >1000 rows exists
+   - Exact count if ≤1000 rows
+2. Execute SQL with `LIMIT 100`
+3. Cache up to 100 rows in memory
+4. Return first 30 rows for preview
+
+**Output**:
+```json
+{
+  "data": [{...}, {...}, ...],  // First 30 rows
+  "columns": ["id", "name", "status"],
+  "total_count": 156,  // exact count if ≤1000, null if >1000
+  "truncated": true  // true if showing 30 of more than 30
+}
+```
+
+**Data Handling**:
+- Fetches: MAX 100 rows
+- Returns: MAX 30 rows
+- Caches: Up to 100 rows
 
 ### `/api/interpret/{query_id}`
-- **Input**: Query ID
-- **Process**:
-  - Use cached data (up to 100 rows)
-  - Send all cached data to LLM (optimized at 100 rows)
-  - Generate insights and single best visualization suggestion
-- **Output**:
-  - Interpretation summary and key findings
-  - Single best visualization specification (or null)
-  - `data_truncated` flag for frontend guidance
-- **Error Handling**:
-  - If LLM fails: Returns user-friendly error message with data confirmation
-  - If visualization parsing fails: Returns interpretation with null visualization
-- **Data Handling**:
-  - Uses cached data (no re-execution)
-  - All cached rows sent to LLM (exactly 100 rows or fewer)
+
+**Purpose**: Generate LLM-powered insights and visualization suggestions
+
+**Input**: Query ID
+
+**Process**:
+1. Retrieve cached data (no re-execution)
+2. Send cached data to LLM (up to 100 rows)
+3. Generate textual insights
+4. Suggest best visualization (if applicable)
+
+**Output**:
+```json
+{
+  "interpretation": {
+    "summary": "Analysis shows 15 unhealthy servers...",
+    "key_findings": [
+      "80% of unhealthy servers are in us-east-1",
+      "Average CPU is 92% for unhealthy servers"
+    ]
+  },
+  "visualization": {
+    "type": "bar",
+    "title": "Unhealthy Servers by Datacenter",
+    "config": {
+      "x_column": "datacenter",
+      "y_column": "count",
+      "reason": "Shows distribution across datacenters"
+    }
+  },
+  "data_truncated": false  // true if >100 total rows
+}
+```
+
+**Error Handling**:
+- LLM failure: Returns error message with data confirmation
+- No good visualization: Returns interpretation with `visualization: null`
+
+**Data Handling**:
+- Uses cached data only (no re-execution)
+- Analyzes all cached rows (≤100)
 
 ### `/api/download/{query_id}`
-- **Input**: Query ID
-- **Process**:
-  - Execute full SQL (no limit)
-  - Stream results to CSV
-- **Output**: CSV file download
-- **Data Handling**:
-  - Fetches ALL rows
-  - Streams to avoid memory issues
+
+**Purpose**: Download complete dataset as CSV
+
+**Input**: Query ID
+
+**Process**:
+1. Execute full SQL (no LIMIT)
+2. Stream results to CSV
+3. Return as downloadable file
+
+**Output**: CSV file (streaming response)
+
+**Data Handling**:
+- Fetches: ALL rows
+- Memory: Streaming (no full load)
+
+### `/health`
+
+**Purpose**: Health check and system status
+
+**Output**:
+```json
+{
+  "status": "healthy",
+  "cache_size": 5,
+  "database_connected": true,
+  "environment": "dev"
+}
+```
 
 ## Data Flow
 
 ```
-1. User enters question
+1. User Question
    ↓
-2. Generate SQL (no execution)
+2. POST /api/generate-sql
+   → LangGraph pipeline (execute=False)
+   → Returns SQL + query_id
    ↓
-3. Preview (fetch ≤100, show 30, cache data)
+3. GET /api/execute/{query_id}
+   → Execute SQL (LIMIT 100)
+   → Cache results
+   → Return 30 rows preview
    ↓
-4. User chooses:
-   ├── Interpret (use cached ≤100 rows) → LLM → Insights + Chart Specs
-   │                                              ↓
-   │                                    React renders charts
-   └── Download (fetch all rows) → CSV file
+4. User Choice:
+
+   A. POST /api/interpret/{query_id}
+      → Use cached data (≤100 rows)
+      → LLM generates insights + viz spec
+      → Frontend renders visualization
+
+   B. GET /api/download/{query_id}
+      → Execute full SQL (no limit)
+      → Stream to CSV file
 ```
 
 ## Data Limits Summary
 
-| Operation | Database Fetch | Memory Storage | User Sees | LLM Sees |
-|-----------|---------------|----------------|-----------|----------|
-| Preview | ≤100 rows | ≤100 rows | 30 rows | - |
-| Interpret | 0 (uses cache) | - | text + charts | ≤100 rows |
+| Operation | Database Fetch | Memory Storage | API Returns | LLM Sees |
+|-----------|---------------|----------------|-------------|----------|
+| Generate SQL | 0 rows | 0 | SQL query | - |
+| Execute/Preview | ≤100 rows | ≤100 rows | 30 rows | - |
+| Interpret | 0 (cached) | - | Insights + viz | ≤100 rows |
 | Download | ALL rows | 0 (streaming) | CSV file | - |
 
 ## Session Management
 
 ### Cache Structure
+
 ```python
 {
     "query_id_abc123": {
         "sql": "SELECT * FROM servers WHERE...",
         "original_query": "Show me unhealthy servers",
-        "data": [...up to 100 rows...],
-        "total_count": 5234,
-        "timestamp": "2024-01-01T10:00:00"
+        "data": [...],  # up to 100 rows
+        "total_count": 5234,  # or None if >1000
+        "timestamp": "2025-01-15T10:00:00"
     }
 }
 ```
 
 ### Cache Policy
-- Store up to 100 rows per query
-- Clean up after 10 minutes (configurable)
-- Use in-memory dict for POC (Redis for production)
 
-## Implementation Strategy
-
-### Phase 1: Core Functionality
-1. Modify pipeline to support `execute=False` parameter
-2. Create FastAPI server with four endpoints
-3. Implement simple in-memory caching
-4. Basic React UI with query → preview → interpret/download flow
-
-### Phase 2: Optimizations (Future)
-- Add Redis for distributed caching
-- Implement streaming for large result preview
-- Add query cost estimation
-- Enhanced error handling
+- **Storage Limit**: 100 rows per query
+- **TTL**: 10 minutes (configurable via `CACHE_TTL`)
+- **Implementation**: In-memory dict for simplicity
+- **Future**: Redis for distributed/production deployment
+- **Cleanup**: Automatic TTL-based expiration
 
 ## Technology Choices
 
-### Why FastAPI (not Flask)
-- Async support for better performance
-- Built-in OpenAPI documentation
-- Better type hints and validation
-- Native streaming response support
+### Why FastAPI (not Flask)?
 
-### Why Direct Imports (not MCP)
-- Simpler architecture
-- Better performance (no IPC overhead)
-- Easier debugging
-- MCP only needed for external tool integration
+- ✅ Native async/await support for better performance
+- ✅ Built-in OpenAPI documentation (auto-generated)
+- ✅ Strong type hints and request validation (Pydantic)
+- ✅ Native streaming response support
+- ✅ Modern Python features and better performance
 
-### Why Cache Data
-- Avoid re-executing SQL for interpretation
-- Better user experience (faster response)
-- Reduces database load
+### Why Direct Imports (not MCP for API)?
+
+- ✅ Simpler architecture and fewer layers
+- ✅ Better performance (no IPC overhead)
+- ✅ Easier debugging and error handling
+- ✅ MCP only needed for external tool integration (Claude Desktop)
+- ✅ More control over request/response handling
+
+### Why In-Memory Cache (not Database)?
+
+- ✅ Faster access for interpretation
+- ✅ Avoids re-executing SQL
+- ✅ Better user experience (instant response)
+- ✅ Reduces database load
+- ✅ Simple POC implementation
+- ⚠️ Production: Consider Redis for scaling
+
+### Why 100 Row Cache Limit?
+
+- ✅ Optimal for LLM token usage
+- ✅ Fast enough for meaningful analysis
+- ✅ Reasonable memory footprint
+- ✅ Balance between completeness and performance
+- ✅ Transparent to users via `data_truncated` flag
 
 ## Configuration
 
 ### Environment Variables
+
 ```bash
 # Required
 GEMINI_API_KEY=your_key_here
-DATABASE_URL=sqlite:///data/infrastructure.db
+DATABASE_URL=sqlite:///data/infrastructure.db  # or postgresql://...
 
 # Optional
-CACHE_TTL=600  # seconds
-MAX_CACHE_ROWS=100
-PREVIEW_ROWS=30
+CACHE_TTL=600  # seconds (default: 10 minutes)
+MAX_CACHE_ROWS=100  # max rows to cache per query
+PREVIEW_ROWS=30  # rows returned in preview
+NETQUERY_ENV=dev  # dev or prod
+```
+
+### Environment Profiles
+
+**Dev Mode** (`.env`):
+```bash
+NETQUERY_ENV=dev
+DATABASE_URL=sqlite:///data/infrastructure.db
+CANONICAL_SCHEMA_PATH=schema_files/dev_schema.json
+```
+
+**Prod Mode** (`.env.prod`):
+```bash
+NETQUERY_ENV=prod
+DATABASE_URL=postgresql://netquery:password@localhost:5432/netquery
+CANONICAL_SCHEMA_PATH=schema_files/prod_schema.json
 ```
 
 ## Error Handling
 
 ### Large Dataset Scenarios
-- If total rows >100 and user requests interpretation:
-  - Use `data_truncated` flag to inform user
-  - Proceed with cached data interpretation
-- Download always provides full data regardless of size
+
+**Scenario**: Total rows > 100, user requests interpretation
+
+**Behavior**:
+- Use cached 100 rows for analysis
+- Set `data_truncated: true` in response
+- Frontend shows notice about sample-based analysis
+- User can download complete data via `/api/download`
+
+**Example**:
+```json
+{
+  "interpretation": {...},
+  "visualization": {...},
+  "data_truncated": true  // ← Informs frontend
+}
+```
 
 ### Failed SQL Execution
+
+**Scenario**: SQL execution error (syntax, permission, timeout)
+
+**Behavior**:
 - Return clear error message
-- Log for debugging
+- Log error for debugging
 - Don't cache failed queries
+- Return 400/500 status code
+
+**Example**:
+```json
+{
+  "error": "Query execution failed: Table 'invalid_table' not found"
+}
+```
+
+### LLM Interpretation Failure
+
+**Scenario**: LLM service unavailable or returns invalid response
+
+**Behavior**:
+- Return user-friendly error message
+- Confirm data was retrieved successfully
+- Suggest retry or manual analysis
+
+**Example**:
+```json
+{
+  "error": "Interpretation service temporarily unavailable. Your data was retrieved successfully. Please try again or download the results.",
+  "data_available": true
+}
+```
 
 ## Security Considerations
 
-### For POC
-- CORS configured for localhost only
-- Basic error messages (no sensitive info)
+### Current (POC/Development)
+
+- CORS configured for localhost development
 - SQL injection prevented by existing validator
+- Basic error messages (no sensitive data exposure)
+- Query safety checks (no DELETE, DROP, etc.)
 
-### For Production (Future)
-- Add authentication/authorization
-- Rate limiting per user
-- Audit logging
-- Sanitize error messages
+### Future (Production)
 
-## Visualization Integration
+**Authentication & Authorization**:
+- JWT-based authentication
+- Role-based access control
+- Per-user query limits
 
-### Approach: LLM-Suggested Chart Configurations
-The interpretation endpoint returns both textual insights and chart specifications that the frontend can render.
+**Rate Limiting**:
+- Per-user request limits
+- Per-endpoint rate limiting
+- API key management
 
-### Interpretation Response Structure
-```json
-{
-  "interpretation": {
-    "summary": "Analysis shows increasing failure rates in US-East region",
-    "key_findings": [
-      "80% of failures concentrated in one datacenter",
-      "Failure rate increased 3x in the last hour"
-    ],
-  },
-  "visualization": {
-    "type": "line",
-    "title": "Failure Rate Trend",
-    "config": {
-      "x_column": "timestamp",
-      "y_column": "failure_rate",
-      "reason": "Best shows the trend over time for this data"
+**Audit & Monitoring**:
+- Query logging and audit trail
+- Performance monitoring
+- Error tracking and alerting
+- Sanitized error messages
+
+**Data Security**:
+- Encrypted database connections
+- Secure credential management
+- Data access policies
+
+## Frontend Integration
+
+**Note**: Frontend implementation is in [netquery-insight-chat](https://github.com/keo571/netquery-insight-chat)
+
+### Frontend Responsibilities
+
+1. **Query Input**: Natural language query form
+2. **SQL Display**: Show generated SQL with syntax highlighting
+3. **Data Preview**: Table display (30 rows)
+4. **Interpretation Display**: Show insights and findings
+5. **Visualization Rendering**: Render charts from viz specs (Chart.js/Recharts/Plotly)
+6. **Download Handling**: CSV file download button
+7. **Status Indicators**: Loading states, truncation notices
+
+### Frontend Data Flow
+
+```
+User Input
+  ↓
+Generate SQL → Display SQL
+  ↓
+Execute → Show 30 row preview + row count
+  ↓
+User Clicks "Interpret"
+  ↓
+Show Insights + Render Chart
+
+OR
+
+User Clicks "Download"
+  ↓
+Download Complete CSV
+```
+
+### Visualization Rendering
+
+Frontend receives chart specification and renders using preferred library:
+
+```javascript
+// Example with Chart.js
+const renderVisualization = (vizSpec, data) => {
+  if (!vizSpec) return null;
+
+  const config = {
+    type: vizSpec.type,  // 'bar', 'line', 'pie', etc.
+    data: {
+      labels: data.map(row => row[vizSpec.config.x_column]),
+      datasets: [{
+        label: vizSpec.title,
+        data: data.map(row => row[vizSpec.config.y_column])
+      }]
     }
-  }
-}
-```
+  };
 
-### Frontend Visualization Rendering
-- React receives single best chart specification (or null)
-- Uses charting library (Chart.js, Recharts, or Plotly)
-- Renders single interactive chart alongside interpretation
-- Charts use the same cached data (≤100 rows)
-- No visualization shown if LLM cannot determine appropriate chart
-
-### Why This Approach
-- **Separation of Concerns**: LLM decides what to visualize, frontend handles rendering
-- **Flexibility**: Frontend can use any chart library
-- **Interactivity**: Users can interact with charts (hover, zoom, filter)
-- **Performance**: No image generation overhead on backend
-
-## Frontend Data Truncation Handling
-
-### The `data_truncated` Flag
-
-The `/api/interpret/{query_id}` endpoint returns a `data_truncated` boolean flag to inform the frontend about data completeness for interpretation analysis.
-
-#### Flag Logic
-```python
-data_truncated = total_count is None or (total_count and total_count > MAX_CACHE_ROWS)
-# True if dataset > 100 cached rows
-```
-
-#### API Response Structure
-```json
-{
-  "interpretation": { ... },
-  "visualization": { ... },  // Single chart or null
-  "data_truncated": true  // <- Frontend guidance flag
-}
-```
-
-### Frontend Usage Scenarios
-
-#### Scenario 1: Complete Dataset (≤100 rows)
-```json
-{
-  "data_truncated": false
-}
-```
-**Frontend Action**: Show interpretation without any warnings
-```jsx
-{!data_truncated && (
-  <div className="interpretation-complete">
-    <p>Analysis based on complete dataset</p>
-  </div>
-)}
-```
-
-#### Scenario 2: Large Dataset (>100 rows)
-```json
-{
-  "data_truncated": true
-}
-```
-**Frontend Action**: Show informative message about partial analysis
-```jsx
-{data_truncated && (
-  <div className="interpretation-notice">
-    <InfoIcon />
-    <p>Analysis based on sample data. For complete analysis, download full dataset.</p>
-    <Button onClick={downloadCSV}>Download Complete Data</Button>
-  </div>
-)}
-```
-
-### Recommended Frontend UX Patterns
-
-#### 1. Visual Indicators
-```jsx
-<div className="interpretation-header">
-  <h3>Data Insights</h3>
-  {data_truncated && (
-    <Badge variant="info">
-      Sample Analysis
-    </Badge>
-  )}
-</div>
-```
-
-#### 2. Contextual Help
-```jsx
-{data_truncated && (
-  <Tooltip content="This analysis is based on a sample of your data for performance. Download the full dataset to see all records.">
-    <QuestionIcon />
-  </Tooltip>
-)}
-```
-
-#### 3. Action Prompts
-```jsx
-{data_truncated && (
-  <Alert type="info">
-    <p>Want the complete picture?</p>
-    <div className="alert-actions">
-      <Button variant="primary" onClick={downloadFullData}>
-        Download Full Dataset
-      </Button>
-      <Button variant="secondary" onClick={refineQuery}>
-        Refine Query
-      </Button>
-    </div>
-  </Alert>
-)}
-```
-
-#### 4. Chart Annotations
-```jsx
-<Chart data={chartData}>
-  {data_truncated && (
-    <ChartAnnotation>
-      Chart based on sample data
-    </ChartAnnotation>
-  )}
-</Chart>
-```
-
-### Integration with Other Flags
-
-The frontend should combine `data_truncated` with other response fields for comprehensive UX:
-
-```jsx
-const DataStatus = ({ previewResponse, interpretationResponse }) => {
-  const { has_more, total_count, truncated: previewTruncated } = previewResponse;
-  const { data_truncated: interpretationTruncated } = interpretationResponse;
-
-  return (
-    <div className="data-status">
-      {/* Preview status */}
-      {previewTruncated && (
-        <p>Showing 30 of {total_count || 'many'} rows</p>
-      )}
-
-      {/* Interpretation status */}
-      {interpretationTruncated && (
-        <p>Analysis based on sample data for performance</p>
-      )}
-
-      {/* Action guidance */}
-      {has_more && (
-        <Button onClick={downloadComplete}>
-          Download all {total_count || 'available'} rows
-        </Button>
-      )}
-    </div>
-  );
+  return new Chart(ctx, config);
 };
 ```
 
-### Why This Approach Works
+### Data Truncation Handling
 
-1. **Clear Separation**: Different flags for different concerns
-   - `truncated`: Preview display truncation (30 of 100 rows)
-   - `has_more`: Dataset size beyond cache (>100 total rows)
-   - `data_truncated`: Interpretation completeness (analysis scope)
+Frontend should display notices based on API flags:
 
-2. **User Control**: Frontend can decide how prominently to show warnings
-3. **Performance Context**: Users understand why analysis is partial
-4. **Action-Oriented**: Clear path to get complete data when needed
-5. **Non-Intrusive**: Optional information that doesn't block workflow
+```jsx
+{truncated && (
+  <Notice type="info">
+    Showing 30 of {total_count || 'many'} rows
+  </Notice>
+)}
+
+{data_truncated && (
+  <Notice type="info">
+    Analysis based on sample data.
+    <Button onClick={downloadComplete}>Download Full Data</Button>
+  </Notice>
+)}
+```
+
+## Implementation Status
+
+### Completed ✅
+
+1. Core text-to-SQL pipeline with 6 stages
+2. FastAPI server with all endpoints
+3. In-memory caching system
+4. LLM-powered interpretation
+5. Smart row counting optimization
+6. Streaming CSV download
+7. Environment profile system (dev/prod)
+8. MCP server integration for Claude Desktop
+9. Comprehensive testing framework
+
+### Future Enhancements 🔮
+
+**Phase 1: Production Readiness**
+- Redis cache for distributed deployment
+- Authentication and authorization
+- Rate limiting and quotas
+- Enhanced error tracking
+
+**Phase 2: Advanced Features**
+- Query cost estimation
+- Result set pagination
+- Query history and favorites
+- Collaborative query sharing
+
+**Phase 3: Intelligence**
+- Query recommendation system
+- Automatic query optimization
+- Adaptive model selection by complexity
+- Learning from query patterns
 
 ## Benefits of This Architecture
 
-1. **Simple**: No complex orchestration or MCP layers
-2. **Fast**: Cached data, no re-execution
+1. **Simple**: No complex orchestration, direct Python calls
+2. **Fast**: Cached data, no redundant SQL execution
 3. **Scalable**: Clear data limits prevent memory issues
 4. **Flexible**: Easy to add features incrementally
-5. **User-Friendly**: Quick preview, optional interpretation with visualizations
-6. **Visual**: Data-driven chart suggestions enhance understanding
+5. **User-Friendly**: Quick preview, optional interpretation
+6. **Visual**: LLM-suggested visualizations enhance understanding
+7. **Testable**: Clear API contracts, comprehensive test suite
+8. **Maintainable**: Separation of concerns, good documentation
 
-## What We're NOT Building (Scope Clarity)
+## What We're NOT Building
+
+Scope clarity to avoid over-engineering:
 
 - ❌ Multi-agent orchestration (not needed yet)
-- ❌ MCP integration for React (unnecessary complexity)
-- ❌ RAG system (future enhancement)
-- ❌ Task decomposition (future enhancement)
 - ❌ Real-time streaming updates (not required)
-- ❌ Complex caching strategies (keep it simple)
+- ❌ Complex distributed caching (simple in-memory suffices)
+- ❌ RAG system for schema understanding (future enhancement)
+- ❌ Automatic query refinement loop (future enhancement)
+- ❌ Multi-tenancy (POC is single-tenant)
 
 ## Success Criteria
 
-- ✅ User can generate SQL from natural language
+- ✅ Generate SQL from natural language (80%+ success rate)
 - ✅ Preview loads in <2 seconds
-- ✅ Interpretation available for all datasets (with proper truncation handling)
-- ✅ Visualizations suggested by LLM and rendered in React
-- ✅ Full data download available for any size
+- ✅ Interpretation available for all datasets
+- ✅ Visualizations suggested and renderable
+- ✅ Full data download for any size
 - ✅ No duplicate SQL execution
 - ✅ Clear feedback on data limits
+- ✅ Comprehensive test coverage
+- ✅ Works in both dev and prod modes
 
-## Next Steps
+## Related Documentation
 
-1. Modify netquery pipeline to add `execute=False` option
-2. Create FastAPI server with four endpoints
-3. Implement in-memory caching
-4. Build React components for UI
-5. Test with various query sizes
-6. Document API for frontend team
+- [Getting Started](GETTING_STARTED.md) - Setup and usage guide
+- [Evaluation](EVALUATION.md) - Testing and evaluation framework
+- [Schema Ingestion](SCHEMA_INGESTION.md) - Schema management
+- [Sample Queries](SAMPLE_QUERIES.md) - Example queries for testing
+- [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions
 
 ---
 
+**Last Updated**: 2025-01-15

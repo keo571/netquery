@@ -78,13 +78,12 @@ pip install -r requirements.txt
 # Check if running
 docker ps | grep postgres
 
-# If not running, start it
-./profile.sh prod init
+# Start PostgreSQL (easiest way)
+./start-prod.sh
 
-# Or manually start your database (examples)
-# docker compose up -d postgres   # if you maintain a compose file
-# brew services start postgresql  # macOS/Homebrew
-# sudo systemctl start postgresql # Linux distros
+# Or manually
+docker compose up -d postgres
+./profile.sh prod init
 ```
 
 ---
@@ -144,7 +143,7 @@ export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 pkill -f "uvicorn"
 
 # Restart
-./dev-start.sh
+./api-server.sh
 ```
 
 ---
@@ -177,9 +176,15 @@ curl http://localhost:8000/health
 
 ```bash
 # Nuclear option: Reset everything
+
+# For dev mode
 rm -rf .embeddings_cache/
 rm data/*.db
-./profile.sh dev init
+./start-dev.sh
+
+# For prod mode
+docker compose down -v
+./start-prod.sh
 ```
 
 ---

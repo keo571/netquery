@@ -9,7 +9,7 @@ def test_api():
     # 1. Generate SQL
     print("1. Testing /api/generate-sql")
     response = requests.post(f"{BASE_URL}/api/generate-sql",
-                            json={"query": "Show top 5 servers by memory usage"})
+                            json={"query": "Show all servers with high memory usage"})
     result = response.json()
     print(f"   Query ID: {result['query_id']}")
     print(f"   SQL: {result['sql']}")

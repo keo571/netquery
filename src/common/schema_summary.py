@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
 
-from src.schema_ingestion.formats.canonical import CanonicalSchema
+from src.schema_ingestion.canonical import CanonicalSchema
 
 # Simple in-memory cache keyed by absolute schema path
 _SCHEMA_CACHE: Dict[Path, Dict[str, Any]] = {}
