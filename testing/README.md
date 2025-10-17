@@ -24,14 +24,18 @@ testing/
 
 ### Export Database Tables
 
-Export all tables from the current database to CSV files:
+Export all tables from SQLite database to CSV files:
 
 ```bash
-# Export dev database tables
+# Export dev database tables (SQLite only)
 python testing/export_database_tables.py
+```
 
-# Export prod database tables
-NETQUERY_ENV=prod python testing/export_database_tables.py
+**Note**: This script only works with SQLite (dev mode). For PostgreSQL exports:
+```bash
+# PostgreSQL export options
+docker compose exec postgres pg_dump -U netquery netquery > backup.sql
+# Or use pgAdmin web interface at http://localhost:5050
 ```
 
 Output: CSV files in `testing/table_exports/`

@@ -2,6 +2,9 @@
 """
 Export all database tables to CSV files.
 Useful for data analysis, backup, or sharing sample data.
+
+NOTE: This script only works with SQLite databases (dev mode).
+For PostgreSQL, use standard pg_dump or pgAdmin export tools.
 """
 import os
 import sys
@@ -10,16 +13,32 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
+from src.common.env import load_environment
 from src.text_to_sql.tools.database_toolkit import db_toolkit
 import pandas as pd
 
 def export_all_tables():
-    """Export all database tables to CSV files."""
-    # Create testing/table_exports directory for database table exports  
+    """Export all database tables to CSV files (SQLite only)."""
+    # Load environment to check database type
+    load_environment()
+
+    # Check if using SQLite
+    database_url = os.getenv("DATABASE_URL", "")
+    if not database_url.startswith("sqlite"):
+        print("❌ Error: This script only works with SQLite databases (dev mode)")
+        print(f"   Current DATABASE_URL: {database_url}")
+        print("\n💡 Solutions:")
+        print("   1. Switch to dev mode: ./start-dev.sh")
+        print("   2. For PostgreSQL, use: docker compose exec postgres pg_dump ...")
+        print("   3. Or use pgAdmin web interface: http://localhost:5050")
+        return False
+
+    # Create testing/table_exports directory for database table exports
     export_dir = Path(__file__).parent.parent / "testing" / "table_exports"
     export_dir.mkdir(parents=True, exist_ok=True)
-    
-    print("🚀 Starting database table export...")
+
+    env_mode = os.getenv("NETQUERY_ENV", "dev")
+    print(f"🚀 Starting database table export (SQLite - {env_mode} mode)...")
     print(f"📁 Export directory: {export_dir.absolute()}")
     
     # Get all table names
@@ -66,18 +85,20 @@ def export_all_tables():
     print(f"📊 Summary: {exported_count}/{len(table_names)} tables exported")
     print(f"📈 Total rows: {total_rows:,}")
     print(f"📁 Location: {export_dir.absolute()}")
-    
+
     if exported_count > 0:
         print(f"\n💡 Tip: Use these CSV files for data analysis or sharing sample data")
+
+    return True
 
 def main():
     """Main function."""
     try:
-        export_all_tables()
+        result = export_all_tables()
+        return 0 if result else 1
     except Exception as e:
         print(f"❌ Export failed: {e}")
         return 1
-    return 0
 
 if __name__ == "__main__":
     exit(main())
