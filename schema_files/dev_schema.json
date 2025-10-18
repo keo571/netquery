@@ -1,7 +1,7 @@
 {
   "schema_id": "dev",
   "version": "1.0.0",
-  "generated_at": "2025-10-14T21:35:18.887807",
+  "generated_at": "2025-10-18T01:07:04.473622",
   "source": {
     "type": "database",
     "location": "sqlite:///data/infrastructure.db",

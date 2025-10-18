@@ -6,11 +6,8 @@ import logging
 import os
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
-import numpy as np
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-
 from ...common.stores.embedding_store import create_embedding_store, EmbeddingStore
-from ..config import config
+from ...common.embeddings import EmbeddingService
 
 if TYPE_CHECKING:
     from src.schema_ingestion.canonical import CanonicalSchema
@@ -26,7 +23,8 @@ class SemanticTableFinder:
         model_name: str = "gemini-embedding-001",
         cache_dir: str = ".embeddings_cache",
         canonical_schema: Optional['CanonicalSchema'] = None,
-        embedding_store: Optional[EmbeddingStore] = None
+        embedding_store: Optional[EmbeddingStore] = None,
+        embedding_service: Optional[EmbeddingService] = None,
     ):
         """
         Initialize with Gemini embeddings model.
@@ -36,12 +34,9 @@ class SemanticTableFinder:
             cache_dir: Directory to cache embeddings (for local file store)
             canonical_schema: Optional canonical schema (preferred)
             embedding_store: Optional pre-configured embedding store (pgvector or local file)
+            embedding_service: Optional embedding service override (defaults to Gemini embeddings)
         """
-        api_key = config.llm.effective_api_key
-        self.embedding_model = GoogleGenerativeAIEmbeddings(
-            model=model_name,
-            google_api_key=api_key
-        )
+        self.embedding_service = embedding_service or EmbeddingService(model_name=model_name)
         self.model_name = model_name
         self.canonical_schema = canonical_schema
 
@@ -86,7 +81,7 @@ class SemanticTableFinder:
 
         for table_name in self.canonical_schema.tables:
             description = self._create_table_description(table_name)
-            embedding = self._embed_text(description)
+            embedding = self.embedding_service.embed_text(description)
 
             # Store in embedding store
             self.embedding_store.store(
@@ -108,7 +103,7 @@ class SemanticTableFinder:
         Returns: List of (table_name, similarity_score, description)
         """
         # Get query embedding
-        query_embedding = self._embed_query(query)
+        query_embedding = self.embedding_service.embed_query(query)
 
         # Search for similar tables using embedding store
         # The store handles the similarity computation (in-database for pgvector)
@@ -169,13 +164,3 @@ class SemanticTableFinder:
         raise KeyError(
             f"Table '{table_name}' is missing from the canonical schema. Ensure all tables include descriptions."
         )
-
-    def _embed_text(self, text: str) -> np.ndarray:
-        """Generate an embedding for table descriptions."""
-        embedding = self.embedding_model.embed_documents([text])[0]
-        return np.array(embedding, dtype=np.float32)
-
-    def _embed_query(self, query: str) -> np.ndarray:
-        """Generate an embedding for incoming queries."""
-        embedding = self.embedding_model.embed_query(query)
-        return np.array(embedding, dtype=np.float32)

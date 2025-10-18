@@ -29,7 +29,7 @@ load_environment()
 from src.common.database.engine import get_engine
 from src.common.schema_summary import get_schema_overview
 from src.text_to_sql.pipeline.graph import text_to_sql_graph
-from src.api.interpretation_service import get_interpretation
+from src.api.services import get_interpretation
 
 # ================================
 # CONFIGURATION & SETUP
