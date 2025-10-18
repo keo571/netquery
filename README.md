@@ -54,7 +54,28 @@ cp .env.dev .env
 # GEMINI_API_KEY=your_actual_key_here
 ```
 
-### 3. Start Netquery
+### 3. Build Schema Embeddings (First-Time Setup)
+
+Before running queries, build the schema with semantic embeddings for table discovery:
+
+```bash
+# For dev mode (SQLite)
+python -m src.schema_ingestion build --output schema_files/dev_schema.json --schema-id dev
+
+# For prod mode (PostgreSQL) - after starting postgres
+python -m src.schema_ingestion build --output schema_files/prod_schema.json --schema-id prod
+```
+
+This generates:
+- Canonical schema JSON with table/column metadata (`schema_files/dev_schema.json`)
+- Semantic embeddings for intelligent table discovery
+- Local embedding cache in `.embeddings_cache/{schema_id}/embeddings.json`
+
+**Note**: The startup scripts (`start-dev.sh`, `start-prod.sh`) handle this automatically. You only need to run this manually if you modify the database schema.
+
+See [docs/SCHEMA_INGESTION.md](docs/SCHEMA_INGESTION.md) for advanced usage.
+
+### 4. Start Netquery
 
 Choose your mode:
 
@@ -72,7 +93,7 @@ python gemini_cli.py "Show me all load balancers"
 ```
 ✅ Production-like environment with PostgreSQL in Docker
 
-### 4. Try Some Queries
+### 5. Try Some Queries
 ```bash
 # Basic queries (work in both modes)
 python gemini_cli.py "Show me all load balancers"
@@ -94,7 +115,7 @@ python gemini_cli.py "Display server health by datacenter" --csv
 python gemini_cli.py "Show unhealthy backends" --explain
 ```
 
-### 5. (Optional) Start API Server
+### 6. (Optional) Start API Server
 
 For web frontend integration:
 ```bash

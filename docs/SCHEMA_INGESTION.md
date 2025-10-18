@@ -302,14 +302,12 @@ All embeddings are stored in local file cache with namespace isolation:
 ```
 .embeddings_cache/
 ├── default/              # Development namespace
-│   ├── table1.npy
-│   ├── table2.npy
-│   └── metadata.json
+│   └── embeddings.json   # All table embeddings in single JSON file
 └── prod/                 # Production namespace
-    ├── table1.npy
-    ├── table2.npy
-    └── metadata.json
+    └── embeddings.json   # All table embeddings in single JSON file
 ```
+
+Each `embeddings.json` contains a dictionary mapping table names to their descriptions and embedding vectors (stored as arrays).
 
 ## Best Practices
 
