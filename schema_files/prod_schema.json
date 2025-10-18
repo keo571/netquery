@@ -1,64 +1,159 @@
 {
   "schema_id": "prod",
   "version": "1.0.0",
-  "generated_at": "2025-10-18T01:07:38.348690",
+  "generated_at": "2025-10-18T22:30:36.792817",
   "source": {
-    "type": "database",
-    "location": "sqlite:///data/infrastructure.db",
-    "database_type": "sqlite"
+    "type": "excel",
+    "location": "schema_files/load_balancer_schema.xlsx",
+    "database_type": "unknown"
   },
   "statistics": {
-    "total_tables": 9,
-    "core_tables": 0,
-    "detail_tables": 0,
-    "junction_tables": 0,
-    "system_tables": 0
+    "total_tables": 6
   },
   "tables": {
-    "backend_mappings": {
-      "name": "backend_mappings",
-      "description": "Table: backend_mappings",
+    "load_balancers": {
+      "name": "load_balancers",
+      "description": "Load balancer instances managing traffic distribution",
       "columns": {
         "id": {
           "name": "id",
-          "data_type": "INTEGER",
-          "description": "Column: id",
+          "data_type": "integer",
+          "description": "Unique load balancer identifier",
           "is_primary_key": true,
+          "is_foreign_key": true,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "name": {
+          "name": "name",
+          "data_type": "varchar",
+          "description": "Load balancer name",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "ip_address": {
+          "name": "ip_address",
+          "data_type": "varchar",
+          "description": "Management IP address of the load balancer",
+          "is_primary_key": false,
           "is_foreign_key": false,
           "is_nullable": true,
+          "default_value": null
+        },
+        "status": {
+          "name": "status",
+          "data_type": "varchar",
+          "description": "Current operational status (active, inactive, maintenance)",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "datacenter": {
+          "name": "datacenter",
+          "data_type": "varchar",
+          "description": "Datacenter location where load balancer is deployed",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "created_at": {
+          "name": "created_at",
+          "data_type": "timestamp",
+          "description": "When the load balancer was created",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": false,
+          "default_value": null
+        }
+      },
+      "relationships": [
+        {
+          "foreign_key_column": "id",
+          "referenced_table": "virtual_ips",
+          "referenced_column": "load_balancer_id",
+          "relationship_type": "one_to_many"
+        },
+        {
+          "foreign_key_column": "id",
+          "referenced_table": "backend_servers",
+          "referenced_column": "load_balancer_id",
+          "relationship_type": "one_to_many"
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "metadata": {
+        "num_columns": 6,
+        "num_fk_columns": 1
+      }
+    },
+    "virtual_ips": {
+      "name": "virtual_ips",
+      "description": "Virtual IP addresses for application access",
+      "columns": {
+        "id": {
+          "name": "id",
+          "data_type": "integer",
+          "description": "Unique virtual IP identifier",
+          "is_primary_key": true,
+          "is_foreign_key": true,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "vip_address": {
+          "name": "vip_address",
+          "data_type": "varchar",
+          "description": "Virtual IP address exposed to clients",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "port": {
+          "name": "port",
+          "data_type": "integer",
+          "description": "Port number for the service",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "protocol": {
+          "name": "protocol",
+          "data_type": "varchar",
+          "description": "Protocol used (HTTP, HTTPS, TCP, UDP)",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": false,
           "default_value": null
         },
         "load_balancer_id": {
           "name": "load_balancer_id",
-          "data_type": "INTEGER",
-          "description": "Column: load_balancer_id",
+          "data_type": "integer",
+          "description": "Load balancer handling this VIP",
           "is_primary_key": false,
           "is_foreign_key": true,
-          "is_nullable": true,
+          "is_nullable": false,
           "default_value": null
         },
-        "server_id": {
-          "name": "server_id",
-          "data_type": "INTEGER",
-          "description": "Column: server_id",
-          "is_primary_key": false,
-          "is_foreign_key": true,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "weight": {
-          "name": "weight",
-          "data_type": "INTEGER",
-          "description": "Column: weight",
+        "pool_name": {
+          "name": "pool_name",
+          "data_type": "varchar",
+          "description": "Backend server pool name",
           "is_primary_key": false,
           "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": "100"
+          "is_nullable": false,
+          "default_value": null
         },
-        "health_check_path": {
-          "name": "health_check_path",
-          "data_type": "TEXT",
-          "description": "Column: health_check_path",
+        "health_check_url": {
+          "name": "health_check_url",
+          "data_type": "varchar",
+          "description": "URL for health check monitoring",
           "is_primary_key": false,
           "is_foreign_key": false,
           "is_nullable": true,
@@ -66,12 +161,12 @@
         },
         "created_at": {
           "name": "created_at",
-          "data_type": "DATETIME",
-          "description": "Column: created_at",
+          "data_type": "timestamp",
+          "description": "When the VIP was created",
           "is_primary_key": false,
           "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": "CURRENT_TIMESTAMP"
+          "is_nullable": false,
+          "default_value": null
         }
       },
       "relationships": [
@@ -82,8 +177,170 @@
           "relationship_type": "one_to_many"
         },
         {
-          "foreign_key_column": "server_id",
-          "referenced_table": "servers",
+          "foreign_key_column": "id",
+          "referenced_table": "wide_ip_pools",
+          "referenced_column": "virtual_ip_id",
+          "relationship_type": "one_to_many"
+        },
+        {
+          "foreign_key_column": "id",
+          "referenced_table": "traffic_stats",
+          "referenced_column": "virtual_ip_id",
+          "relationship_type": "one_to_many"
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "metadata": {
+        "num_columns": 8,
+        "num_fk_columns": 2
+      }
+    },
+    "wide_ips": {
+      "name": "wide_ips",
+      "description": "Global server load balancing DNS entries",
+      "columns": {
+        "id": {
+          "name": "id",
+          "data_type": "integer",
+          "description": "Unique wide IP identifier",
+          "is_primary_key": true,
+          "is_foreign_key": true,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "domain_name": {
+          "name": "domain_name",
+          "data_type": "varchar",
+          "description": "DNS domain name for the wide IP",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "load_balancing_method": {
+          "name": "load_balancing_method",
+          "data_type": "varchar",
+          "description": "Load balancing algorithm (round-robin, geo, ratio)",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "ttl": {
+          "name": "ttl",
+          "data_type": "integer",
+          "description": "DNS Time-to-Live in seconds",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": true,
+          "default_value": null
+        },
+        "status": {
+          "name": "status",
+          "data_type": "varchar",
+          "description": "Current operational status (enabled, disabled)",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "created_at": {
+          "name": "created_at",
+          "data_type": "timestamp",
+          "description": "When the wide IP was created",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": false,
+          "default_value": null
+        }
+      },
+      "relationships": [
+        {
+          "foreign_key_column": "id",
+          "referenced_table": "wide_ip_pools",
+          "referenced_column": "wide_ip_id",
+          "relationship_type": "one_to_many"
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "metadata": {
+        "num_columns": 6,
+        "num_fk_columns": 1
+      }
+    },
+    "wide_ip_pools": {
+      "name": "wide_ip_pools",
+      "description": "Pools of virtual IPs assigned to wide IPs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "data_type": "integer",
+          "description": "Unique pool assignment identifier",
+          "is_primary_key": true,
+          "is_foreign_key": false,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "wide_ip_id": {
+          "name": "wide_ip_id",
+          "data_type": "integer",
+          "description": "Wide IP this pool belongs to",
+          "is_primary_key": false,
+          "is_foreign_key": true,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "virtual_ip_id": {
+          "name": "virtual_ip_id",
+          "data_type": "integer",
+          "description": "Virtual IP in this pool",
+          "is_primary_key": false,
+          "is_foreign_key": true,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "priority": {
+          "name": "priority",
+          "data_type": "integer",
+          "description": "Priority order for traffic distribution",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": true,
+          "default_value": null
+        },
+        "ratio": {
+          "name": "ratio",
+          "data_type": "integer",
+          "description": "Traffic ratio weight for this VIP",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": true,
+          "default_value": null
+        },
+        "enabled": {
+          "name": "enabled",
+          "data_type": "boolean",
+          "description": "Whether this pool member is active",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": false,
+          "default_value": null
+        }
+      },
+      "relationships": [
+        {
+          "foreign_key_column": "wide_ip_id",
+          "referenced_table": "wide_ips",
+          "referenced_column": "id",
+          "relationship_type": "one_to_many"
+        },
+        {
+          "foreign_key_column": "virtual_ip_id",
+          "referenced_table": "virtual_ips",
           "referenced_column": "id",
           "relationship_type": "one_to_many"
         }
@@ -96,628 +353,32 @@
         "num_fk_columns": 2
       }
     },
-    "lb_health_log": {
-      "name": "lb_health_log",
-      "description": "Table: lb_health_log",
+    "backend_servers": {
+      "name": "backend_servers",
+      "description": "Physical servers handling actual traffic",
       "columns": {
         "id": {
           "name": "id",
-          "data_type": "INTEGER",
-          "description": "Column: id",
+          "data_type": "integer",
+          "description": "Unique backend server identifier",
           "is_primary_key": true,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "load_balancer_id": {
-          "name": "load_balancer_id",
-          "data_type": "INTEGER",
-          "description": "Column: load_balancer_id",
-          "is_primary_key": false,
-          "is_foreign_key": true,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "timestamp": {
-          "name": "timestamp",
-          "data_type": "DATETIME",
-          "description": "Column: timestamp",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "healthy_backends": {
-          "name": "healthy_backends",
-          "data_type": "INTEGER",
-          "description": "Column: healthy_backends",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "total_backends": {
-          "name": "total_backends",
-          "data_type": "INTEGER",
-          "description": "Column: total_backends",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "avg_response_time_ms": {
-          "name": "avg_response_time_ms",
-          "data_type": "REAL",
-          "description": "Column: avg_response_time_ms",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "total_requests": {
-          "name": "total_requests",
-          "data_type": "INTEGER",
-          "description": "Column: total_requests",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "health_score_percent": {
-          "name": "health_score_percent",
-          "data_type": "REAL",
-          "description": "Column: health_score_percent",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        }
-      },
-      "relationships": [
-        {
-          "foreign_key_column": "load_balancer_id",
-          "referenced_table": "load_balancers",
-          "referenced_column": "id",
-          "relationship_type": "one_to_many"
-        }
-      ],
-      "primary_keys": [
-        "id"
-      ],
-      "metadata": {
-        "num_columns": 8,
-        "num_fk_columns": 1
-      }
-    },
-    "load_balancers": {
-      "name": "load_balancers",
-      "description": "Table: load_balancers",
-      "columns": {
-        "id": {
-          "name": "id",
-          "data_type": "INTEGER",
-          "description": "Column: id",
-          "is_primary_key": true,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "name": {
-          "name": "name",
-          "data_type": "TEXT",
-          "description": "Column: name",
-          "is_primary_key": false,
           "is_foreign_key": false,
           "is_nullable": false,
-          "default_value": null
-        },
-        "status": {
-          "name": "status",
-          "data_type": "TEXT",
-          "description": "Column: status",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": false,
-          "default_value": null
-        },
-        "vip_address": {
-          "name": "vip_address",
-          "data_type": "TEXT",
-          "description": "Column: vip_address",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "datacenter": {
-          "name": "datacenter",
-          "data_type": "TEXT",
-          "description": "Column: datacenter",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "lb_type": {
-          "name": "lb_type",
-          "data_type": "TEXT",
-          "description": "Column: lb_type",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "algorithm": {
-          "name": "algorithm",
-          "data_type": "TEXT",
-          "description": "Column: algorithm",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "created_at": {
-          "name": "created_at",
-          "data_type": "DATETIME",
-          "description": "Column: created_at",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": "CURRENT_TIMESTAMP"
-        }
-      },
-      "relationships": [],
-      "primary_keys": [
-        "id"
-      ],
-      "metadata": {
-        "num_columns": 8,
-        "num_fk_columns": 0
-      }
-    },
-    "network_connectivity": {
-      "name": "network_connectivity",
-      "description": "Table: network_connectivity",
-      "columns": {
-        "id": {
-          "name": "id",
-          "data_type": "INTEGER",
-          "description": "Column: id",
-          "is_primary_key": true,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "server_id": {
-          "name": "server_id",
-          "data_type": "INTEGER",
-          "description": "Column: server_id",
-          "is_primary_key": false,
-          "is_foreign_key": true,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "timestamp": {
-          "name": "timestamp",
-          "data_type": "DATETIME",
-          "description": "Column: timestamp",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "latency_ms": {
-          "name": "latency_ms",
-          "data_type": "REAL",
-          "description": "Column: latency_ms",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "packet_loss_percent": {
-          "name": "packet_loss_percent",
-          "data_type": "REAL",
-          "description": "Column: packet_loss_percent",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "uptime_percent": {
-          "name": "uptime_percent",
-          "data_type": "REAL",
-          "description": "Column: uptime_percent",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "bandwidth_utilization_percent": {
-          "name": "bandwidth_utilization_percent",
-          "data_type": "REAL",
-          "description": "Column: bandwidth_utilization_percent",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "connection_count": {
-          "name": "connection_count",
-          "data_type": "INTEGER",
-          "description": "Column: connection_count",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        }
-      },
-      "relationships": [
-        {
-          "foreign_key_column": "server_id",
-          "referenced_table": "servers",
-          "referenced_column": "id",
-          "relationship_type": "one_to_many"
-        }
-      ],
-      "primary_keys": [
-        "id"
-      ],
-      "metadata": {
-        "num_columns": 8,
-        "num_fk_columns": 1
-      }
-    },
-    "network_traffic": {
-      "name": "network_traffic",
-      "description": "Table: network_traffic",
-      "columns": {
-        "id": {
-          "name": "id",
-          "data_type": "INTEGER",
-          "description": "Column: id",
-          "is_primary_key": true,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "load_balancer_id": {
-          "name": "load_balancer_id",
-          "data_type": "INTEGER",
-          "description": "Column: load_balancer_id",
-          "is_primary_key": false,
-          "is_foreign_key": true,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "timestamp": {
-          "name": "timestamp",
-          "data_type": "DATETIME",
-          "description": "Column: timestamp",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "requests_per_second": {
-          "name": "requests_per_second",
-          "data_type": "INTEGER",
-          "description": "Column: requests_per_second",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "response_time_ms": {
-          "name": "response_time_ms",
-          "data_type": "REAL",
-          "description": "Column: response_time_ms",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "bandwidth_mbps": {
-          "name": "bandwidth_mbps",
-          "data_type": "REAL",
-          "description": "Column: bandwidth_mbps",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "active_connections": {
-          "name": "active_connections",
-          "data_type": "INTEGER",
-          "description": "Column: active_connections",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "error_rate_percent": {
-          "name": "error_rate_percent",
-          "data_type": "REAL",
-          "description": "Column: error_rate_percent",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        }
-      },
-      "relationships": [
-        {
-          "foreign_key_column": "load_balancer_id",
-          "referenced_table": "load_balancers",
-          "referenced_column": "id",
-          "relationship_type": "one_to_many"
-        }
-      ],
-      "primary_keys": [
-        "id"
-      ],
-      "metadata": {
-        "num_columns": 8,
-        "num_fk_columns": 1
-      }
-    },
-    "servers": {
-      "name": "servers",
-      "description": "Table: servers",
-      "columns": {
-        "id": {
-          "name": "id",
-          "data_type": "INTEGER",
-          "description": "Column: id",
-          "is_primary_key": true,
-          "is_foreign_key": false,
-          "is_nullable": true,
           "default_value": null
         },
         "hostname": {
           "name": "hostname",
-          "data_type": "TEXT",
-          "description": "Column: hostname",
+          "data_type": "varchar",
+          "description": "Server hostname",
           "is_primary_key": false,
           "is_foreign_key": false,
           "is_nullable": false,
           "default_value": null
         },
-        "status": {
-          "name": "status",
-          "data_type": "TEXT",
-          "description": "Column: status",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": false,
-          "default_value": null
-        },
-        "cpu_utilization": {
-          "name": "cpu_utilization",
-          "data_type": "REAL",
-          "description": "Column: cpu_utilization",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "memory_usage": {
-          "name": "memory_usage",
-          "data_type": "REAL",
-          "description": "Column: memory_usage",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "datacenter": {
-          "name": "datacenter",
-          "data_type": "TEXT",
-          "description": "Column: datacenter",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "role": {
-          "name": "role",
-          "data_type": "TEXT",
-          "description": "Column: role",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "created_at": {
-          "name": "created_at",
-          "data_type": "DATETIME",
-          "description": "Column: created_at",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": "CURRENT_TIMESTAMP"
-        }
-      },
-      "relationships": [],
-      "primary_keys": [
-        "id"
-      ],
-      "metadata": {
-        "num_columns": 8,
-        "num_fk_columns": 0
-      }
-    },
-    "ssl_certificates": {
-      "name": "ssl_certificates",
-      "description": "Table: ssl_certificates",
-      "columns": {
-        "id": {
-          "name": "id",
-          "data_type": "INTEGER",
-          "description": "Column: id",
-          "is_primary_key": true,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "domain": {
-          "name": "domain",
-          "data_type": "TEXT",
-          "description": "Column: domain",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": false,
-          "default_value": null
-        },
-        "issuer": {
-          "name": "issuer",
-          "data_type": "TEXT",
-          "description": "Column: issuer",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "expiry_date": {
-          "name": "expiry_date",
-          "data_type": "DATETIME",
-          "description": "Column: expiry_date",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "status": {
-          "name": "status",
-          "data_type": "TEXT",
-          "description": "Column: status",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "provider": {
-          "name": "provider",
-          "data_type": "TEXT",
-          "description": "Column: provider",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "created_at": {
-          "name": "created_at",
-          "data_type": "DATETIME",
-          "description": "Column: created_at",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": "CURRENT_TIMESTAMP"
-        }
-      },
-      "relationships": [],
-      "primary_keys": [
-        "id"
-      ],
-      "metadata": {
-        "num_columns": 7,
-        "num_fk_columns": 0
-      }
-    },
-    "ssl_monitoring": {
-      "name": "ssl_monitoring",
-      "description": "Table: ssl_monitoring",
-      "columns": {
-        "id": {
-          "name": "id",
-          "data_type": "INTEGER",
-          "description": "Column: id",
-          "is_primary_key": true,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "date": {
-          "name": "date",
-          "data_type": "DATE",
-          "description": "Column: date",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "certificates_expiring_30days": {
-          "name": "certificates_expiring_30days",
-          "data_type": "INTEGER",
-          "description": "Column: certificates_expiring_30days",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "certificates_expiring_7days": {
-          "name": "certificates_expiring_7days",
-          "data_type": "INTEGER",
-          "description": "Column: certificates_expiring_7days",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "total_certificates": {
-          "name": "total_certificates",
-          "data_type": "INTEGER",
-          "description": "Column: total_certificates",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "expired_certificates": {
-          "name": "expired_certificates",
-          "data_type": "INTEGER",
-          "description": "Column: expired_certificates",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "renewed_certificates": {
-          "name": "renewed_certificates",
-          "data_type": "INTEGER",
-          "description": "Column: renewed_certificates",
-          "is_primary_key": false,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        }
-      },
-      "relationships": [],
-      "primary_keys": [
-        "id"
-      ],
-      "metadata": {
-        "num_columns": 7,
-        "num_fk_columns": 0
-      }
-    },
-    "vip_pools": {
-      "name": "vip_pools",
-      "description": "Table: vip_pools",
-      "columns": {
-        "id": {
-          "name": "id",
-          "data_type": "INTEGER",
-          "description": "Column: id",
-          "is_primary_key": true,
-          "is_foreign_key": false,
-          "is_nullable": true,
-          "default_value": null
-        },
-        "vip_address": {
-          "name": "vip_address",
-          "data_type": "TEXT",
-          "description": "Column: vip_address",
+        "ip_address": {
+          "name": "ip_address",
+          "data_type": "varchar",
+          "description": "Server IP address",
           "is_primary_key": false,
           "is_foreign_key": false,
           "is_nullable": false,
@@ -725,39 +386,48 @@
         },
         "port": {
           "name": "port",
-          "data_type": "INTEGER",
-          "description": "Column: port",
+          "data_type": "integer",
+          "description": "Service port number",
           "is_primary_key": false,
           "is_foreign_key": false,
-          "is_nullable": true,
+          "is_nullable": false,
           "default_value": null
         },
-        "protocol": {
-          "name": "protocol",
-          "data_type": "TEXT",
-          "description": "Column: protocol",
+        "pool_name": {
+          "name": "pool_name",
+          "data_type": "varchar",
+          "description": "Pool this server belongs to",
           "is_primary_key": false,
           "is_foreign_key": false,
-          "is_nullable": true,
+          "is_nullable": false,
           "default_value": null
         },
         "load_balancer_id": {
           "name": "load_balancer_id",
-          "data_type": "INTEGER",
-          "description": "Column: load_balancer_id",
+          "data_type": "integer",
+          "description": "Load balancer managing this server",
           "is_primary_key": false,
           "is_foreign_key": true,
-          "is_nullable": true,
+          "is_nullable": false,
           "default_value": null
         },
-        "created_at": {
-          "name": "created_at",
-          "data_type": "DATETIME",
-          "description": "Column: created_at",
+        "health_status": {
+          "name": "health_status",
+          "data_type": "varchar",
+          "description": "Current health check status (up, down, unknown)",
           "is_primary_key": false,
           "is_foreign_key": false,
           "is_nullable": true,
-          "default_value": "CURRENT_TIMESTAMP"
+          "default_value": null
+        },
+        "datacenter": {
+          "name": "datacenter",
+          "data_type": "varchar",
+          "description": "Datacenter location",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": false,
+          "default_value": null
         }
       },
       "relationships": [
@@ -772,7 +442,91 @@
         "id"
       ],
       "metadata": {
-        "num_columns": 6,
+        "num_columns": 8,
+        "num_fk_columns": 1
+      }
+    },
+    "traffic_stats": {
+      "name": "traffic_stats",
+      "description": "Traffic statistics and metrics",
+      "columns": {
+        "id": {
+          "name": "id",
+          "data_type": "integer",
+          "description": "Unique stat record identifier",
+          "is_primary_key": true,
+          "is_foreign_key": false,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "virtual_ip_id": {
+          "name": "virtual_ip_id",
+          "data_type": "integer",
+          "description": "Virtual IP these stats belong to",
+          "is_primary_key": false,
+          "is_foreign_key": true,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "data_type": "timestamp",
+          "description": "When the stats were recorded",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": false,
+          "default_value": null
+        },
+        "requests_per_second": {
+          "name": "requests_per_second",
+          "data_type": "decimal",
+          "description": "Number of requests per second",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": true,
+          "default_value": null
+        },
+        "bytes_in": {
+          "name": "bytes_in",
+          "data_type": "bigint",
+          "description": "Bytes received",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": true,
+          "default_value": null
+        },
+        "bytes_out": {
+          "name": "bytes_out",
+          "data_type": "bigint",
+          "description": "Bytes sent",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": true,
+          "default_value": null
+        },
+        "active_connections": {
+          "name": "active_connections",
+          "data_type": "integer",
+          "description": "Number of active connections",
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "is_nullable": true,
+          "default_value": null
+        }
+      },
+      "relationships": [
+        {
+          "foreign_key_column": "virtual_ip_id",
+          "referenced_table": "virtual_ips",
+          "referenced_column": "id",
+          "relationship_type": "one_to_many"
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "metadata": {
+        "num_columns": 7,
         "num_fk_columns": 1
       }
     }

@@ -140,10 +140,6 @@ class CanonicalSchema:
 
     # Statistics
     total_tables: int = 0
-    core_tables: int = 0
-    detail_tables: int = 0
-    junction_tables: int = 0
-    system_tables: int = 0
 
     def add_table(self, table: TableSchema):
         """Add a table to the schema."""
@@ -170,11 +166,7 @@ class CanonicalSchema:
                 'database_type': self.database_type
             },
             'statistics': {
-                'total_tables': self.total_tables,
-                'core_tables': self.core_tables,
-                'detail_tables': self.detail_tables,
-                'junction_tables': self.junction_tables,
-                'system_tables': self.system_tables
+                'total_tables': self.total_tables
             },
             'tables': {name: table.to_dict() for name, table in self.tables.items()}
         }
@@ -197,11 +189,7 @@ class CanonicalSchema:
             source_location=source.get('location', ''),
             database_type=source.get('database_type', 'sqlite'),
             tables=tables,
-            total_tables=statistics.get('total_tables', len(tables)),
-            core_tables=statistics.get('core_tables', 0),
-            detail_tables=statistics.get('detail_tables', 0),
-            junction_tables=statistics.get('junction_tables', 0),
-            system_tables=statistics.get('system_tables', 0)
+            total_tables=statistics.get('total_tables', len(tables))
         )
         schema._update_statistics()
         return schema

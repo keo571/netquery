@@ -126,7 +126,8 @@ python -m src.schema_ingestion summary schema_files/dev_schema.json -v
 # Tab 1: 'table_schema' (required columns):
 #   - table_name: Name of the table
 #   - column_name: Name of the column
-#   - column_type: Data type (INTEGER, VARCHAR, TIMESTAMP, etc.)
+#   - data_type: Data type (INTEGER, VARCHAR, TIMESTAMP, etc.)
+#   - is_nullable: Whether column can be NULL (YES/NO)
 #   - table_description: Human-readable table purpose
 #   - column_description: Human-readable column purpose
 #
@@ -250,20 +251,21 @@ Required columns (all must be non-empty):
 |--------|------|-------------|---------|
 | `table_name` | TEXT | Table name from database | `orders` |
 | `column_name` | TEXT | Column name from database | `customer_id` |
-| `column_type` | TEXT | PostgreSQL data type | `INTEGER`, `VARCHAR`, `TIMESTAMP` |
+| `data_type` | TEXT | PostgreSQL data type | `INTEGER`, `VARCHAR`, `TIMESTAMP` |
+| `is_nullable` | TEXT | Whether column can be NULL | `YES`, `NO` |
 | `table_description` | TEXT | Human-readable table purpose | `Customer orders and transactions` |
 | `column_description` | TEXT | Human-readable column purpose | `Unique customer identifier` |
 
 **Example:**
 
-| table_name | column_name | column_type | table_description | column_description |
-|-----------|-------------|-------------|-------------------|-------------------|
-| orders | id | INTEGER | Customer orders and transactions | Order unique identifier |
-| orders | customer_id | INTEGER | Customer orders and transactions | Customer who placed the order |
-| orders | order_date | TIMESTAMP | Customer orders and transactions | When the order was placed |
-| orders | total_amount | DECIMAL | Customer orders and transactions | Total order value in dollars |
-| customers | id | INTEGER | Customer information | Customer unique identifier |
-| customers | email | VARCHAR | Customer information | Customer email address |
+| table_name | column_name | data_type | is_nullable | table_description | column_description |
+|-----------|-------------|-----------|-------------|-------------------|-------------------|
+| orders | id | INTEGER | NO | Customer orders and transactions | Order unique identifier |
+| orders | customer_id | INTEGER | NO | Customer orders and transactions | Customer who placed the order |
+| orders | order_date | TIMESTAMP | NO | Customer orders and transactions | When the order was placed |
+| orders | total_amount | DECIMAL | YES | Customer orders and transactions | Total order value in dollars |
+| customers | id | INTEGER | NO | Customer information | Customer unique identifier |
+| customers | email | VARCHAR | NO | Customer information | Customer email address |
 
 ### Tab 2: `mapping`
 
@@ -336,9 +338,9 @@ Each `embeddings.json` contains a dictionary mapping table names to their descri
 
 **Excel schema validation errors**
 - Make sure Excel has both required tabs: `table_schema` and `mapping`
-- Required columns in `table_schema`: `table_name`, `column_name`, `column_type`, `table_description`, `column_description`
+- Required columns in `table_schema`: `table_name`, `column_name`, `data_type`, `is_nullable`, `table_description`, `column_description`
 - Required columns in `mapping`: `table_a`, `column_a`, `table_b`, `column_b`
-- All fields must be non-empty (especially descriptions and column types)
+- All fields must be non-empty (especially descriptions and data types)
 
 **Tables missing**
 - System tables excluded by default (use `--include-system`)

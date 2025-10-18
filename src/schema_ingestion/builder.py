@@ -209,7 +209,7 @@ class SchemaBuilder:
                 data_type=col_info.get('type', 'TEXT'),
                 description=col_info.get('description', f"Column: {col_info['name']}"),
                 is_primary_key=col_info.get('is_primary_key', col_info['name'] == 'id'),
-                is_nullable=True  # Excel doesn't specify nullability
+                is_nullable=col_info.get('nullable', True)  # Get from Excel, default to True if not specified
             )
             table.add_column(column_schema)
 

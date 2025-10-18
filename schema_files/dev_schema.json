@@ -1,18 +1,14 @@
 {
   "schema_id": "dev",
   "version": "1.0.0",
-  "generated_at": "2025-10-18T01:07:04.473622",
+  "generated_at": "2025-10-18T22:29:45.700807",
   "source": {
     "type": "database",
     "location": "sqlite:///data/infrastructure.db",
     "database_type": "sqlite"
   },
   "statistics": {
-    "total_tables": 9,
-    "core_tables": 0,
-    "detail_tables": 0,
-    "junction_tables": 0,
-    "system_tables": 0
+    "total_tables": 9
   },
   "tables": {
     "backend_mappings": {

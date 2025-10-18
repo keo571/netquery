@@ -46,10 +46,10 @@ class ExcelSchemaParser:
         """
         Parse table_schema tab with REQUIRED description columns.
 
-        Required columns: table_name, column_name, table_description, column_description
+        Required columns: table_name, column_name, data_type, is_nullable, table_description, column_description
         """
         # Validate required columns
-        required_cols = ['table_name', 'column_name', 'table_description', 'column_description']
+        required_cols = ['table_name', 'column_name', 'data_type', 'is_nullable', 'table_description', 'column_description']
         missing_cols = [col for col in required_cols if col not in df.columns]
         if missing_cols:
             raise ValueError(f"Missing required columns in Excel schema: {', '.join(missing_cols)}")
@@ -57,6 +57,8 @@ class ExcelSchemaParser:
         for _, row in df.iterrows():
             table_name = str(row['table_name']).strip()
             column_name = str(row['column_name']).strip()
+            data_type = str(row['data_type']).strip()
+            is_nullable = str(row['is_nullable']).strip().upper()
             table_desc = str(row['table_description']).strip()
             column_desc = str(row['column_description']).strip()
 
@@ -77,7 +79,8 @@ class ExcelSchemaParser:
             # Add column info
             column_info = {
                 'name': column_name,
-                'type': self._infer_column_type(column_name),
+                'type': data_type.lower(),
+                'nullable': is_nullable in ('YES', 'Y', 'TRUE', '1'),
                 'description': column_desc
             }
             self.tables[table_name]['columns'].append(column_info)
@@ -95,22 +98,6 @@ class ExcelSchemaParser:
             }
             self.relationships.append(relationship)
 
-    def _infer_column_type(self, column_name: str) -> str:
-        """Infer column type based on column name patterns (best effort)."""
-        column_lower = column_name.lower()
-
-        if column_lower == 'id' or column_lower.endswith('_id'):
-            return 'integer'
-        elif 'date' in column_lower or 'time' in column_lower:
-            return 'timestamp'
-        elif any(word in column_lower for word in ['amount', 'price', 'cost', 'value']):
-            return 'decimal'
-        elif any(word in column_lower for word in ['count', 'number', 'qty', 'quantity']):
-            return 'integer'
-        elif any(word in column_lower for word in ['rate', 'percentage', 'percent']):
-            return 'decimal'
-        else:
-            return 'text'
 
     def get_table_info(self, table_name: str) -> Optional[Dict]:
         """Get complete table information including columns."""

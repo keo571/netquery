@@ -58,9 +58,11 @@ def parse_excel_schema():
     for table_name, group in table_df.groupby('table_name'):
         columns = []
         for _, row in group.iterrows():
+            is_nullable = str(row.get('is_nullable', 'YES')).strip().upper() in ('YES', 'Y', 'TRUE', '1')
             columns.append({
                 'name': row['column_name'],
-                'type': row.get('column_type', 'TEXT'),
+                'type': row.get('data_type', 'TEXT'),
+                'nullable': is_nullable,
             })
         tables[table_name] = columns
 
@@ -98,12 +100,14 @@ def create_tables(conn, tables):
         for i, col in enumerate(columns):
             col_name = col['name']
             col_type = get_sql_type(col['type'])
+            nullable = col.get('nullable', True)
 
             # First column with 'id' is primary key
             if i == 0 and 'id' in col_name.lower():
                 cols_sql.append(f"{col_name} SERIAL PRIMARY KEY")
             else:
-                cols_sql.append(f"{col_name} {col_type}")
+                null_constraint = "" if nullable else " NOT NULL"
+                cols_sql.append(f"{col_name} {col_type}{null_constraint}")
 
         create_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(cols_sql)})"
         cursor.execute(create_sql)
@@ -213,7 +217,7 @@ def main():
     if not os.path.exists(EXCEL_FILE):
         print(f"\n❌ Excel file not found: {EXCEL_FILE}")
         print("\nCreate Excel with 2 sheets:")
-        print("  1. 'table_schema': table_name, column_name, column_type")
+        print("  1. 'table_schema': table_name, column_name, data_type, is_nullable, table_description, column_description")
         print("  2. 'mapping': table_a, column_a, table_b, column_b")
         sys.exit(1)
 
