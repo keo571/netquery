@@ -69,8 +69,7 @@ Each query is evaluated through all pipeline stages:
 | Stage | Status | What It Measures |
 |-------|--------|------------------|
 | **Schema Analysis** | SUCCESS/SCHEMA_FAIL | Schema analysis and table selection |
-| **Query Planning** | SUCCESS/PLAN_FAIL | Query understanding and complexity assessment |
-| **SQL Generation** | SUCCESS/GEN_FAIL | SQL query generation |
+| **SQL Generation** | SUCCESS/GEN_FAIL | SQL query generation from natural language |
 | **SQL Validation** | SUCCESS/VALID_FAIL | SQL syntax and safety validation |
 | **Query Execution** | SUCCESS/EXEC_FAIL | Query execution and result retrieval |
 | **Chart Generation** | Type/None | Automatic visualization detection |
@@ -78,8 +77,7 @@ Each query is evaluated through all pipeline stages:
 ### Failure Breakdown
 
 - **SCHEMA_FAIL**: Schema analysis errors (table/column not found)
-- **PLAN_FAIL**: Planning errors (query understanding issues)
-- **GEN_FAIL**: SQL generation failures
+- **GEN_FAIL**: SQL generation failures (LLM unable to generate valid SQL)
 - **VALID_FAIL**: SQL validation failures (syntax, safety)
 - **EXEC_FAIL**: Execution errors (database errors, timeouts)
 - **UNKNOWN_FAIL**: Other pipeline failures

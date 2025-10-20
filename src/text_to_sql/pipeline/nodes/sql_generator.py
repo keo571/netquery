@@ -1,6 +1,6 @@
 """
 SQL generator node for Text-to-SQL pipeline.
-Generates SQL queries from natural language using LLM.
+Generates SQL queries directly from natural language using LLM.
 """
 from typing import Dict, Any
 import logging
@@ -8,30 +8,43 @@ import time
 
 from ..state import TextToSQLState
 from ...utils.sql_utils import extract_sql_from_response, adapt_sql_for_database
-from ...prompts.sql_generation import SQL_GENERATION_PROMPT_FUNC
+from ...prompts._shared import create_sql_prompt
 from ....common.config import config
 from ...utils.llm_utils import get_llm
 
 logger = logging.getLogger(__name__)
 
-# SQL generation with fail-fast approach - rely on upstream nodes for quality
-
 
 def sql_generator_node(state: TextToSQLState) -> Dict[str, Any]:
-    """Generate SQL query from natural language using LLM with schema context."""
+    """
+    Generate SQL query directly from natural language using LLM with schema context.
+
+    This node:
+    1. Takes the natural language query and schema context
+    2. Generates SQL directly in one LLM call (no intermediate planning step)
+    3. Validates basic syntax and safety rules
+    4. Returns the generated SQL or error state
+    """
     query = state["original_query"]
     schema_context = state["schema_context"]
-    query_plan = state["query_plan"]
 
     logger.info(f"Generating SQL for query: {query[:100]}...")
 
     start_time = time.time()
     llm = get_llm()
-    sql_prompt = _create_sql_generation_prompt(query, schema_context, query_plan)
+
+    # Create SQL generation prompt directly from query and schema
+    # No intermediate planning step - LLM generates SQL directly
+    database_url = config.database.database_url
+    sql_prompt = create_sql_prompt(
+        query=query,
+        schema_context=schema_context,
+        query_plan="",  # No query plan - direct generation
+        database_url=database_url
+    )
 
     response = llm.invoke(sql_prompt)
     sql_generation_time_ms = (time.time() - start_time) * 1000
-    database_url = config.database.database_url
 
     for attempt in range(2):  # Try twice for LLM non-determinism
         try:
@@ -83,10 +96,4 @@ def sql_generator_node(state: TextToSQLState) -> Dict[str, Any]:
                     "status": "❌"
                 }]
             }
-
-
-def _create_sql_generation_prompt(query: str, schema_context: str, query_plan: Dict[str, Any]) -> str:
-    """Create the SQL generation prompt for the LLM."""
-    database_url = config.database.database_url
-    return SQL_GENERATION_PROMPT_FUNC(query, schema_context, query_plan, database_url)
 

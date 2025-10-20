@@ -150,9 +150,6 @@ class QueryEvaluator:
             elif pipeline_result.get("generation_error"):
                 result["status"] = "GEN_FAIL"
                 result["error"] = str(pipeline_result["generation_error"])[:100]
-            elif pipeline_result.get("planning_error"):
-                result["status"] = "PLAN_FAIL"
-                result["error"] = str(pipeline_result["planning_error"])[:100]
             elif pipeline_result.get("schema_analysis_error"):
                 result["status"] = "SCHEMA_FAIL"
                 result["error"] = str(pipeline_result["schema_analysis_error"])[:100]
@@ -440,9 +437,6 @@ def test_single_query(query: str):
             if 'schema_analysis_error' in result:
                 print("❌ SCHEMA_FAIL")
                 print(f"🔍 Schema analysis error: {result['schema_analysis_error']}")
-            elif 'planning_error' in result:
-                print("❌ PLAN_FAIL")
-                print(f"📋 Planning error: {result['planning_error']}")
             elif 'generation_error' in result:
                 print("❌ GEN_FAIL")
                 print(f"🔧 Generation error: {result['generation_error']}")

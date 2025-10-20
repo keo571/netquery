@@ -1,13 +1,12 @@
 """
 Text-to-SQL pipeline graph implementation.
-Uses LangGraph to orchestrate the six-node processing pipeline.
+Uses LangGraph to orchestrate the five-node processing pipeline.
 """
 from langgraph.graph import StateGraph, START, END
 import logging
 
 from .state import TextToSQLState
 from .nodes.schema_analyzer import schema_analyzer_node
-from .nodes.query_planner import query_planner_node
 from .nodes.sql_generator import sql_generator_node
 from .nodes.validator import validator_node
 from .nodes.executor import executor_node
@@ -24,10 +23,6 @@ def error_handler_node(state: TextToSQLState) -> dict:
         error = state["schema_analysis_error"]
         msg = "I couldn't find relevant database tables for your query."
         hint = "Try asking about specific tables or use different keywords."
-    elif state.get("planning_error"):
-        error = state["planning_error"]
-        msg = "I had trouble understanding your query."
-        hint = "Try rephrasing or being more specific."
     elif state.get("generation_error"):
         error = state["generation_error"]
         msg = "I couldn't generate SQL for your query."
@@ -66,12 +61,8 @@ def error_handler_node(state: TextToSQLState) -> dict:
     }
 
 def route_after_schema(state: TextToSQLState) -> str:
-    """Route after schema analysis: to planner or error handler."""
-    return "error_handler" if state.get("schema_analysis_error") else "query_planner"
-
-def route_after_planner(state: TextToSQLState) -> str:
-    """Route after query planning: to generator or error handler."""
-    return "error_handler" if state.get("planning_error") else "sql_generator"
+    """Route after schema analysis: directly to sql_generator or error handler."""
+    return "error_handler" if state.get("schema_analysis_error") else "sql_generator"
 
 def route_after_generator(state: TextToSQLState) -> str:
     """Route after SQL generation: to validator or error handler."""
@@ -94,10 +85,9 @@ def create_text_to_sql_graph():
     """Create and compile the Text-to-SQL pipeline graph."""
     # Create the workflow
     workflow = StateGraph(TextToSQLState)
-    
-    # Add all nodes
+
+    # Add all nodes (removed query_planner)
     workflow.add_node("schema_analyzer", schema_analyzer_node)
-    workflow.add_node("query_planner", query_planner_node)
     workflow.add_node("sql_generator", sql_generator_node)
     workflow.add_node("validator", validator_node)
     workflow.add_node("executor", executor_node)
@@ -106,11 +96,10 @@ def create_text_to_sql_graph():
 
     # Add edges - start directly with schema analyzer
     workflow.add_edge(START, "schema_analyzer")
-    
+
     # Add conditional routing with error handling
+    # Schema analyzer routes directly to SQL generator (no query planner)
     workflow.add_conditional_edges("schema_analyzer", route_after_schema,
-                                  {"query_planner": "query_planner", "error_handler": "error_handler"})
-    workflow.add_conditional_edges("query_planner", route_after_planner,
                                   {"sql_generator": "sql_generator", "error_handler": "error_handler"})
     workflow.add_conditional_edges("sql_generator", route_after_generator,
                                   {"validator": "validator", "error_handler": "error_handler"})
@@ -122,11 +111,11 @@ def create_text_to_sql_graph():
     )
     workflow.add_conditional_edges("executor", route_after_executor,
                                   {"interpreter": "interpreter", "error_handler": "error_handler"})
-    
+
     # Terminal edges
     workflow.add_edge("interpreter", END)
     workflow.add_edge("error_handler", END)
-    
+
     # Compile and return the graph
     return workflow.compile()
 

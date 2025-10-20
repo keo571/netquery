@@ -7,25 +7,23 @@ An AI-powered assistant that converts natural language queries into SQL. Optimiz
 ```mermaid
 flowchart TD
     A([Natural Language Query]) --> B[Schema Analysis<br/>Semantic Similarity]
-    B --> C[Query Planning<br/>JSON Structure]
-    C --> D[SQL Generation<br/>No CTEs]
-    D --> E[Safety Validation<br/>Read-Only Check]
-    E -->|✅ Pass| F[Query Execution<br/>Timeout Handling]
-    E -->|❌ Block| I[Error Response]
-    F --> G[Result Interpretation<br/>Chart Generation]
-    G --> H([Response with Charts])
+    B --> C[SQL Generation<br/>Direct LLM Call]
+    C --> D[Safety Validation<br/>Read-Only Check]
+    D -->|✅ Pass| E[Query Execution<br/>Timeout Handling]
+    D -->|❌ Block| H[Error Response]
+    E --> F[Result Interpretation<br/>Chart Generation]
+    F --> G([Response with Charts])
 
     DB[(Database)] -.->|schema reflection<br/>at startup| CACHE
     CACHE[(Embedding Cache)] -.->|table similarity<br/>scoring| B
     LLM[Gemini API] --> C
-    LLM --> D
-    LLM --> G
-    DB --> F
+    LLM --> F
+    DB --> E
 
     style A fill:#4FC3F7,color:#000
-    style H fill:#81C784,color:#000
-    style I fill:#FF8A65,color:#000
-    style E fill:#FFB74D,color:#000
+    style G fill:#81C784,color:#000
+    style H fill:#FF8A65,color:#000
+    style D fill:#FFB74D,color:#000
     style CACHE fill:#E1BEE7,color:#000
 ```
 
@@ -320,11 +318,10 @@ See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for startup scripts and m
 ## Pipeline Architecture
 
 1. **Schema Analysis** → Uses semantic similarity to identify relevant tables from embeddings cache
-2. **Query Planning** → Creates structured JSON execution plan with joins, filters, and aggregations
-3. **SQL Generation** → Generates optimized SQLite queries (blocks CTEs, uses subqueries)
-4. **Safety Validation** → Enforces read-only operations, blocks destructive queries
-5. **Query Execution** → Runs SQL with timeout protection and error handling
-6. **Result Interpretation** → Generates charts, formats responses, and provides insights
+2. **SQL Generation** → Generates optimized SQL queries directly from natural language (blocks CTEs, uses subqueries)
+3. **Safety Validation** → Enforces read-only operations, blocks destructive queries
+4. **Query Execution** → Runs SQL with timeout protection and error handling
+5. **Result Interpretation** → Generates charts, formats responses, and provides insights
 
 ## Development & Testing
 

@@ -9,16 +9,16 @@ This document provides essential context for AI assistants working on the Netque
 ## Core Architecture
 
 ```
-User Query → Schema Analysis → Query Planning → SQL Generation → Validation → Execution → Result Interpretation
+User Query → Schema Analysis → SQL Generation → Validation → Execution → Result Interpretation
 ```
 
 ### Key Components
 
 1. **Pipeline** (`src/text_to_sql/pipeline/`)
    - LangGraph-based orchestration
-   - Six processing nodes working in sequence
+   - Five processing nodes working in sequence
    - State management across the pipeline
-   - **Nodes**: executor.py, interpreter.py, query_planner.py, schema_analyzer.py, sql_generator.py, validator.py
+   - **Nodes**: schema_analyzer.py, sql_generator.py, validator.py, executor.py, interpreter.py
 
 2. **Database** (`src/text_to_sql/database/`)
    - Database connection management
@@ -42,10 +42,9 @@ User Query → Schema Analysis → Query Planning → SQL Generation → Validat
    - `sql_utils.py` - SQL parsing and validation utilities
 
 5. **Prompts** (`src/text_to_sql/prompts/`)
-   - `query_planning.py` - Query planning prompts
    - `result_interpretation.py` - Result interpretation prompts
    - `sql_generation.py` - SQL generation prompts
-   - `_shared.py` - Shared prompt utilities
+   - `_shared.py` - Shared prompt utilities (database-specific instructions)
 
 6. **Configuration**
    - `config.py` - Configuration management with hot-reloading
@@ -444,10 +443,9 @@ python gemini_cli.py "your query" --schema schema_files/my_schema.json
    - `src/text_to_sql/pipeline/graph.py` - Main LangGraph orchestration and node connections
    - `src/text_to_sql/pipeline/state.py` - State management and data structures across pipeline
 
-2. **Processing Nodes** (Six-stage pipeline)
-   - `src/text_to_sql/pipeline/nodes/schema_analyzer.py` - Schema discovery and table selection
-   - `src/text_to_sql/pipeline/nodes/query_planner.py` - JSON query plan generation
-   - `src/text_to_sql/pipeline/nodes/sql_generator.py` - LLM-based SQL generation
+2. **Processing Nodes** (Five-stage pipeline)
+   - `src/text_to_sql/pipeline/nodes/schema_analyzer.py` - Schema discovery and table selection using semantic similarity
+   - `src/text_to_sql/pipeline/nodes/sql_generator.py` - Direct LLM-based SQL generation from natural language
    - `src/text_to_sql/pipeline/nodes/validator.py` - Safety and security validation
    - `src/text_to_sql/pipeline/nodes/executor.py` - Database query execution
    - `src/text_to_sql/pipeline/nodes/interpreter.py` - Result formatting and chart generation
@@ -527,7 +525,7 @@ ssl_certificates -> vips -> services
 
 - **Documentation**: See README.md and docs/SAMPLE_QUERIES.md
 - **Issues**: GitHub Issues at https://github.com/keo571/netquery
-- **Model**: Uses Google Gemini 1.5 Flash for SQL generation and query planning
+- **Model**: Uses Google Gemini 1.5 Flash for direct SQL generation from natural language
 
 ## Remember
 

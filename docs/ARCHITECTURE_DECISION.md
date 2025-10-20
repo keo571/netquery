@@ -19,10 +19,10 @@ This document outlines the backend architecture for the Netquery text-to-SQL sys
 ### 1. Core Pipeline: Text-to-SQL LangGraph
 
 The main text-to-SQL pipeline (`src/text_to_sql/pipeline/graph.py`):
-- 6-stage processing workflow
-- Schema analysis and table selection
-- Query planning and complexity assessment
-- SQL generation with validation
+- 5-stage processing workflow
+- Schema analysis and table selection (semantic similarity)
+- SQL generation with direct LLM call (no intermediate planning)
+- Safety validation (read-only enforcement)
 - Query execution and result formatting
 - Automatic visualization detection
 - Supports both execution and SQL-only generation modes
@@ -480,7 +480,7 @@ Frontend should display notices based on API flags:
 
 ### Completed ✅
 
-1. Core text-to-SQL pipeline with 6 stages
+1. Core text-to-SQL pipeline with 5 stages (consolidated SQL generation)
 2. FastAPI server with all endpoints
 3. In-memory caching system
 4. LLM-powered interpretation

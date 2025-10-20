@@ -104,17 +104,14 @@ async def main():
             
             # Show breakdown if available
             schema_time = result.get("schema_analysis_time_ms", 0.0)
-            planning_time = result.get("query_planning_time_ms", 0.0) 
             generation_time = result.get("sql_generation_time_ms", 0.0)
             interpretation_time = result.get("interpretation_time_ms", 0.0)
             db_time = result.get("execution_time_ms", 0.0)
-            
-            if any([schema_time, planning_time, generation_time, interpretation_time]):
+
+            if any([schema_time, generation_time, interpretation_time]):
                 print("   **Breakdown:**")
                 if schema_time > 0:
                     print(f"   - Schema analysis: {schema_time/1000:.1f}s")
-                if planning_time > 0:
-                    print(f"   - Query planning: {planning_time/1000:.1f}s")
                 if generation_time > 0:
                     print(f"   - SQL generation: {generation_time/1000:.1f}s")
                 if interpretation_time > 0:
@@ -129,16 +126,13 @@ async def main():
                 timing_breakdown = ""
                 if total_pipeline_time_ms > 0:
                     schema_time = result.get("schema_analysis_time_ms", 0.0)
-                    planning_time = result.get("query_planning_time_ms", 0.0) 
                     generation_time = result.get("sql_generation_time_ms", 0.0)
                     interpretation_time = result.get("interpretation_time_ms", 0.0)
                     db_time = result.get("execution_time_ms", 0.0)
-                    
+
                     timing_breakdown = f"\n\n**⏱️  Total time:** {total_seconds:.1f}s\n\n**Breakdown:**\n"
                     if schema_time > 0:
                         timing_breakdown += f"- Schema analysis: {schema_time/1000:.1f}s\n"
-                    if planning_time > 0:
-                        timing_breakdown += f"- Query planning: {planning_time/1000:.1f}s\n"
                     if generation_time > 0:
                         timing_breakdown += f"- SQL generation: {generation_time/1000:.1f}s\n"
                     if interpretation_time > 0:

@@ -37,12 +37,7 @@ class TextToSQLState(TypedDict):
     # Schema Analysis
     schema_context: str
     schema_analysis_error: Optional[str]
-    
-    # Query Planning
-    query_plan: Dict[str, Any]
-    complexity_assessment: str
-    planning_error: Optional[str]
-    
+
     # Generation & Validation
     generation_error: Optional[str]
     validation_results: Dict[str, Any]
@@ -54,7 +49,6 @@ class TextToSQLState(TypedDict):
     execution_time_ms: Optional[float]
     total_pipeline_time_ms: Optional[float]
     schema_analysis_time_ms: Optional[float]
-    query_planning_time_ms: Optional[float]
     sql_generation_time_ms: Optional[float]
     interpretation_time_ms: Optional[float]
     rows_affected: Optional[int]
@@ -68,19 +62,6 @@ class TextToSQLState(TypedDict):
     
     # Reasoning Log
     reasoning_log: Annotated[List[ReasoningStep], operator.add]
-
-
-class QueryPlan(TypedDict):
-    """Query planning information."""
-    intent: str
-    target_tables: List[str]
-    required_columns: List[str]
-    filters: List[Dict[str, Any]]
-    aggregations: List[Dict[str, Any]]
-    sorting: Optional[Dict[str, str]]
-    grouping: Optional[List[str]]
-    joins: List[Dict[str, Any]]
-    estimated_complexity: str
 
 
 class ValidationResult(TypedDict):

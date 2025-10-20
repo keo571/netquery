@@ -194,7 +194,6 @@ async def generate_sql(request: GenerateSQLRequest) -> GenerateSQLResponse:
                 "message": result.get("final_response") or "Failed to generate SQL",
                 "schema_overview": overview,
                 "schema_analysis_error": result.get("schema_analysis_error"),
-                "planning_error": result.get("planning_error"),
                 "generation_error": result.get("generation_error"),
             }
             raise HTTPException(status_code=422, detail=detail_payload)
