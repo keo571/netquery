@@ -40,8 +40,19 @@ def format_data_for_display(data: List[Dict]) -> List[Dict]:
     return formatted_data
 
 
-def apply_backend_grouping(data: List[Dict], group_by_column: str, original_column: str = None) -> List[Dict]:
-    """Apply grouping on the backend to reduce frontend complexity."""
+def apply_backend_grouping(data: List[Dict], group_by_column: str, original_column: str = None, max_items: int = 15) -> List[Dict]:
+    """
+    Apply grouping on the backend to reduce frontend complexity.
+
+    Args:
+        data: List of data rows
+        group_by_column: Column to group by
+        original_column: Optional original column for tracking items
+        max_items: Maximum number of groups to return (default 15)
+
+    Returns:
+        List of grouped data, limited to top N by count
+    """
     if not data or not group_by_column:
         return data
 
@@ -62,7 +73,42 @@ def apply_backend_grouping(data: List[Dict], group_by_column: str, original_colu
         if original_column and row.get(original_column):
             groups[group_key]['items'].append(row[original_column])
 
-    return list(groups.values())
+    # Convert to list and sort by count (descending)
+    grouped_list = list(groups.values())
+    grouped_list.sort(key=lambda x: x['count'], reverse=True)
+
+    # Limit to max_items
+    if len(grouped_list) > max_items:
+        logger.info(f"Limiting visualization data from {len(grouped_list)} to {max_items} items")
+        grouped_list = grouped_list[:max_items]
+
+    return grouped_list
+
+
+def limit_chart_data(data: List[Dict], y_column: str, max_items: int = 15) -> List[Dict]:
+    """
+    Limit chart data to top N items by y_column value.
+
+    Args:
+        data: List of data rows
+        y_column: Column to sort by (typically a numeric column like 'count')
+        max_items: Maximum number of items to return (default 15)
+
+    Returns:
+        Limited list of data, sorted by y_column descending
+    """
+    if not data or len(data) <= max_items:
+        return data
+
+    # Sort by y_column (descending)
+    try:
+        sorted_data = sorted(data, key=lambda x: float(x.get(y_column, 0)), reverse=True)
+        limited_data = sorted_data[:max_items]
+        logger.info(f"Limited chart data from {len(data)} to {max_items} items based on {y_column}")
+        return limited_data
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Could not sort data by {y_column}: {e}, returning first {max_items} items")
+        return data[:max_items]
 
 
 def analyze_data_patterns(data: List[Dict]) -> Dict[str, Any]:

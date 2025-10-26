@@ -7,7 +7,7 @@ import logging
 from typing import Dict, List, Any, Optional
 
 from src.text_to_sql.utils.llm_utils import get_llm
-from .data_utils import apply_backend_grouping, format_data_for_display, analyze_data_patterns
+from .data_utils import apply_backend_grouping, format_data_for_display, analyze_data_patterns, limit_chart_data
 
 logger = logging.getLogger(__name__)
 
@@ -15,9 +15,20 @@ logger = logging.getLogger(__name__)
 def _extract_json_from_response(response: str) -> str:
     """Extract JSON content from LLM response, removing markdown code blocks if present."""
     response_text = response.strip()
-    if response_text.startswith("```"):
-        lines = response_text.split('\n')
-        return '\n'.join(lines[1:-1])
+
+    # Handle markdown code blocks (```json ... ``` or ``` ... ```)
+    if "```" in response_text:
+        # Find the first opening backticks
+        start = response_text.find("```")
+        # Skip past the opening backticks and optional language identifier
+        start = response_text.find("\n", start) + 1
+
+        # Find the closing backticks
+        end = response_text.find("```", start)
+
+        if start > 0 and end > start:
+            response_text = response_text[start:end].strip()
+
     return response_text
 
 
@@ -70,9 +81,10 @@ CHART STRATEGY:
 1. If data already has numeric columns (count, sum, etc.) → Use directly for bar/line charts
 2. If only categorical data → Enable grouping to count occurrences for pie/bar charts
 3. **PIE CHARTS are BEST for status/category distributions** - use when showing proportions
-4. Bar charts for comparing quantities across categories
+4. Bar charts for comparing quantities across categories (will show top 15 items if >15)
 5. For status queries: prefer PIE charts over bar charts
-6. Return "none" only if data truly cannot be visualized meaningfully
+6. **HIGH CARDINALITY WARNING**: If >15 unique items, bar chart will auto-limit to top 15
+7. Return "none" only if data truly cannot be visualized meaningfully
 
 GROUPING RULES & QUERY INTENT:
 - Enable grouping when: no numeric columns AND have categorical data suitable for counting
@@ -152,6 +164,16 @@ If no chart needed, return {{"type": "none"}}.
                 for row in chart_data:
                     value = float(row.get(y_column, 0))
                     row['percentage'] = round((value / total * 100), 1) if total > 0 else 0
+
+            # For bar charts, limit to top N items if there are too many
+            if chart_type == "bar" and chart_data and len(chart_data) > 15:
+                y_column = config.get("y_column", "count")
+                if y_column:
+                    chart_data = limit_chart_data(chart_data, y_column, max_items=15)
+                else:
+                    # If no y_column specified, just take first 15
+                    logger.warning(f"Bar chart has {len(chart_data)} items but no y_column for sorting, taking first 15")
+                    chart_data = chart_data[:15]
 
             # Format data for better display
             chart_data = format_data_for_display(chart_data)

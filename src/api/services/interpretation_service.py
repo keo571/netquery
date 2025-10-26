@@ -131,6 +131,8 @@ def parse_interpretation_response(llm_response: str) -> Dict[str, Any]:
 
     except (json.JSONDecodeError, KeyError, AttributeError) as e:
         logger.error(f"JSON parsing failed: {e}")
+        logger.error(f"LLM response: {llm_response[:500]}")  # Log first 500 chars
+        logger.error(f"Extracted text: {_extract_json_from_response(llm_response)[:500]}")
         return {
             "summary": "Analysis temporarily unavailable. Your data was retrieved successfully.",
             "key_findings": []
@@ -151,9 +153,20 @@ def _get_fallback_response() -> Dict[str, Any]:
 def _extract_json_from_response(response: str) -> str:
     """Extract JSON content from LLM response, removing markdown code blocks if present."""
     response_text = response.strip()
-    if response_text.startswith("```"):
-        lines = response_text.split('\n')
-        return '\n'.join(lines[1:-1])
+
+    # Handle markdown code blocks (```json ... ``` or ``` ... ```)
+    if "```" in response_text:
+        # Find the first opening backticks
+        start = response_text.find("```")
+        # Skip past the opening backticks and optional language identifier
+        start = response_text.find("\n", start) + 1
+
+        # Find the closing backticks
+        end = response_text.find("```", start)
+
+        if start > 0 and end > start:
+            response_text = response_text[start:end].strip()
+
     return response_text
 
 
