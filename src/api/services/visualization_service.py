@@ -81,9 +81,9 @@ CHART STRATEGY:
 1. If data already has numeric columns (count, sum, etc.) → Use directly for bar/line charts
 2. If only categorical data → Enable grouping to count occurrences for pie/bar charts
 3. **PIE CHARTS are BEST for status/category distributions** - use when showing proportions
-4. Bar charts for comparing quantities across categories (will show top 15 items if >15)
+4. Bar charts for comparing quantities across categories (will show top 100 items if >100)
 5. For status queries: prefer PIE charts over bar charts
-6. **HIGH CARDINALITY WARNING**: If >15 unique items, bar chart will auto-limit to top 15
+6. **HIGH CARDINALITY WARNING**: If >100 unique items, bar chart will auto-limit to top 100
 7. Return "none" only if data truly cannot be visualized meaningfully
 
 GROUPING RULES & QUERY INTENT:
@@ -166,14 +166,14 @@ If no chart needed, return {{"type": "none"}}.
                     row['percentage'] = round((value / total * 100), 1) if total > 0 else 0
 
             # For bar charts, limit to top N items if there are too many
-            if chart_type == "bar" and chart_data and len(chart_data) > 15:
+            if chart_type == "bar" and chart_data and len(chart_data) > 100:
                 y_column = config.get("y_column", "count")
                 if y_column:
-                    chart_data = limit_chart_data(chart_data, y_column, max_items=15)
+                    chart_data = limit_chart_data(chart_data, y_column, max_items=100)
                 else:
-                    # If no y_column specified, just take first 15
-                    logger.warning(f"Bar chart has {len(chart_data)} items but no y_column for sorting, taking first 15")
-                    chart_data = chart_data[:15]
+                    # If no y_column specified, just take first 100
+                    logger.warning(f"Bar chart has {len(chart_data)} items but no y_column for sorting, taking first 100")
+                    chart_data = chart_data[:100]
 
             # Format data for better display
             chart_data = format_data_for_display(chart_data)
