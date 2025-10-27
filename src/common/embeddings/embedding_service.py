@@ -1,6 +1,7 @@
 """Shared embedding service abstractions."""
 from __future__ import annotations
 
+import asyncio
 from typing import Optional
 
 import numpy as np
@@ -15,6 +16,7 @@ class EmbeddingService:
     def __init__(self, model_name: str = "gemini-embedding-001", api_key: Optional[str] = None) -> None:
         self.model_name = model_name
         self._api_key = api_key or config.llm.effective_api_key
+        self._ensure_event_loop()
         self._embedding_client = GoogleGenerativeAIEmbeddings(
             model=self.model_name,
             google_api_key=self._api_key,
@@ -29,3 +31,13 @@ class EmbeddingService:
         """Embed a user query for similarity search."""
         embedding = self._embedding_client.embed_query(query)
         return np.array(embedding, dtype=np.float32)
+
+    @staticmethod
+    def _ensure_event_loop() -> None:
+        """Ensure the current thread has an asyncio event loop."""
+        policy = asyncio.get_event_loop_policy()
+        try:
+            policy.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            policy.set_event_loop(loop)
