@@ -45,8 +45,10 @@ class LLMConfig(BaseModel):
 class PipelineConfig(BaseModel):
     """Pipeline-specific configuration."""
     max_relevant_tables: int = Field(default=5, description="Maximum tables to return after filtering")
+    max_expanded_tables: int = Field(default=15, description="Maximum tables after FK expansion (includes semantic + expanded)")
+    max_schema_tokens: int = Field(default=8000, description="Maximum tokens for schema context (~25% of LLM context window)")
     relevance_threshold: float = Field(default=0.15, description="Minimum similarity threshold for table relevance (0-1). Uses two-stage filtering: gets 2x candidates, then filters by this threshold.")
-    include_sample_data: bool = Field(default=True, description="Include sample data")
+    include_sample_data: bool = Field(default=True, description="Include sample data for semantically matched tables only")
     max_execution_time: int = Field(default=30, description="Maximum execution time in seconds")
 
 

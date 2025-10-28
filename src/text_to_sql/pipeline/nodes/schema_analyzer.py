@@ -117,39 +117,86 @@ class SchemaAnalyzer:
             max_tables=config.pipeline.max_relevant_tables,
             threshold=config.pipeline.relevance_threshold
         )
-    def _expand_tables_via_relationships(self, relevant_tables: list) -> set:
-        """Expand to include FK-connected tables."""
+    def _expand_tables_via_relationships(self, relevant_tables: list, relevance_scores: dict) -> set:
+        """
+        Smart FK expansion with prioritization for speed optimization.
+
+        Strategy:
+        1. Sort semantic tables by relevance score (expand best matches first)
+        2. Add related tables via FKs
+        3. Hard cap at max_expanded_tables
+
+        Note: get_table_relationships() returns Dict[str, List[str]] where
+        the list contains table names that this table has FKs to.
+        """
         all_relationships = db_toolkit.get_table_relationships()
         expanded_tables = set(relevant_tables)
-        
-        # Add tables connected via foreign keys
-        for table in relevant_tables:
-            relationships = all_relationships.get(table, {})
-            
-            # Add FK targets and sources
-            for rel_type in ['references', 'referenced_by']:
-                if rel_type in relationships:
-                    for ref in relationships[rel_type]:
-                        if 'table' in ref:
-                            expanded_tables.add(ref['table'])
-        
+        max_tables = config.pipeline.max_expanded_tables
+
+        # Sort by relevance score (expand highest-scoring tables first)
+        sorted_tables = sorted(
+            relevant_tables,
+            key=lambda t: relevance_scores.get(t, 0),
+            reverse=True
+        )
+
+        logger.info(f"Starting FK expansion from {len(relevant_tables)} tables (max: {max_tables})")
+
+        # Add FK-related tables (outbound relationships)
+        for table in sorted_tables:
+            if len(expanded_tables) >= max_tables:
+                logger.warning(f"Reached max table limit ({max_tables}), stopping expansion")
+                break
+
+            # Get list of tables this table references via FKs
+            related_tables = all_relationships.get(table, [])
+
+            for related_table in related_tables:
+                if len(expanded_tables) >= max_tables:
+                    break
+                expanded_tables.add(related_table)
+
+        # Also add inbound relationships (tables that reference our semantic matches)
+        # This helps capture parent-child relationships in both directions
+        for table in sorted_tables:
+            if len(expanded_tables) >= max_tables:
+                break
+
+            # Find tables that reference this table
+            for potential_parent, fk_targets in all_relationships.items():
+                if table in fk_targets and potential_parent not in expanded_tables:
+                    if len(expanded_tables) >= max_tables:
+                        break
+                    expanded_tables.add(potential_parent)
+
         if len(expanded_tables) > len(relevant_tables):
             new_tables = expanded_tables - set(relevant_tables)
-            logger.info(f"Expanded tables via FK relationships: added {new_tables}")
-        
+            logger.info(
+                f"FK expansion: {len(relevant_tables)} → {len(expanded_tables)} tables "
+                f"(added {len(new_tables)}: {', '.join(sorted(new_tables)[:5])}...)"
+            )
+
         return expanded_tables
     
     def _build_schema_context(self, relevant_tables: list, relevance_scores: dict) -> str:
-        """Build complete schema context for LLM with relationship expansion."""
-        # First expand tables to include FK-connected tables
-        expanded_tables = self._expand_tables_via_relationships(relevant_tables)
-        
-        # Format schema for LLM consumption
-        schema_context = self._format_schema_for_llm(
+        """
+        Build complete schema context for LLM with relationship expansion.
+
+        Optimization: Only include sample data for semantically matched tables,
+        not FK-expanded tables (saves ~300 tokens per table).
+        """
+        # Track which tables are semantic matches (for sample data)
+        semantic_tables = set(relevant_tables)
+
+        # Expand tables to include FK-connected tables (with prioritization)
+        expanded_tables = self._expand_tables_via_relationships(relevant_tables, relevance_scores)
+
+        # Format schema for LLM consumption with token budget
+        schema_context, token_estimate = self._format_schema_for_llm(
             table_names=list(expanded_tables),
-            include_sample_data=config.pipeline.include_sample_data
+            semantic_tables=semantic_tables
         )
-        
+
         # Add relevance scores to context
         if relevance_scores:
             score_context = "\n\nTable Relevance Scores:\n"
@@ -157,35 +204,61 @@ class SchemaAnalyzer:
                 score = relevance_scores.get(table, 0)
                 score_context += f"- {table}: {score:.1%} relevant\n"
             schema_context = score_context + "\n" + schema_context
-        
+
+        logger.info(
+            f"Schema context: {len(expanded_tables)} tables, "
+            f"~{token_estimate:,} tokens (limit: {config.pipeline.max_schema_tokens:,})"
+        )
+
         return schema_context
     
-    def _format_schema_for_llm(self, table_names: list, include_sample_data: bool = True) -> str:
+    def _format_schema_for_llm(self, table_names: list, semantic_tables: set) -> tuple[str, int]:
         """
-        Format database schema for LLM consumption.
-        Helper function for schema formatting.
+        Format database schema for LLM consumption with token budget tracking.
+
+        Args:
+            table_names: List of all tables to include
+            semantic_tables: Set of semantically matched tables (get sample data)
+
+        Returns:
+            tuple: (schema_context_string, estimated_tokens)
+
+        Speed optimization: Only include sample data for semantic matches,
+        not FK-expanded tables. Saves ~300 tokens per expanded table.
         """
         schema_parts = ["Database Schema:"]
+        max_tokens = config.pipeline.max_schema_tokens
+        current_tokens = 0
 
         for table_name in table_names:
+            # Check token budget before adding table
+            if current_tokens >= max_tokens:
+                remaining_tables = len(table_names) - len(schema_parts) + 1
+                logger.warning(
+                    f"Token budget ({max_tokens}) reached. "
+                    f"Skipping {remaining_tables} remaining tables."
+                )
+                break
+
             table_info = db_toolkit.get_table_info(table_name)
             canonical_table = None
             if self.canonical_schema and table_name in self.canonical_schema.tables:
                 canonical_table = self.canonical_schema.tables[table_name]
 
-            schema_parts.append(f"\n## Table: {table_name}")
-            schema_parts.append(f"Rows: {table_info.get('row_count', 'Unknown')}")
+            table_parts = []
+            table_parts.append(f"\n## Table: {table_name}")
+            table_parts.append(f"Rows: {table_info.get('row_count', 'Unknown')}")
 
             if canonical_table:
-                schema_parts.append(f"Description: {canonical_table.description}")
+                table_parts.append(f"Description: {canonical_table.description}")
                 if canonical_table.relationships:
                     related = sorted({rel.referenced_table for rel in canonical_table.relationships})
                     if related:
-                        schema_parts.append(f"Related tables: {', '.join(related)}")
+                        table_parts.append(f"Related tables: {', '.join(related)}")
 
             columns = table_info.get('columns', [])
             if columns:
-                schema_parts.append("Columns:")
+                table_parts.append("Columns:")
                 for col in columns:
                     col_line = f"  - {col['name']} ({col['type']}"
                     if col.get('nullable') is False:
@@ -199,17 +272,33 @@ class SchemaAnalyzer:
                         if description and not description.startswith("Column:"):
                             col_line += f" - {description}"
 
-                    schema_parts.append(col_line)
+                    table_parts.append(col_line)
 
-            # Add sample data if requested
-            if include_sample_data:
+            # SPEED OPTIMIZATION: Only include sample data for semantically matched tables
+            # FK-expanded tables get schema only (saves ~300 tokens per table)
+            include_samples = (
+                config.pipeline.include_sample_data
+                and table_name in semantic_tables
+            )
+
+            if include_samples:
                 sample_data = db_toolkit.get_sample_data(table_name, limit=3)
                 if sample_data:
-                    schema_parts.append("Sample data:")
+                    table_parts.append("Sample data:")
                     for i, row in enumerate(sample_data, 1):
-                        schema_parts.append(f"  {i}. {row}")
+                        table_parts.append(f"  {i}. {row}")
 
-        return "\n".join(schema_parts)
+            # Estimate tokens for this table (rough: 1 token ~= 4 characters)
+            table_text = "\n".join(table_parts)
+            table_tokens = len(table_text) // 4
+            current_tokens += table_tokens
+
+            schema_parts.extend(table_parts)
+
+        final_schema = "\n".join(schema_parts)
+        final_tokens = len(final_schema) // 4  # Accurate count at end
+
+        return final_schema, final_tokens
 
 
 # Global instance cache
