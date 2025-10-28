@@ -19,13 +19,3 @@ def get_llm():
             api_key=config.llm.effective_api_key
         )
     return _llm_instance
-
-def get_llm_with_config(**kwargs):
-    """Get LLM instance with custom configuration for specific use cases."""
-    return ChatGoogleGenerativeAI(
-        model=config.llm.model_name,
-        temperature=kwargs.get('temperature', config.llm.temperature),
-        max_tokens=kwargs.get('max_tokens', config.llm.max_tokens),
-        max_retries=kwargs.get('max_retries', config.llm.max_retries),
-        api_key=config.llm.effective_api_key
-    )

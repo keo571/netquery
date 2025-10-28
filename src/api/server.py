@@ -46,8 +46,8 @@ logger = logging.getLogger(__name__)
 # In-memory cache for query results
 query_cache: Dict[str, Dict[str, Any]] = {}
 CACHE_TTL = 600  # 10 minutes default
-MAX_CACHE_ROWS = 100
-PREVIEW_ROWS = 100  # Return all cached rows - client can paginate if needed
+MAX_CACHE_ROWS = 50
+PREVIEW_ROWS = 50  # Return all cached rows - client can paginate if needed
 
 def get_cache_entry(query_id: str) -> Dict[str, Any]:
     """Get cache entry or raise 404 if not found."""
@@ -124,10 +124,10 @@ class GenerateSQLResponse(BaseModel):
     original_query: str = Field(..., description="Original natural language query")
 
 class PreviewResponse(BaseModel):
-    data: List[Dict[str, Any]] = Field(..., description="First 30 rows of results")
+    data: List[Dict[str, Any]] = Field(..., description="First 50 rows of results")
     total_count: Optional[int] = Field(None, description="Exact count if ≤1000 rows, None if >1000")
     columns: List[str] = Field(..., description="Column names")
-    truncated: bool = Field(..., description="Whether preview was truncated to 30 rows")
+    truncated: bool = Field(..., description="Whether preview was truncated to 50 rows")
 
 class InterpretationResponse(BaseModel):
     interpretation: Dict[str, Any] = Field(..., description="Interpretation results")
@@ -224,8 +224,8 @@ async def execute_and_preview(query_id: str) -> PreviewResponse:
     """
     Execute SQL query, cache results, and return preview.
     - Executes the SQL query from the cache
-    - Fetches up to 1000 rows and caches them
-    - Returns first 30 rows for preview
+    - Fetches up to 50 rows and caches them
+    - Returns first 50 rows for preview
     """
     try:
         # Check cache
@@ -300,7 +300,9 @@ async def execute_and_preview(query_id: str) -> PreviewResponse:
 async def interpret_results(query_id: str) -> InterpretationResponse:
     """
     Interpret cached results using LLM.
-    Uses up to 1000 cached rows for interpretation.
+
+    IMPORTANT: Uses ONLY the 50 cached rows - does NOT re-execute SQL.
+    Both interpretation and visualization are limited to the cached data.
     """
     try:
         # Check cache
@@ -319,7 +321,7 @@ async def interpret_results(query_id: str) -> InterpretationResponse:
         # Get LLM-powered interpretation
         interpretation_result = await get_interpretation(
             query=cache_entry["original_query"],
-            results=data,  # All cached data (≤100 rows)
+            results=data,  # All cached data (≤50 rows)
             total_rows=total_count
         )
 

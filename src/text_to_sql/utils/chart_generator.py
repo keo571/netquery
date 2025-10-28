@@ -203,9 +203,9 @@ def _create_svg_line_chart(data_points: List[float], y_label: str, total_points:
     max_val = max(data_points)
     val_range = max_val - min_val if max_val != min_val else 1
     
-    # Sample data if too many points (max 100 for readability)
-    if len(data_points) > 100:
-        step = len(data_points) // 100
+    # Sample data if too many points (max 50 for readability, matches cache limit)
+    if len(data_points) > 50:
+        step = len(data_points) // 50
         sampled_points = data_points[::step]
     else:
         sampled_points = data_points

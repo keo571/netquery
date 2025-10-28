@@ -1,6 +1,13 @@
 #!/bin/bash
 # Database Configuration Switcher
 # Usage: ./setup/switch_database.sh [sqlite|postgres]
+#
+# ⚠️ DEPRECATION NOTICE:
+# This script is deprecated. Please use './profile.sh' instead for better profile management.
+# Example: ./profile.sh dev  (for SQLite)
+#          ./profile.sh prod (for PostgreSQL)
+#
+# This script will be removed in a future version.
 
 set -e
 
@@ -13,6 +20,12 @@ NC='\033[0m' # No Color
 
 # Get the project root directory (parent of setup/)
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Show deprecation warning
+echo -e "${YELLOW}⚠️  DEPRECATION WARNING${NC}"
+echo -e "${YELLOW}This script is deprecated. Please use './profile.sh' instead.${NC}"
+echo -e "${YELLOW}Example: ./profile.sh dev (SQLite) or ./profile.sh prod (PostgreSQL)${NC}"
+echo ""
 
 show_usage() {
     echo "Usage: $0 [sqlite|postgres]"

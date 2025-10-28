@@ -77,8 +77,8 @@ The system now includes a FastAPI server providing a clean separation between SQ
    - Uses existing LangGraph pipeline with `execute=False`
 
 2. **`GET /api/execute/{query_id}`**
-   - Executes SQL and caches up to 100 rows
-   - Returns first 30 rows for preview
+   - Executes SQL and caches up to 50 rows
+   - Returns first 50 rows for preview
    - Smart counting: exact count ≤1000 rows, "unknown" for larger datasets
    - Optimized for performance with fast >1000 row detection
 
@@ -94,7 +94,7 @@ The system now includes a FastAPI server providing a clean separation between SQ
 
 ### Cache Strategy
 
-- **Size**: Up to 100 rows per query (optimized for LLM analysis)
+- **Size**: Up to 50 rows per query (optimized for faster LLM analysis)
 - **TTL**: 10 minutes default
 - **Counting**: Fast check for >1000 rows vs exact count ≤1000
 - **Memory**: In-memory dict for POC (Redis for production)
@@ -128,7 +128,7 @@ The system now includes a FastAPI server providing a clean separation between SQ
 ### 2. FastAPI Server & Interpretation Service (September 2025)
 - ✅ Built FastAPI server with four optimized endpoints
 - ✅ Implemented smart row counting (≤1000 vs >1000) for performance
-- ✅ Reduced cache size from 200 to 100 rows (LLM-optimized)
+- ✅ Reduced cache size from 200 to 100 to 50 rows (LLM-optimized for speed)
 - ✅ Simplified interpretation service: single visualization vs multiple
 - ✅ Removed over-engineered fallbacks: LLM-first approach
 - ✅ Graceful error handling with user-friendly messages

@@ -4,7 +4,7 @@ Advanced natural language to SQL conversion with safety validation and optimizat
 """
 
 from .pipeline.graph import text_to_sql_graph as graph
-from .config import config
+from ..common.config import config
 # Use mcp_server_standard.py for MCP implementation
 
 __version__ = "1.0.0"

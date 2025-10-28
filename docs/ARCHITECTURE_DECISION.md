@@ -93,24 +93,24 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
 1. Smart row counting:
    - Fast check if >1000 rows exists
    - Exact count if ≤1000 rows
-2. Execute SQL with `LIMIT 100`
-3. Cache up to 100 rows in memory
-4. Return first 30 rows for preview
+2. Execute SQL with `LIMIT 50`
+3. Cache up to 50 rows in memory
+4. Return first 50 rows for preview
 
 **Output**:
 ```json
 {
-  "data": [{...}, {...}, ...],  // First 30 rows
+  "data": [{...}, {...}, ...],  // First 50 rows
   "columns": ["id", "name", "status"],
   "total_count": 156,  // exact count if ≤1000, null if >1000
-  "truncated": true  // true if showing 30 of more than 30
+  "truncated": true  // true if showing 50 of more than 50
 }
 ```
 
 **Data Handling**:
-- Fetches: MAX 100 rows
-- Returns: MAX 30 rows
-- Caches: Up to 100 rows
+- Fetches: MAX 50 rows
+- Returns: MAX 50 rows
+- Caches: Up to 50 rows
 
 ### `/api/interpret/{query_id}`
 
@@ -120,7 +120,7 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
 
 **Process**:
 1. Retrieve cached data (no re-execution)
-2. Send cached data to LLM (up to 100 rows)
+2. Send cached data to LLM (up to 50 rows)
 3. Generate textual insights
 4. Suggest best visualization (if applicable)
 
@@ -143,7 +143,7 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
       "reason": "Shows distribution across datacenters"
     }
   },
-  "data_truncated": false  // true if >100 total rows
+  "data_truncated": false  // true if >50 total rows
 }
 ```
 
@@ -152,8 +152,10 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
 - No good visualization: Returns interpretation with `visualization: null`
 
 **Data Handling**:
-- Uses cached data only (no re-execution)
-- Analyzes all cached rows (≤100)
+- **CRITICAL**: Uses ONLY cached data (no re-execution of SQL)
+- Analyzes all cached rows (maximum 50 rows)
+- Both interpretation AND visualization are limited to these 50 cached rows
+- If dataset > 50 rows, analysis is based on a sample
 
 ### `/api/download/{query_id}`
 
@@ -196,20 +198,21 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
    → Returns SQL + query_id
    ↓
 3. GET /api/execute/{query_id}
-   → Execute SQL (LIMIT 100)
+   → Execute SQL (LIMIT 50)
    → Cache results
-   → Return 30 rows preview
+   → Return 50 rows preview
    ↓
 4. User Choice:
 
    A. POST /api/interpret/{query_id}
-      → Use cached data (≤100 rows)
-      → LLM generates insights + viz spec
-      → Frontend renders visualization
+      → Use cached data ONLY (≤50 rows, NO re-execution)
+      → LLM generates insights + viz spec (limited to cached data)
+      → Frontend renders visualization (based on ≤50 rows)
+      ⚠️ Analysis limited to cached sample if dataset > 50 rows
 
    B. GET /api/download/{query_id}
       → Execute full SQL (no limit)
-      → Stream to CSV file
+      → Stream ALL rows to CSV file
 ```
 
 ## Data Limits Summary
@@ -217,8 +220,8 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
 | Operation | Database Fetch | Memory Storage | API Returns | LLM Sees |
 |-----------|---------------|----------------|-------------|----------|
 | Generate SQL | 0 rows | 0 | SQL query | - |
-| Execute/Preview | ≤100 rows | ≤100 rows | 30 rows | - |
-| Interpret | 0 (cached) | - | Insights + viz | ≤100 rows |
+| Execute/Preview | ≤50 rows | ≤50 rows | 50 rows | - |
+| Interpret | 0 (cached) | - | Insights + viz | ≤50 rows |
 | Download | ALL rows | 0 (streaming) | CSV file | - |
 
 ## Session Management
@@ -230,7 +233,7 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
     "query_id_abc123": {
         "sql": "SELECT * FROM servers WHERE...",
         "original_query": "Show me unhealthy servers",
-        "data": [...],  # up to 100 rows
+        "data": [...],  # up to 50 rows
         "total_count": 5234,  # or None if >1000
         "timestamp": "2025-01-15T10:00:00"
     }
@@ -239,7 +242,7 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
 
 ### Cache Policy
 
-- **Storage Limit**: 100 rows per query
+- **Storage Limit**: 50 rows per query
 - **TTL**: 10 minutes (configurable via `CACHE_TTL`)
 - **Implementation**: In-memory dict for simplicity
 - **Future**: Redis for distributed/production deployment
@@ -272,13 +275,15 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
 - ✅ Simple POC implementation
 - ⚠️ Production: Consider Redis for scaling
 
-### Why 100 Row Cache Limit?
+### Why 50 Row Cache Limit?
 
-- ✅ Optimal for LLM token usage
+- ✅ Optimal for LLM token usage and faster interpretation
 - ✅ Fast enough for meaningful analysis
 - ✅ Reasonable memory footprint
 - ✅ Balance between completeness and performance
 - ✅ Transparent to users via `data_truncated` flag
+- ⚠️ **IMPORTANT**: Interpretation and visualization can ONLY use these 50 cached rows
+- ⚠️ Larger datasets require downloading full CSV for complete analysis
 
 ## Configuration
 
@@ -291,8 +296,8 @@ DATABASE_URL=sqlite:///data/infrastructure.db  # or postgresql://...
 
 # Optional
 CACHE_TTL=600  # seconds (default: 10 minutes)
-MAX_CACHE_ROWS=100  # max rows to cache per query
-PREVIEW_ROWS=30  # rows returned in preview
+MAX_CACHE_ROWS=50  # max rows to cache per query
+PREVIEW_ROWS=50  # rows returned in preview
 NETQUERY_ENV=dev  # dev or prod
 ```
 
@@ -316,10 +321,10 @@ CANONICAL_SCHEMA_PATH=schema_files/prod_schema.json
 
 ### Large Dataset Scenarios
 
-**Scenario**: Total rows > 100, user requests interpretation
+**Scenario**: Total rows > 50, user requests interpretation
 
 **Behavior**:
-- Use cached 100 rows for analysis
+- Use cached 50 rows for analysis
 - Set `data_truncated: true` in response
 - Frontend shows notice about sample-based analysis
 - User can download complete data via `/api/download`

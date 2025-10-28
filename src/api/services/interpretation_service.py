@@ -22,7 +22,7 @@ async def get_interpretation(
 
     Args:
         query: Original natural language query
-        results: Query results (list of dicts, max 100 rows from cache)
+        results: Query results (list of dicts, max 50 rows from cache)
         total_rows: Total number of rows in the dataset (if known, up to 1000)
 
     Returns:
@@ -146,7 +146,7 @@ VISUALIZATION GUIDELINES:
 1. If data already has numeric columns (count, sum, etc.) → Use directly for bar/line charts
 2. If only categorical data → Enable grouping to count occurrences
 3. PIE charts are BEST for status/category distributions - use when showing proportions
-4. Bar charts for comparing quantities across categories (top 100 items if >100)
+4. Bar charts for comparing quantities across categories (maximum 50 items due to cache limit)
 5. LINE charts for time-series data or trends over time/sequences
    - Use when x_column is a date, timestamp, or sequential identifier
    - Shows changes and patterns over time
@@ -241,8 +241,8 @@ def _process_visualization_config(viz_config: Dict[str, Any], results: List[Dict
             original_col = grouping.get("original_column")
 
             if group_col and group_col in columns:
-                # Apply backend grouping
-                chart_data = apply_backend_grouping(results, group_col, original_col)
+                # Apply backend grouping with 50 item limit (matches cache size)
+                chart_data = apply_backend_grouping(results, group_col, original_col, max_items=50)
                 config["y_column"] = "count"  # Always use count for grouped data
 
                 # Disable frontend grouping since we did it on backend
@@ -259,14 +259,15 @@ def _process_visualization_config(viz_config: Dict[str, Any], results: List[Dict
                 row['percentage'] = round((value / total * 100), 1) if total > 0 else 0
 
         # For bar charts, limit to top N items if there are too many
-        if chart_type == "bar" and chart_data and len(chart_data) > 100:
+        # Note: With 50 row cache limit, this will rarely trigger, but kept for safety
+        if chart_type == "bar" and chart_data and len(chart_data) > 50:
             y_column = config.get("y_column", "count")
             if y_column:
-                chart_data = limit_chart_data(chart_data, y_column, max_items=100)
+                chart_data = limit_chart_data(chart_data, y_column, max_items=50)
             else:
-                # If no y_column specified, just take first 100
-                logger.warning(f"Bar chart has {len(chart_data)} items but no y_column for sorting, taking first 100")
-                chart_data = chart_data[:100]
+                # If no y_column specified, just take first 50
+                logger.warning(f"Bar chart has {len(chart_data)} items but no y_column for sorting, taking first 50")
+                chart_data = chart_data[:50]
 
         # Format data for better display
         chart_data = format_data_for_display(chart_data)
