@@ -4,10 +4,13 @@ Provides intelligent insights for query results.
 """
 import json
 import logging
-from typing import Dict, List, Any, Optional
+import re
+from datetime import datetime
+from typing import Dict, List, Any, Optional, Iterable
 
 from src.text_to_sql.utils.llm_utils import get_llm
 from src.api.data_utils import analyze_data_patterns, apply_backend_grouping, format_data_for_display, limit_chart_data
+from src.api.services.interpretation_schema import InterpretationResponse
 
 logger = logging.getLogger(__name__)
 
@@ -45,14 +48,14 @@ async def get_interpretation(
         prompt = create_interpretation_prompt(query, results, total_rows, truncated)
 
         # SINGLE LLM CALL for both interpretation and visualization
+        # Use structured output with Pydantic schema for guaranteed valid JSON
         llm = get_llm()
-        response = await llm.ainvoke(prompt)
+        structured_llm = llm.with_structured_output(InterpretationResponse)
 
-        # Extract text content from AIMessage
-        response_text = response.content if hasattr(response, 'content') else str(response)
+        response: InterpretationResponse = await structured_llm.ainvoke(prompt)
 
-        # Parse the combined response (returns both interpretation and visualization)
-        result = parse_interpretation_response(response_text, results)
+        # Convert Pydantic model to dict and process visualization
+        result = process_structured_response(response, results)
 
         return result
 
@@ -167,36 +170,41 @@ Keep findings actionable and specific. Focus on operational impact.
     return prompt
 
 
-def parse_interpretation_response(llm_response: str, results: List[Dict]) -> Dict[str, Any]:
-    """Parse LLM response for BOTH interpretation AND visualization."""
+def process_structured_response(response: InterpretationResponse, results: List[Dict]) -> Dict[str, Any]:
+    """
+    Process structured LLM response (Pydantic model) into final format.
+    No JSON parsing needed - structured output guarantees valid data!
+    """
     try:
-        response_text = _extract_json_from_response(llm_response)
-        parsed = json.loads(response_text)
-
-        # Extract interpretation
+        # Extract interpretation (already validated by Pydantic)
         interpretation = {
-            "summary": parsed.get("summary", "Analysis complete"),
-            "key_findings": parsed.get("key_findings", [])
+            "summary": response.summary,
+            "key_findings": response.key_findings
         }
 
         # Extract and process visualization
-        visualization = parsed.get("visualization")
-
-        if visualization and visualization.get("type") != "none":
-            # Process visualization data (grouping, formatting, etc.)
-            visualization = _process_visualization_config(visualization, results)
-        else:
-            visualization = None
+        visualization = None
+        if response.visualization and response.visualization.type != "none":
+            # Only process if we have a valid config
+            if not response.visualization.config:
+                logger.warning(f"Visualization type '{response.visualization.type}' specified but no config provided, skipping")
+            else:
+                # Convert Pydantic model to dict for processing
+                viz_dict = {
+                    "type": response.visualization.type,
+                    "title": response.visualization.title,
+                    "config": response.visualization.config.model_dump()
+                }
+                # Process visualization data (grouping, formatting, etc.)
+                visualization = _process_visualization_config(viz_dict, results)
 
         return {
             "interpretation": interpretation,
             "visualization": visualization
         }
 
-    except (json.JSONDecodeError, KeyError, AttributeError) as e:
-        logger.error(f"JSON parsing failed: {e}")
-        logger.error(f"LLM response: {llm_response[:500]}")  # Log first 500 chars
-        logger.error(f"Extracted text: {_extract_json_from_response(llm_response)[:500]}")
+    except (KeyError, AttributeError) as e:
+        logger.error(f"Error processing structured response: {e}")
         return {
             "interpretation": {
                 "summary": "Analysis temporarily unavailable. Your data was retrieved successfully.",
@@ -224,17 +232,42 @@ def _process_visualization_config(viz_config: Dict[str, Any], results: List[Dict
     """
     try:
         columns = list(results[0].keys()) if results else []
-        config = viz_config.get("config", {})
+        config = viz_config.get("config")
+
+        # Defensive check: config must exist and be a dict
+        if not config or not isinstance(config, dict):
+            logger.warning(f"Invalid or missing config in visualization: {viz_config}")
+            return None
+
         x_col = config.get("x_column")
 
         # Validate required fields
-        if not x_col or x_col not in columns:
-            logger.warning(f"Invalid x_column '{x_col}' not in columns {columns}")
+        if not x_col:
+            logger.warning(f"Missing required x_column in visualization config. Available columns: {columns}")
+            return None
+
+        if x_col not in columns:
+            logger.warning(f"Invalid x_column '{x_col}' not in available columns {columns}. Skipping visualization.")
+            return None
+
+        if isinstance(x_col, str) and _column_name_has_identifier_hint(x_col):
+            logger.warning(
+                f"Visualization config uses identifier-like column '{x_col}' for x-axis. Skipping visualization."
+            )
             return None
 
         # Process data based on grouping requirements
         chart_data = results
-        grouping = config.get("grouping", {})
+        grouping = config.get("grouping")
+        if grouping is None:
+            grouping = {}
+            config["grouping"] = grouping
+        elif hasattr(grouping, "model_dump"):
+            grouping = grouping.model_dump()
+            config["grouping"] = grouping
+        elif not isinstance(grouping, dict):
+            logger.warning(f"Invalid grouping config type '{type(grouping)}'. Skipping visualization.")
+            return None
 
         if grouping.get("enabled"):
             group_col = grouping.get("group_by_column")
@@ -243,13 +276,39 @@ def _process_visualization_config(viz_config: Dict[str, Any], results: List[Dict
             if group_col and group_col in columns:
                 # Apply backend grouping with 50 item limit (matches cache size)
                 chart_data = apply_backend_grouping(results, group_col, original_col, max_items=50)
-                config["y_column"] = "count"  # Always use count for grouped data
+
+                # Update config to match grouped data structure
+                config["x_column"] = group_col  # X is now the group_by column
+                config["y_column"] = "count"     # Y is always count for grouped data
 
                 # Disable frontend grouping since we did it on backend
                 config["grouping"]["enabled"] = False
+            else:
+                # Grouping requested but column doesn't exist
+                logger.warning(
+                    f"Grouping requested on column '{group_col}' but not found in columns {columns}. "
+                    f"Skipping visualization."
+                )
+                return None
+
+        # Auto-group categorical data when LLM forgets to enable grouping but asks for counts
+        chart_type = viz_config.get("type")
+        y_column = config.get("y_column")
+        if chart_type in {"bar", "pie"} and chart_data:
+            first_row = chart_data[0]
+            y_missing = not y_column or y_column not in first_row
+            wants_count = (y_column or "").lower() == "count"
+
+            if y_missing or wants_count:
+                grouped = apply_backend_grouping(results, x_col, max_items=50)
+                if grouped:
+                    chart_data = grouped
+                    config["x_column"] = x_col
+                    config["y_column"] = "count"
+                    config["grouping"] = {"enabled": False}
+                    y_column = "count"
 
         # For pie charts, pre-calculate percentages
-        chart_type = viz_config.get("type")
         if chart_type == "pie" and chart_data:
             y_column = config.get("y_column", "count")
             total = sum(float(row.get(y_column, 0)) for row in chart_data)
@@ -272,6 +331,50 @@ def _process_visualization_config(viz_config: Dict[str, Any], results: List[Dict
         # Format data for better display
         chart_data = format_data_for_display(chart_data)
 
+        # FINAL VALIDATION: Ensure x_column and y_column exist in the FINAL chart_data
+        # (columns may have changed after grouping/processing)
+        final_columns = list(chart_data[0].keys()) if chart_data else []
+        final_x_col = config.get("x_column")
+        final_y_col = config.get("y_column")
+
+        if not final_y_col:
+            inferred_y_col = _infer_numeric_column(chart_data, exclude={final_x_col})
+            if inferred_y_col:
+                final_y_col = inferred_y_col
+                config["y_column"] = final_y_col
+
+        if _column_looks_like_identifier(chart_data, final_x_col, chart_type):
+            logger.warning(
+                f"Visualization config uses identifier-like column '{final_x_col}' for x-axis. Skipping visualization."
+            )
+            return None
+
+        if isinstance(final_y_col, str) and _column_name_has_identifier_hint(final_y_col):
+            logger.warning(
+                f"Visualization config uses identifier-like column '{final_y_col}' for y-axis. Skipping visualization."
+            )
+            return None
+
+        # Validate x_column exists in final data
+        if final_x_col not in final_columns:
+            logger.warning(
+                f"Chart validation failed: x_column '{final_x_col}' not in final data columns {final_columns}. "
+                f"Skipping visualization."
+            )
+            return None
+
+        # Validate y_column exists in final data (if specified)
+        if final_y_col and final_y_col not in final_columns:
+            logger.warning(
+                f"Chart validation failed: y_column '{final_y_col}' not in final data columns {final_columns}. "
+                f"Skipping visualization."
+            )
+            return None
+
+        if not chart_data:
+            logger.warning("Visualization has no data rows after processing; skipping chart rendering.")
+            return None
+
         return {
             "type": chart_type,
             "title": viz_config.get("title", "Chart"),
@@ -284,23 +387,169 @@ def _process_visualization_config(viz_config: Dict[str, Any], results: List[Dict
         return None
 
 
-def _extract_json_from_response(response: str) -> str:
-    """Extract JSON content from LLM response, removing markdown code blocks if present."""
-    response_text = response.strip()
 
-    # Handle markdown code blocks (```json ... ``` or ``` ... ```)
-    if "```" in response_text:
-        # Find the first opening backticks
-        start = response_text.find("```")
-        # Skip past the opening backticks and optional language identifier
-        start = response_text.find("\n", start) + 1
+def _infer_numeric_column(data: List[Dict[str, Any]], exclude: Iterable[str]) -> Optional[str]:
+    """Pick the first column with numeric-looking values that is not excluded."""
+    if not data:
+        return None
 
-        # Find the closing backticks
-        end = response_text.find("```", start)
+    exclude_set = set(exclude or [])
+    for key in data[0].keys():
+        if key in exclude_set:
+            continue
 
-        if start > 0 and end > start:
-            response_text = response_text[start:end].strip()
+        values = [row.get(key) for row in data if row.get(key) is not None]
+        if not values:
+            continue
 
-    return response_text
+        if all(_value_is_numeric(v) for v in values):
+            return key
+
+    return None
 
 
+def _value_is_numeric(value: Any) -> bool:
+    """Check if a value is inherently numeric or casts cleanly to float."""
+    if isinstance(value, (int, float)):
+        return True
+    if isinstance(value, str):
+        try:
+            float(value)
+            return True
+        except (ValueError, TypeError):
+            return False
+    return False
+
+
+def _column_looks_like_identifier(data: List[Dict[str, Any]], column: Optional[str], chart_type: Optional[str]) -> bool:
+    """Heuristically determine whether a column behaves like an identifier."""
+    if not column or not data:
+        return False
+
+    name = column.strip()
+    if not name:
+        return False
+
+    values = [row.get(column) for row in data if row.get(column) is not None]
+    if not values:
+        return False
+
+    name_hint = _column_name_has_identifier_hint(name)
+
+    # Allow time-series axes for line charts
+    if chart_type == "line" and _values_look_like_time_series(values):
+        return False
+
+    # Scatter plots use numeric metrics; rely on name hints only
+    if chart_type == "scatter":
+        return bool(name_hint)
+
+    unique_ratio = len({str(v) for v in values}) / max(len(values), 1)
+    value_hint = _values_look_like_identifier(values)
+
+    # Treat as identifier if name suggests it or cardinality is very high and values look like ids
+    if name_hint:
+        return True
+
+    if unique_ratio >= 0.95 and value_hint:
+        return True
+
+    # For categorical charts, if we have almost unique categories, consider it identifier-like
+    if chart_type in {"bar", "pie"} and unique_ratio >= 0.95 and len(values) > 20:
+        return True
+
+    return False
+
+
+def _column_name_has_identifier_hint(name: str) -> bool:
+    """Check column names for common identifier patterns."""
+    normalized = _normalize_name_tokens(name)
+    identifier_tokens = {"id", "uuid", "guid", "identifier", "key"}
+    if identifier_tokens.intersection(normalized):
+        return True
+
+    # Also flag short names ending in id (e.g., "id", "nodeId")
+    lowered = name.lower()
+    if lowered.endswith("_id") or lowered.endswith(" id"):
+        return True
+    if lowered.endswith("id") and len(lowered) <= 6:
+        return True
+
+    return False
+
+
+def _normalize_name_tokens(name: str) -> set:
+    """Break a column name into lowercase tokens (supports camelCase, snake_case)."""
+    spaced = re.sub(r"(?<!^)(?=[A-Z])", "_", name)
+    tokens = re.split(r"[^a-zA-Z0-9]+", spaced.lower())
+    return {token for token in tokens if token}
+
+
+def _values_look_like_identifier(values: List[Any]) -> bool:
+    """Detect UUID-style strings or strictly integer identifiers."""
+    if not values:
+        return False
+
+    uuid_like = 0
+    digit_like = 0
+    int_like = 0
+
+    for value in values:
+        if isinstance(value, str):
+            if _looks_like_uuid(value):
+                uuid_like += 1
+            elif value.isdigit():
+                digit_like += 1
+        elif isinstance(value, int):
+            int_like += 1
+        elif isinstance(value, float):
+            if value.is_integer():
+                int_like += 1
+
+    total = len(values)
+
+    if uuid_like / total >= 0.8:
+        return True
+
+    if (digit_like + int_like) / total >= 0.9 and total >= 10:
+        return True
+
+    return False
+
+
+def _looks_like_uuid(value: str) -> bool:
+    uuid_regex = re.compile(r"^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$")
+    return bool(uuid_regex.match(value))
+
+
+def _values_look_like_time_series(values: List[Any]) -> bool:
+    """Determine if values resemble timestamps/date strings."""
+    parsed = 0
+    for value in values:
+        if isinstance(value, datetime):
+            parsed += 1
+            continue
+        if isinstance(value, str):
+            if _parse_datetime(value):
+                parsed += 1
+        elif isinstance(value, (int, float)):
+            # Consider numeric epochs too small to be IDs?
+            if value > 10**9:
+                parsed += 1
+
+    return parsed / len(values) >= 0.8 if values else False
+
+
+def _parse_datetime(value: str) -> Optional[datetime]:
+    """Attempt to parse a datetime string using common formats."""
+    try:
+        return datetime.fromisoformat(value)
+    except (ValueError, TypeError):
+        pass
+
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%Y/%m/%d", "%d-%b-%Y"):
+        try:
+            return datetime.strptime(value, fmt)
+        except (ValueError, TypeError):
+            continue
+    return None
