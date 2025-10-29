@@ -13,6 +13,7 @@ def get_database_instructions(database_url: str = "") -> str:
 5. For case-insensitive matching use UPPER() or LOWER()
 6. Column optimization: select only the minimum columns needed to answer the query
 7. Prefer essential data columns over metadata/system columns unless specifically requested
+8. **Never include UUID columns in SELECT clause** - UUID columns can be used in JOINs and WHERE clauses, but should never appear in the SELECT list as they are not human-readable
 
 **CRITICAL ID/Name Rule:**
 - When returning an entity's ID, ALWAYS include its human-readable identifier (name, address, title, etc.)
@@ -28,9 +29,10 @@ def get_database_instructions(database_url: str = "") -> str:
 3. Use explicit JOIN syntax, not implicit joins
 4. Handle dates with CURRENT_DATE, INTERVAL: CURRENT_DATE + INTERVAL '30 days', CURRENT_DATE - INTERVAL '1 week'
 5. For case-insensitive matching use ILIKE or UPPER()/LOWER()
-6. Use double quotes for identifiers if needed: "column_name"
-7. Column optimization: select only the minimum columns needed to answer the query
-8. Prefer essential data columns over metadata/system columns unless specifically requested
+6. Column optimization: select only the minimum columns needed to answer the query
+7. Prefer essential data columns over metadata/system columns unless specifically requested
+8. Use double quotes for identifiers if needed: "column_name"
+9. **Never include UUID columns in SELECT clause** - UUID columns can be used in JOINs and WHERE clauses, but should never appear in the SELECT list as they are not human-readable
 
 **CRITICAL ID/Name Rule:**
 - When returning an entity's ID, ALWAYS include its human-readable identifier (name, address, title, etc.)
@@ -49,6 +51,7 @@ def get_database_instructions(database_url: str = "") -> str:
 5. For case-insensitive matching use appropriate functions for your database
 6. Column optimization: select only the minimum columns needed to answer the query
 7. Prefer essential data columns over metadata/system columns unless specifically requested
+8. **Never include UUID columns in SELECT clause** - UUID columns can be used in JOINs and WHERE clauses, but should never appear in the SELECT list as they are not human-readable
 
 **CRITICAL ID/Name Rule:**
 - When returning an entity's ID, ALWAYS include its human-readable identifier (name, address, title, etc.)

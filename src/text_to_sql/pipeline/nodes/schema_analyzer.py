@@ -117,6 +117,69 @@ class SchemaAnalyzer:
             max_tables=config.pipeline.max_relevant_tables,
             threshold=config.pipeline.relevance_threshold
         )
+
+    def _is_uuid_column(self, col: dict, canonical_table: Optional[Any]) -> bool:
+        """
+        Check if a column is a UUID type.
+
+        Args:
+            col: Column info dictionary from database
+            canonical_table: Optional canonical schema table
+
+        Returns:
+            True if column is UUID type
+        """
+        col_type = col['type'].upper()
+
+        # Check database type directly
+        if 'UUID' in col_type:
+            return True
+
+        # Check canonical schema if available
+        if canonical_table and col['name'] in canonical_table.columns:
+            canonical_col = canonical_table.columns[col['name']]
+            canonical_type = canonical_col.data_type.upper()
+            if 'UUID' in canonical_type:
+                return True
+
+        return False
+
+    def _format_column_line(self, col: dict, canonical_table: Optional[Any]) -> str:
+        """
+        Format a single column line for schema context.
+
+        Args:
+            col: Column info dictionary from database
+            canonical_table: Optional canonical schema table
+
+        Returns:
+            Formatted column line string
+        """
+        is_uuid = self._is_uuid_column(col, canonical_table)
+
+        # Build column type and attributes
+        col_line = f"  - {col['name']} ({col['type']}"
+
+        if col.get('nullable') is False:
+            col_line += ", NOT NULL"
+        if col.get('primary_key'):
+            col_line += ", PRIMARY KEY"
+        if col.get('foreign_keys'):
+            col_line += ", FOREIGN KEY"
+
+        # Mark UUID columns for analytics use case
+        if is_uuid:
+            col_line += ", UUID - for JOINs only, do not SELECT"
+
+        col_line += ")"
+
+        # Add description from canonical schema if available
+        if canonical_table and col['name'] in canonical_table.columns:
+            description = canonical_table.columns[col['name']].description
+            if description and not description.startswith("Column:"):
+                col_line += f" - {description}"
+
+        return col_line
     def _expand_tables_via_relationships(self, relevant_tables: list, relevance_scores: dict) -> set:
         """
         Smart FK expansion with prioritization for speed optimization.
@@ -260,18 +323,7 @@ class SchemaAnalyzer:
             if columns:
                 table_parts.append("Columns:")
                 for col in columns:
-                    col_line = f"  - {col['name']} ({col['type']}"
-                    if col.get('nullable') is False:
-                        col_line += ", NOT NULL"
-                    if col.get('primary_key'):
-                        col_line += ", PRIMARY KEY"
-                    col_line += ")"
-
-                    if canonical_table and col['name'] in canonical_table.columns:
-                        description = canonical_table.columns[col['name']].description
-                        if description and not description.startswith("Column:"):
-                            col_line += f" - {description}"
-
+                    col_line = self._format_column_line(col, canonical_table)
                     table_parts.append(col_line)
 
             # SPEED OPTIMIZATION: Only include sample data for semantically matched tables
