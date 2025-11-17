@@ -6,6 +6,8 @@ import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
+from src.common.constants import MAX_CACHE_ROWS
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,7 +42,7 @@ def format_data_for_display(data: List[Dict]) -> List[Dict]:
     return formatted_data
 
 
-def apply_backend_grouping(data: List[Dict], group_by_column: str, original_column: str = None, max_items: int = 100) -> List[Dict]:
+def apply_backend_grouping(data: List[Dict], group_by_column: str, original_column: str = None, max_items: int = MAX_CACHE_ROWS) -> List[Dict]:
     """
     Apply grouping on the backend to reduce frontend complexity.
 
@@ -48,7 +50,7 @@ def apply_backend_grouping(data: List[Dict], group_by_column: str, original_colu
         data: List of data rows
         group_by_column: Column to group by
         original_column: Optional original column for tracking items
-        max_items: Maximum number of groups to return (default 100)
+        max_items: Maximum number of groups to return (default MAX_CACHE_ROWS)
 
     Returns:
         List of grouped data, limited to top N by count
@@ -85,14 +87,14 @@ def apply_backend_grouping(data: List[Dict], group_by_column: str, original_colu
     return grouped_list
 
 
-def limit_chart_data(data: List[Dict], y_column: str, max_items: int = 100) -> List[Dict]:
+def limit_chart_data(data: List[Dict], y_column: str, max_items: int = MAX_CACHE_ROWS) -> List[Dict]:
     """
     Limit chart data to top N items by y_column value.
 
     Args:
         data: List of data rows
         y_column: Column to sort by (typically a numeric column like 'count')
-        max_items: Maximum number of items to return (default 100)
+        max_items: Maximum number of items to return (default MAX_CACHE_ROWS)
 
     Returns:
         Limited list of data, sorted by y_column descending

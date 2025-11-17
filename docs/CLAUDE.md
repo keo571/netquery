@@ -9,16 +9,17 @@ This document provides essential context for AI assistants working on the Netque
 ## Core Architecture
 
 ```
-User Query → Schema Analysis → SQL Generation → Validation → Execution → Result Interpretation
+User Query → Triage → Schema Analysis → SQL Generation → Validation → Execution → Result Interpretation
 ```
 
 ### Key Components
 
 1. **Pipeline** (`src/text_to_sql/pipeline/`)
    - LangGraph-based orchestration
-   - Five processing nodes working in sequence
+   - **Six processing nodes** working in sequence
    - State management across the pipeline
-   - **Nodes**: schema_analyzer.py, sql_generator.py, validator.py, executor.py, interpreter.py
+   - **Nodes**: triage.py, schema_analyzer.py, sql_generator.py, validator.py, executor.py, interpreter.py
+   - **Helper functions** in `state.py`: `create_success_step()`, `create_warning_step()`, `create_error_step()`
 
 2. **Database** (`src/text_to_sql/database/`)
    - Database connection management
@@ -46,19 +47,24 @@ User Query → Schema Analysis → SQL Generation → Validation → Execution �
    - `sql_generation.py` - SQL generation prompts
    - `_shared.py` - Shared prompt utilities (database-specific instructions)
 
-6. **Configuration**
+6. **Common** (`src/common/`)
+   - `constants.py` - **CENTRALIZED** data limits and chart configurations (single source of truth)
    - `config.py` - Configuration management with hot-reloading
+   - `schema_summary.py` - Schema overview utilities
+   - **Always import from `constants.py`** - never hardcode limits!
+
+7. **Configuration**
    - `mcp_server.py` - Standard MCP implementation
 
-7. **Scripts & CLI**
+8. **Scripts & CLI**
    - `setup/create_data_sqlite.py` - Pure SQL sample data generator
    - `testing/evaluate_queries.py` - Comprehensive query evaluation framework
 
-8. **API Layer** (`src/api/`)
+9. **API Layer** (`src/api/`)
    - `server.py` - FastAPI server with four main endpoints
    - `interpretation_service.py` - LLM-powered result interpretation
 
-9. **Output Structure**
+10. **Output Structure**
    - `data/` - Database files (infrastructure.db)
    - `outputs/query_data/` - CSV exports from text-to-SQL queries
    - `outputs/query_reports/` - HTML reports from text-to-SQL queries
@@ -77,8 +83,8 @@ The system now includes a FastAPI server providing a clean separation between SQ
    - Uses existing LangGraph pipeline with `execute=False`
 
 2. **`GET /api/execute/{query_id}`**
-   - Executes SQL and caches up to 50 rows
-   - Returns first 50 rows for preview
+   - Executes SQL and caches up to MAX_CACHE_ROWS rows
+   - Returns first PREVIEW_ROWS rows for preview
    - Smart counting: exact count ≤1000 rows, "unknown" for larger datasets
    - Optimized for performance with fast >1000 row detection
 
@@ -94,7 +100,7 @@ The system now includes a FastAPI server providing a clean separation between SQ
 
 ### Cache Strategy
 
-- **Size**: Up to 50 rows per query (optimized for faster LLM analysis)
+- **Size**: Up to MAX_CACHE_ROWS rows per query (optimized for faster LLM analysis)
 - **TTL**: 10 minutes default
 - **Counting**: Fast check for >1000 rows vs exact count ≤1000
 - **Memory**: In-memory dict for POC (Redis for production)
@@ -128,7 +134,7 @@ The system now includes a FastAPI server providing a clean separation between SQ
 ### 2. FastAPI Server & Interpretation Service (September 2025)
 - ✅ Built FastAPI server with four optimized endpoints
 - ✅ Implemented smart row counting (≤1000 vs >1000) for performance
-- ✅ Reduced cache size from 200 to 100 to 50 rows (LLM-optimized for speed)
+- ✅ Reduced cache size to MAX_CACHE_ROWS rows (LLM-optimized for speed, configurable in constants.py)
 - ✅ Simplified interpretation service: single visualization vs multiple
 - ✅ Removed over-engineered fallbacks: LLM-first approach
 - ✅ Graceful error handling with user-friendly messages

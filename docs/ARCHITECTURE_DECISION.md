@@ -19,13 +19,37 @@ This document outlines the backend architecture for the Netquery text-to-SQL sys
 ### 1. Core Pipeline: Text-to-SQL LangGraph
 
 The main text-to-SQL pipeline (`src/text_to_sql/pipeline/graph.py`):
-- 5-stage processing workflow
+- **6-stage processing workflow** (includes triage)
+- **Query triage** (fast pre-filtering of non-database questions)
 - **Schema analysis with smart FK expansion** (semantic similarity + relationship traversal)
 - SQL generation with direct LLM call (no intermediate planning)
 - Safety validation (read-only enforcement)
 - Query execution and result formatting
 - Automatic visualization detection
 - Supports both execution and SQL-only generation modes
+
+**Stage 0: Query Triage** (New Feature)
+
+The triage node (`src/text_to_sql/pipeline/nodes/triage.py`) uses fast heuristics to filter out non-database questions:
+
+**Purpose**: Avoid expensive pipeline processing for obvious non-queries
+
+**Detection Patterns**:
+- Definition requests: "What is a load balancer?", "Define SSL"
+- Explanation questions: "How does DNS work?", "Why does BGP exist?"
+- General knowledge: "Who invented SQL?", "Tell me about networking"
+
+**Benefits**:
+- ⚡ **Speed**: ~1ms response (vs 2-3 seconds for full pipeline)
+- 💰 **Cost savings**: No LLM/embedding API calls for non-queries
+- ✅ **Better UX**: Helpful message with schema suggestions vs confusing SQL error
+
+**Smart Exceptions**:
+- "How many servers are unhealthy?" → Allowed (query indicator)
+- "What are the top 10 servers?" → Allowed (superlative modifier)
+- "Show me what SSL certificates are expiring" → Allowed (data retrieval)
+
+**Output**: If rejected, returns helpful message with schema overview for suggestions
 
 **Stage 1 Detail: Schema Analyzer with Smart FK Expansion**
 
@@ -137,24 +161,24 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
 1. Smart row counting:
    - Fast check if >1000 rows exists
    - Exact count if ≤1000 rows
-2. Execute SQL with `LIMIT 50`
-3. Cache up to 50 rows in memory
-4. Return first 50 rows for preview
+2. Execute SQL with `LIMIT MAX_CACHE_ROWS`
+3. Cache up to MAX_CACHE_ROWS rows in memory
+4. Return first PREVIEW_ROWS rows for preview
 
 **Output**:
 ```json
 {
-  "data": [{...}, {...}, ...],  // First 50 rows
+  "data": [{...}, {...}, ...],  // First PREVIEW_ROWS rows
   "columns": ["id", "name", "status"],
   "total_count": 156,  // exact count if ≤1000, null if >1000
-  "truncated": true  // true if showing 50 of more than 50
+  "truncated": true  // true if showing PREVIEW_ROWS of more than PREVIEW_ROWS
 }
 ```
 
 **Data Handling**:
-- Fetches: MAX 50 rows
-- Returns: MAX 50 rows
-- Caches: Up to 50 rows
+- Fetches: MAX MAX_CACHE_ROWS rows
+- Returns: MAX PREVIEW_ROWS rows
+- Caches: Up to MAX_CACHE_ROWS rows
 
 ### `/api/interpret/{query_id}`
 
@@ -164,7 +188,7 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
 
 **Process**:
 1. Retrieve cached data (no re-execution)
-2. Send cached data to LLM (up to 50 rows)
+2. Send cached data to LLM (up to MAX_CACHE_ROWS rows)
 3. Generate textual insights
 4. Suggest best visualization (if applicable)
 
@@ -187,7 +211,7 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
       "reason": "Shows distribution across datacenters"
     }
   },
-  "data_truncated": false  // true if >50 total rows
+  "data_truncated": false  // true if >MAX_CACHE_ROWS total rows
 }
 ```
 
@@ -197,9 +221,9 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
 
 **Data Handling**:
 - **CRITICAL**: Uses ONLY cached data (no re-execution of SQL)
-- Analyzes all cached rows (maximum 50 rows)
-- Both interpretation AND visualization are limited to these 50 cached rows
-- If dataset > 50 rows, analysis is based on a sample
+- Analyzes all cached rows (maximum MAX_CACHE_ROWS rows)
+- Both interpretation AND visualization are limited to these MAX_CACHE_ROWS cached rows
+- If dataset > MAX_CACHE_ROWS rows, analysis is based on a sample
 
 ### `/api/download/{query_id}`
 
@@ -242,17 +266,17 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
    → Returns SQL + query_id
    ↓
 3. GET /api/execute/{query_id}
-   → Execute SQL (LIMIT 50)
+   → Execute SQL (LIMIT MAX_CACHE_ROWS)
    → Cache results
-   → Return 50 rows preview
+   → Return PREVIEW_ROWS rows preview
    ↓
 4. User Choice:
 
    A. POST /api/interpret/{query_id}
-      → Use cached data ONLY (≤50 rows, NO re-execution)
+      → Use cached data ONLY (≤MAX_CACHE_ROWS rows, NO re-execution)
       → LLM generates insights + viz spec (limited to cached data)
-      → Frontend renders visualization (based on ≤50 rows)
-      ⚠️ Analysis limited to cached sample if dataset > 50 rows
+      → Frontend renders visualization (based on ≤MAX_CACHE_ROWS rows)
+      ⚠️ Analysis limited to cached sample if dataset > MAX_CACHE_ROWS rows
 
    B. GET /api/download/{query_id}
       → Execute full SQL (no limit)
@@ -264,8 +288,8 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
 | Operation | Database Fetch | Memory Storage | API Returns | LLM Sees |
 |-----------|---------------|----------------|-------------|----------|
 | Generate SQL | 0 rows | 0 | SQL query | - |
-| Execute/Preview | ≤50 rows | ≤50 rows | 50 rows | - |
-| Interpret | 0 (cached) | - | Insights + viz | ≤50 rows |
+| Execute/Preview | ≤MAX_CACHE_ROWS rows | ≤MAX_CACHE_ROWS rows | PREVIEW_ROWS rows | - |
+| Interpret | 0 (cached) | - | Insights + viz | ≤MAX_CACHE_ROWS rows |
 | Download | ALL rows | 0 (streaming) | CSV file | - |
 
 ## Session Management
@@ -277,7 +301,7 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
     "query_id_abc123": {
         "sql": "SELECT * FROM servers WHERE...",
         "original_query": "Show me unhealthy servers",
-        "data": [...],  # up to 50 rows
+        "data": [...],  # up to MAX_CACHE_ROWS rows
         "total_count": 5234,  # or None if >1000
         "timestamp": "2025-01-15T10:00:00"
     }
@@ -286,7 +310,7 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
 
 ### Cache Policy
 
-- **Storage Limit**: 50 rows per query
+- **Storage Limit**: MAX_CACHE_ROWS rows per query
 - **TTL**: 10 minutes (configurable via `CACHE_TTL`)
 - **Implementation**: In-memory dict for simplicity
 - **Future**: Redis for distributed/production deployment
@@ -319,15 +343,94 @@ Claude Desktop integration (`src/text_to_sql/mcp_server.py`):
 - ✅ Simple POC implementation
 - ⚠️ Production: Consider Redis for scaling
 
-### Why 50 Row Cache Limit?
+### Why MAX_CACHE_ROWS Row Cache Limit?
 
 - ✅ Optimal for LLM token usage and faster interpretation
 - ✅ Fast enough for meaningful analysis
 - ✅ Reasonable memory footprint
 - ✅ Balance between completeness and performance
 - ✅ Transparent to users via `data_truncated` flag
-- ⚠️ **IMPORTANT**: Interpretation and visualization can ONLY use these 50 cached rows
+- ⚠️ **IMPORTANT**: Interpretation and visualization can ONLY use these MAX_CACHE_ROWS cached rows
 - ⚠️ Larger datasets require downloading full CSV for complete analysis
+
+## Code Organization & Constants
+
+### Centralized Configuration (`src/common/constants.py`)
+
+All data limits and chart configurations are centralized in a single source of truth:
+
+```python
+# Data limits
+MAX_CACHE_ROWS = 30          # Maximum rows cached for interpretation
+PREVIEW_ROWS = 30            # Rows shown in preview response
+MAX_CHART_BAR_ITEMS = 20     # Maximum bar chart items
+MAX_CHART_PIE_SLICES = 8     # Maximum pie chart slices
+MAX_SCATTER_POINTS = 100     # Maximum scatter plot points
+MAX_LINE_CHART_POINTS = 30   # Maximum line chart data points
+
+# Performance thresholds
+LARGE_RESULT_SET_THRESHOLD = 1000  # Smart count optimization threshold
+```
+
+**Benefits**:
+- ✅ Single source of truth - change once, apply everywhere
+- ✅ No hardcoded magic numbers scattered across codebase
+- ✅ Consistent limits for charts, caching, and API responses
+- ✅ Easy to tune performance vs quality tradeoffs
+
+**Usage**:
+```python
+from src.common.constants import MAX_CACHE_ROWS, MAX_CHART_BAR_ITEMS
+
+# All modules import from constants.py
+chart_data = results[:MAX_CHART_BAR_ITEMS]
+cached_data = execute_query(sql, limit=MAX_CACHE_ROWS)
+```
+
+### Pipeline Helper Functions (`src/text_to_sql/pipeline/state.py`)
+
+Standardized reasoning log creation to reduce duplication:
+
+```python
+def create_success_step(step_name: str, details: str) -> ReasoningStep:
+    """Create a successful reasoning step (✅)."""
+    return {"step_name": step_name, "details": details, "status": "✅"}
+
+def create_warning_step(step_name: str, details: str) -> ReasoningStep:
+    """Create a warning reasoning step (⚠️)."""
+    return {"step_name": step_name, "details": details, "status": "⚠️"}
+
+def create_error_step(step_name: str, details: str) -> ReasoningStep:
+    """Create an error reasoning step (❌)."""
+    return {"step_name": step_name, "details": details, "status": "❌"}
+```
+
+**Before** (duplicated across 4 pipeline nodes):
+```python
+reasoning_log = [{
+    "step_name": "SQL Generation",
+    "details": "Successfully generated SQL",
+    "status": "✅"
+}]
+```
+
+**After** (consistent, maintainable):
+```python
+reasoning_log = [create_success_step("SQL Generation", "Successfully generated SQL")]
+```
+
+### Performance Optimizations
+
+**Lazy Loading** (`src/text_to_sql/pipeline/nodes/executor.py`):
+- Pandas import moved inside CSV export function
+- Only loads pandas when CSV export is actually needed
+- Faster startup time for non-export operations
+
+```python
+def _save_results_to_csv(data: list, query: str) -> str:
+    import pandas as pd  # Lazy import - only when needed
+    # ... CSV export logic
+```
 
 ## Configuration
 
@@ -340,8 +443,8 @@ DATABASE_URL=sqlite:///data/infrastructure.db  # or postgresql://...
 
 # Optional - API Performance
 CACHE_TTL=600  # seconds (default: 10 minutes)
-MAX_CACHE_ROWS=50  # max rows to cache per query
-PREVIEW_ROWS=50  # rows returned in preview
+MAX_CACHE_ROWS=30  # max rows to cache per query
+PREVIEW_ROWS=30  # rows returned in preview
 NETQUERY_ENV=dev  # dev or prod
 
 # Optional - Schema Analyzer Speed Optimization
@@ -389,10 +492,10 @@ CANONICAL_SCHEMA_PATH=schema_files/prod_schema.json
 
 ### Large Dataset Scenarios
 
-**Scenario**: Total rows > 50, user requests interpretation
+**Scenario**: Total rows > MAX_CACHE_ROWS, user requests interpretation
 
 **Behavior**:
-- Use cached 50 rows for analysis
+- Use cached MAX_CACHE_ROWS rows for analysis
 - Set `data_truncated: true` in response
 - Frontend shows notice about sample-based analysis
 - User can download complete data via `/api/download`
@@ -480,7 +583,7 @@ CANONICAL_SCHEMA_PATH=schema_files/prod_schema.json
 
 1. **Query Input**: Natural language query form
 2. **SQL Display**: Show generated SQL with syntax highlighting
-3. **Data Preview**: Table display (30 rows)
+3. **Data Preview**: Table display (PREVIEW_ROWS rows)
 4. **Interpretation Display**: Show insights and findings
 5. **Visualization Rendering**: Render charts from viz specs (Chart.js/Recharts/Plotly)
 6. **Download Handling**: CSV file download button
@@ -493,7 +596,7 @@ User Input
   ↓
 Generate SQL → Display SQL
   ↓
-Execute → Show 30 row preview + row count
+Execute → Show PREVIEW_ROWS row preview + row count
   ↓
 User Clicks "Interpret"
   ↓
@@ -537,7 +640,7 @@ Frontend should display notices based on API flags:
 ```jsx
 {truncated && (
   <Notice type="info">
-    Showing 30 of {total_count || 'many'} rows
+    Showing PREVIEW_ROWS of {total_count || 'many'} rows
   </Notice>
 )}
 
@@ -553,15 +656,19 @@ Frontend should display notices based on API flags:
 
 ### Completed ✅
 
-1. Core text-to-SQL pipeline with 5 stages (consolidated SQL generation)
-2. FastAPI server with all endpoints
-3. In-memory caching system
-4. LLM-powered interpretation
-5. Smart row counting optimization
-6. Streaming CSV download
-7. Environment profile system (dev/prod)
-8. MCP server integration for Claude Desktop
-9. Comprehensive testing framework
+1. Core text-to-SQL pipeline with **6 stages** (includes triage)
+2. **Query triage system** for filtering non-database questions
+3. FastAPI server with all endpoints
+4. In-memory caching system
+5. LLM-powered interpretation with structured output (Pydantic schemas)
+6. Smart row counting optimization
+7. Streaming CSV download
+8. Environment profile system (dev/prod)
+9. MCP server integration for Claude Desktop
+10. Comprehensive testing framework
+11. **Centralized constants** for data limits and chart configurations
+12. **Standardized helper functions** for reasoning logs
+13. **Performance optimizations**: Lazy-loaded imports, reduced code duplication
 
 ### Future Enhancements 🔮
 
@@ -627,4 +734,22 @@ Scope clarity to avoid over-engineering:
 
 ---
 
-**Last Updated**: 2025-01-15
+## Recent Updates
+
+### 2025-01-16: Code Cleanup & Optimization
+- ✅ Centralized all data limits and chart configurations to `src/common/constants.py`
+- ✅ Created standardized helper functions for reasoning logs
+- ✅ Removed ~350 lines of redundant code
+- ✅ Implemented lazy-loading for pandas import (performance optimization)
+- ✅ Removed dead code exports and unused functions
+- ✅ Updated documentation to reflect triage feature and cleanup
+
+### 2025-01-15: Query Triage Feature
+- ✅ Added triage node to pipeline (Stage 0)
+- ✅ Fast pre-filtering of non-database questions
+- ✅ Cost savings: No LLM calls for definition/explanation requests
+- ✅ Improved UX with helpful responses and schema suggestions
+
+---
+
+**Last Updated**: 2025-01-16

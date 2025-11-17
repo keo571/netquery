@@ -30,6 +30,10 @@ class TextToSQLState(TypedDict):
     export_html: Optional[bool]
     execute: Optional[bool]  # Whether to execute the SQL query
 
+    # Triage
+    triage_passed: Optional[bool]  # Whether query passed triage check
+    schema_overview: Optional[Dict[str, Any]]  # Schema overview for helpful suggestions
+
     # Schema Input
     canonical_schema_path: Optional[str]  # Path to canonical schema JSON
     canonical_schema: Optional[Any]  # Loaded CanonicalSchema object (use Any to avoid TypedDict issues)
@@ -70,3 +74,35 @@ class ValidationResult(TypedDict):
     errors: List[str]
     warnings: List[str]
     allowed_tables: List[str]
+
+
+# Helper functions for reasoning log creation
+
+def create_reasoning_step(step_name: str, details: str, status: str = "✅") -> ReasoningStep:
+    """
+    Create a standardized reasoning log entry.
+
+    Args:
+        step_name: Name of the pipeline step
+        details: Description of what happened
+        status: Status emoji ("✅" success, "⚠️" warning, "❌" error)
+
+    Returns:
+        ReasoningStep dictionary
+    """
+    return ReasoningStep(step_name=step_name, details=details, status=status)
+
+
+def create_success_step(step_name: str, details: str) -> ReasoningStep:
+    """Create a successful reasoning step (✅)."""
+    return create_reasoning_step(step_name, details, "✅")
+
+
+def create_warning_step(step_name: str, details: str) -> ReasoningStep:
+    """Create a warning reasoning step (⚠️)."""
+    return create_reasoning_step(step_name, details, "⚠️")
+
+
+def create_error_step(step_name: str, details: str) -> ReasoningStep:
+    """Create an error reasoning step (❌)."""
+    return create_reasoning_step(step_name, details, "❌")

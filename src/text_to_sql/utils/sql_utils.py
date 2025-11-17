@@ -2,7 +2,6 @@
 Simple SQL utilities for cleaning and extraction.
 """
 import re
-import logging
 
 SQLITE_DATE_INTERVAL_PATTERN = re.compile(
     r"(?P<func>DATE|DATETIME)\s*\(\s*'now'\s*,\s*'(?P<sign>[+-]?)(?P<amount>\d+)\s+(?P<unit>day|days|week|weeks|month|months|hour|hours|minute|minutes)'\s*\)",
@@ -20,8 +19,6 @@ def adapt_sql_for_database(sql_query: str, database_url: str) -> str:
         sql_query = _convert_sqlite_date_functions(sql_query)
 
     return sql_query
-
-logger = logging.getLogger(__name__)
 
 
 def clean_sql_query(sql_query: str) -> str:

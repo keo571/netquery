@@ -71,7 +71,7 @@ def test_llm_interpretation():
     print("   - Provides intelligent insights based on the query context")
     print("   - Suggests relevant visualizations")
     print("   - Understands the meaning behind the data")
-    print("   - Optimized to analyze up to 50 rows for efficient token usage and faster responses")
+    print("   - Optimized to analyze up to MAX_CACHE_ROWS rows for efficient token usage and faster responses")
 
 if __name__ == "__main__":
     test_llm_interpretation()

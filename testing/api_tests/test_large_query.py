@@ -6,7 +6,7 @@ import json
 BASE_URL = "http://localhost:8000"
 
 def test_large_query():
-    # Test with a query that returns ALL servers (should be more than 30)
+    # Test with a query that returns ALL servers (should be more than MAX_CACHE_ROWS)
     print("Testing with query that returns many rows...")
 
     # Generate SQL for all servers

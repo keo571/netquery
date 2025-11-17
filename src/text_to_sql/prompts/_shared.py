@@ -108,25 +108,6 @@ Query: "{query}"
 {NETWORK_CONTEXT}
 {RESPONSE_FORMAT}"""
 
-def create_planning_prompt(query: str, schema_context: str) -> str:
-    """Create optimized query planning prompt."""
-    return f"""Analyze this query and create an execution plan.
-
-Query: "{query}"
-Schema: {schema_context}
-
-Instructions:
-1. Identify intent, tables, columns, filters, joins, aggregations
-2. For vague terms: "high" = >80%, "low" = <30%, "recent" = last 7 days
-3. Add LIMIT 50-100 for broad queries like "show all [table]"
-4. Column selection strategy:
-   - Analyze the query to determine what information is actually needed
-   - Include only columns that directly answer the question asked
-   - Add identifier columns (like name, id) only if needed for clarity
-   - Avoid metadata columns (created_at, updated_at) unless specifically requested
-
-{JSON_FORMAT}"""
-
 def create_interpretation_prompt(query: str, results: list, sql_query: str = None) -> str:
     """Create streamlined result interpretation prompt."""
     count = len(results) if results else 0

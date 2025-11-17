@@ -11,6 +11,7 @@ from typing import Dict, List, Any, Optional, Iterable
 from src.text_to_sql.utils.llm_utils import get_llm
 from src.api.data_utils import analyze_data_patterns, apply_backend_grouping, format_data_for_display, limit_chart_data
 from src.api.services.interpretation_schema import InterpretationResponse
+from src.common.constants import MAX_CACHE_ROWS
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ async def get_interpretation(
 
     Args:
         query: Original natural language query
-        results: Query results (list of dicts, max 50 rows from cache)
+        results: Query results (list of dicts, max MAX_CACHE_ROWS rows from cache)
         total_rows: Total number of rows in the dataset (if known, up to 1000)
 
     Returns:
@@ -90,8 +91,8 @@ def create_interpretation_prompt(
         data_already_grouped = len(aggregation_columns) > 0
 
         results_text = "Columns: " + ", ".join(columns) + "\n\n"
-        results_text += f"Data ({len(results)} rows - showing first 10 for analysis):\n"
-        for i, row in enumerate(results[:10], 1):
+        results_text += f"Data ({len(results)} rows - showing all for analysis):\n"
+        for i, row in enumerate(results, 1):
             results_text += f"Row {i}: {json.dumps(row, default=str)}\n"
 
         # Add data patterns info
@@ -148,21 +149,26 @@ Provide CONCISE analysis and visualization in JSON format:
 VISUALIZATION GUIDELINES:
 1. If data already has numeric columns (count, sum, etc.) → Use directly for bar/line charts
 2. If only categorical data → Enable grouping to count occurrences
-3. PIE charts are BEST for status/category distributions - use when showing proportions
-4. Bar charts for comparing quantities across categories (maximum 50 items due to cache limit)
+3. PIE charts - ONLY use when ALL conditions are met:
+   - Query asks for "distribution", "breakdown", "proportion", "percentage", or "what percentage"
+   - Expected result has 3-10 categories maximum (status types, server roles, protocols, etc.)
+   - Showing parts of a whole (e.g., "distribution of server status", "breakdown by provider")
+   - DO NOT use pie charts for queries with "count", "list", or "show" unless explicitly distribution-focused
+4. Bar charts for comparing quantities across categories (maximum 30 items due to cache limit)
+   - Use for "count X by Y", "average X by Y", "show X per Y"
+   - Good for 2-30 categories
 5. LINE charts for time-series data or trends over time/sequences
    - Use when x_column is a date, timestamp, or sequential identifier
    - Shows changes and patterns over time
    - Good for metrics like CPU usage over time, request counts by hour, etc.
-6. For status queries: prefer PIE charts over bar charts
-7. Return "type": "none" if data cannot be visualized meaningfully
+6. Return "type": "none" if data cannot be visualized meaningfully
 
 GROUPING RULES:
 - Enable grouping when: no numeric columns AND have categorical data suitable for counting
-- Distribution queries ("status distribution") → group by STATUS → PIE CHART
-- Per-item queries ("each load balancer") → group by NAME → BAR CHART
+- Distribution/breakdown queries ("distribution of X", "breakdown by X") → group by X → PIE CHART (if 3-10 categories)
+- Count/comparison queries ("count X by Y", "list X per Y") → group by Y → BAR CHART
 - Time-series queries ("over time", "trends", "by hour/day") → LINE CHART
-- Default for status data: PIE CHART unless query asks about individual items
+- When in doubt between pie and bar: use BAR CHART (safer for varying category counts)
 
 Keep findings actionable and specific. Focus on operational impact.
 """
@@ -225,161 +231,271 @@ def _get_fallback_response() -> Dict[str, Any]:
     }
 
 
+def _validate_chart_config(config: Dict[str, Any], columns: List[str], x_col: str) -> bool:
+    """
+    Validate visualization configuration has required fields.
+
+    Args:
+        config: Visualization configuration
+        columns: Available data columns
+        x_col: X-axis column name
+
+    Returns:
+        True if valid, False otherwise
+    """
+    if not config or not isinstance(config, dict):
+        logger.warning(f"Invalid or missing config in visualization")
+        return False
+
+    if not x_col:
+        logger.warning(f"Missing required x_column in visualization config. Available columns: {columns}")
+        return False
+
+    if x_col not in columns:
+        logger.warning(f"Invalid x_column '{x_col}' not in available columns {columns}. Skipping visualization.")
+        return False
+
+    if isinstance(x_col, str) and _column_name_has_identifier_hint(x_col):
+        logger.warning(f"Visualization config uses identifier-like column '{x_col}' for x-axis. Skipping visualization.")
+        return False
+
+    return True
+
+
+def _normalize_grouping_config(config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Normalize grouping configuration to dict format.
+
+    Args:
+        config: Visualization configuration
+
+    Returns:
+        Normalized grouping dict or None if invalid
+    """
+    grouping = config.get("grouping")
+    if grouping is None:
+        grouping = {}
+        config["grouping"] = grouping
+    elif hasattr(grouping, "model_dump"):
+        grouping = grouping.model_dump()
+        config["grouping"] = grouping
+    elif not isinstance(grouping, dict):
+        logger.warning(f"Invalid grouping config type '{type(grouping)}'. Skipping visualization.")
+        return None
+
+    return grouping
+
+
+def _apply_grouping_transformation(results: List[Dict], config: Dict[str, Any],
+                                   grouping: Dict[str, Any], columns: List[str]) -> Optional[List[Dict]]:
+    """
+    Apply backend grouping transformation if enabled.
+
+    Args:
+        results: Original query results
+        config: Visualization configuration
+        grouping: Grouping configuration
+        columns: Available columns
+
+    Returns:
+        Grouped data or None if grouping failed
+    """
+    if not grouping.get("enabled"):
+        return results
+
+    group_col = grouping.get("group_by_column")
+    original_col = grouping.get("original_column")
+
+    if group_col and group_col in columns:
+        # Apply backend grouping with MAX_CACHE_ROWS item limit (matches cache size)
+        chart_data = apply_backend_grouping(results, group_col, original_col, max_items=MAX_CACHE_ROWS)
+
+        # Update config to match grouped data structure
+        config["x_column"] = group_col  # X is now the group_by column
+        config["y_column"] = "count"     # Y is always count for grouped data
+
+        # Disable frontend grouping since we did it on backend
+        config["grouping"]["enabled"] = False
+        return chart_data
+    else:
+        # Grouping requested but column doesn't exist
+        logger.warning(
+            f"Grouping requested on column '{group_col}' but not found in columns {columns}. "
+            f"Skipping visualization."
+        )
+        return None
+
+
+def _auto_group_categorical_data(results: List[Dict], chart_data: List[Dict],
+                                 config: Dict[str, Any], chart_type: str, x_col: str) -> List[Dict]:
+    """
+    Auto-group categorical data when LLM forgets to enable grouping but asks for counts.
+
+    Args:
+        results: Original query results
+        chart_data: Current chart data
+        config: Visualization configuration
+        chart_type: Type of chart (bar, pie, etc.)
+        x_col: X-axis column
+
+    Returns:
+        Grouped data if applicable, otherwise original chart_data
+    """
+    y_column = config.get("y_column")
+
+    if chart_type in {"bar", "pie"} and chart_data:
+        first_row = chart_data[0]
+        y_missing = not y_column or y_column not in first_row
+        wants_count = (y_column or "").lower() == "count"
+
+        if y_missing or wants_count:
+            grouped = apply_backend_grouping(results, x_col, max_items=30)
+            if grouped:
+                config["x_column"] = x_col
+                config["y_column"] = "count"
+                config["grouping"] = {"enabled": False}
+                return grouped
+
+    return chart_data
+
+
+def _add_pie_chart_percentages(chart_data: List[Dict], y_column: str) -> None:
+    """
+    Add percentage field to pie chart data (modifies in place).
+
+    Args:
+        chart_data: Chart data
+        y_column: Column to calculate percentages from
+    """
+    total = sum(float(row.get(y_column, 0)) for row in chart_data)
+    for row in chart_data:
+        value = float(row.get(y_column, 0))
+        row['percentage'] = round((value / total * 100), 1) if total > 0 else 0
+
+
+def _limit_bar_chart_data(chart_data: List[Dict], config: Dict[str, Any]) -> List[Dict]:
+    """
+    Limit bar chart data to top N items if too many.
+
+    Args:
+        chart_data: Chart data
+        config: Visualization configuration
+
+    Returns:
+        Limited chart data
+    """
+    if len(chart_data) > 30:
+        y_column = config.get("y_column", "count")
+        if y_column:
+            return limit_chart_data(chart_data, y_column, max_items=30)
+        else:
+            logger.warning(f"Bar chart has {len(chart_data)} items but no y_column for sorting, taking first 30")
+            return chart_data[:30]
+    return chart_data
+
+
+def _validate_final_columns(chart_data: List[Dict], config: Dict[str, Any], chart_type: str) -> bool:
+    """
+    Validate that x_column and y_column exist in final chart data.
+
+    Args:
+        chart_data: Final chart data
+        config: Visualization configuration
+        chart_type: Type of chart
+
+    Returns:
+        True if valid, False otherwise
+    """
+    if not chart_data:
+        logger.warning("Visualization has no data rows after processing; skipping chart rendering.")
+        return False
+
+    final_columns = list(chart_data[0].keys())
+    final_x_col = config.get("x_column")
+    final_y_col = config.get("y_column")
+
+    # Infer y_column if missing
+    if not final_y_col:
+        inferred_y_col = _infer_numeric_column(chart_data, exclude={final_x_col})
+        if inferred_y_col:
+            final_y_col = inferred_y_col
+            config["y_column"] = final_y_col
+
+    # Check for identifier-like columns
+    if _column_looks_like_identifier(chart_data, final_x_col, chart_type):
+        logger.warning(f"Visualization config uses identifier-like column '{final_x_col}' for x-axis. Skipping visualization.")
+        return False
+
+    if isinstance(final_y_col, str) and _column_name_has_identifier_hint(final_y_col):
+        logger.warning(f"Visualization config uses identifier-like column '{final_y_col}' for y-axis. Skipping visualization.")
+        return False
+
+    # Validate columns exist
+    if final_x_col not in final_columns:
+        logger.warning(f"Chart validation failed: x_column '{final_x_col}' not in final data columns {final_columns}. Skipping visualization.")
+        return False
+
+    if final_y_col and final_y_col not in final_columns:
+        logger.warning(f"Chart validation failed: y_column '{final_y_col}' not in final data columns {final_columns}. Skipping visualization.")
+        return False
+
+    return True
+
+
 def _process_visualization_config(viz_config: Dict[str, Any], results: List[Dict]) -> Optional[Dict[str, Any]]:
     """
     Process and validate visualization configuration, applying backend data transformations.
-    This replicates the logic from visualization_service.py.
+
+    Args:
+        viz_config: Visualization configuration
+        results: Query results
+
+    Returns:
+        Processed visualization config or None if invalid
     """
     try:
         columns = list(results[0].keys()) if results else []
         config = viz_config.get("config")
-
-        # Defensive check: config must exist and be a dict
-        if not config or not isinstance(config, dict):
-            logger.warning(f"Invalid or missing config in visualization: {viz_config}")
-            return None
-
-        x_col = config.get("x_column")
-
-        # Validate required fields
-        if not x_col:
-            logger.warning(f"Missing required x_column in visualization config. Available columns: {columns}")
-            return None
-
-        if x_col not in columns:
-            logger.warning(f"Invalid x_column '{x_col}' not in available columns {columns}. Skipping visualization.")
-            return None
-
-        if isinstance(x_col, str) and _column_name_has_identifier_hint(x_col):
-            logger.warning(
-                f"Visualization config uses identifier-like column '{x_col}' for x-axis. Skipping visualization."
-            )
-            return None
-
-        # Process data based on grouping requirements
-        chart_data = results
-        grouping = config.get("grouping")
-        if grouping is None:
-            grouping = {}
-            config["grouping"] = grouping
-        elif hasattr(grouping, "model_dump"):
-            grouping = grouping.model_dump()
-            config["grouping"] = grouping
-        elif not isinstance(grouping, dict):
-            logger.warning(f"Invalid grouping config type '{type(grouping)}'. Skipping visualization.")
-            return None
-
-        if grouping.get("enabled"):
-            group_col = grouping.get("group_by_column")
-            original_col = grouping.get("original_column")
-
-            if group_col and group_col in columns:
-                # Apply backend grouping with 50 item limit (matches cache size)
-                chart_data = apply_backend_grouping(results, group_col, original_col, max_items=50)
-
-                # Update config to match grouped data structure
-                config["x_column"] = group_col  # X is now the group_by column
-                config["y_column"] = "count"     # Y is always count for grouped data
-
-                # Disable frontend grouping since we did it on backend
-                config["grouping"]["enabled"] = False
-            else:
-                # Grouping requested but column doesn't exist
-                logger.warning(
-                    f"Grouping requested on column '{group_col}' but not found in columns {columns}. "
-                    f"Skipping visualization."
-                )
-                return None
-
-        # Auto-group categorical data when LLM forgets to enable grouping but asks for counts
         chart_type = viz_config.get("type")
-        y_column = config.get("y_column")
-        if chart_type in {"bar", "pie"} and chart_data:
-            first_row = chart_data[0]
-            y_missing = not y_column or y_column not in first_row
-            wants_count = (y_column or "").lower() == "count"
+        x_col = config.get("x_column") if config else None
 
-            if y_missing or wants_count:
-                grouped = apply_backend_grouping(results, x_col, max_items=50)
-                if grouped:
-                    chart_data = grouped
-                    config["x_column"] = x_col
-                    config["y_column"] = "count"
-                    config["grouping"] = {"enabled": False}
-                    y_column = "count"
+        # Validate basic config
+        if not _validate_chart_config(config, columns, x_col):
+            return None
 
-        # For pie charts, pre-calculate percentages
+        # Normalize grouping config
+        grouping = _normalize_grouping_config(config)
+        if grouping is None:
+            return None
+
+        # Apply grouping transformation if enabled
+        chart_data = _apply_grouping_transformation(results, config, grouping, columns)
+        if chart_data is None:
+            return None
+
+        # Auto-group categorical data if needed
+        chart_data = _auto_group_categorical_data(results, chart_data, config, chart_type, x_col)
+
+        # Apply chart-type specific transformations
         if chart_type == "pie" and chart_data:
             y_column = config.get("y_column", "count")
-            total = sum(float(row.get(y_column, 0)) for row in chart_data)
+            _add_pie_chart_percentages(chart_data, y_column)
 
-            for row in chart_data:
-                value = float(row.get(y_column, 0))
-                row['percentage'] = round((value / total * 100), 1) if total > 0 else 0
+        if chart_type == "bar" and chart_data:
+            chart_data = _limit_bar_chart_data(chart_data, config)
 
-        # For bar charts, limit to top N items if there are too many
-        # Note: With 50 row cache limit, this will rarely trigger, but kept for safety
-        if chart_type == "bar" and chart_data and len(chart_data) > 50:
-            y_column = config.get("y_column", "count")
-            if y_column:
-                chart_data = limit_chart_data(chart_data, y_column, max_items=50)
-            else:
-                # If no y_column specified, just take first 50
-                logger.warning(f"Bar chart has {len(chart_data)} items but no y_column for sorting, taking first 50")
-                chart_data = chart_data[:50]
-
-        # Format data for better display
+        # Format data for display
         chart_data = format_data_for_display(chart_data)
 
-        # FINAL VALIDATION: Ensure x_column and y_column exist in the FINAL chart_data
-        # (columns may have changed after grouping/processing)
-        final_columns = list(chart_data[0].keys()) if chart_data else []
-        final_x_col = config.get("x_column")
-        final_y_col = config.get("y_column")
-
-        if not final_y_col:
-            inferred_y_col = _infer_numeric_column(chart_data, exclude={final_x_col})
-            if inferred_y_col:
-                final_y_col = inferred_y_col
-                config["y_column"] = final_y_col
-
-        if _column_looks_like_identifier(chart_data, final_x_col, chart_type):
-            logger.warning(
-                f"Visualization config uses identifier-like column '{final_x_col}' for x-axis. Skipping visualization."
-            )
-            return None
-
-        if isinstance(final_y_col, str) and _column_name_has_identifier_hint(final_y_col):
-            logger.warning(
-                f"Visualization config uses identifier-like column '{final_y_col}' for y-axis. Skipping visualization."
-            )
-            return None
-
-        # Validate x_column exists in final data
-        if final_x_col not in final_columns:
-            logger.warning(
-                f"Chart validation failed: x_column '{final_x_col}' not in final data columns {final_columns}. "
-                f"Skipping visualization."
-            )
-            return None
-
-        # Validate y_column exists in final data (if specified)
-        if final_y_col and final_y_col not in final_columns:
-            logger.warning(
-                f"Chart validation failed: y_column '{final_y_col}' not in final data columns {final_columns}. "
-                f"Skipping visualization."
-            )
-            return None
-
-        if not chart_data:
-            logger.warning("Visualization has no data rows after processing; skipping chart rendering.")
+        # Final validation
+        if not _validate_final_columns(chart_data, config, chart_type):
             return None
 
         return {
             "type": chart_type,
             "title": viz_config.get("title", "Chart"),
             "config": config,
-            "data": chart_data  # Include processed data
+            "data": chart_data
         }
 
     except Exception as e:
@@ -455,7 +571,10 @@ def _column_looks_like_identifier(data: List[Dict[str, Any]], column: Optional[s
         return True
 
     # For categorical charts, if we have almost unique categories, consider it identifier-like
-    if chart_type in {"bar", "pie"} and unique_ratio >= 0.95 and len(values) > 20:
+    # BUT: Allow pie charts with fewer items (pie charts should have 3-7 slices ideally)
+    if chart_type == "bar" and unique_ratio >= 0.95 and len(values) > 20:
+        return True
+    if chart_type == "pie" and unique_ratio >= 0.95 and len(values) > 15:
         return True
 
     return False

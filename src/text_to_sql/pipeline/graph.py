@@ -6,11 +6,12 @@ from langgraph.graph import StateGraph, START, END
 import logging
 
 from .state import TextToSQLState
-from .nodes.schema_analyzer import schema_analyzer_node
-from .nodes.sql_generator import sql_generator_node
-from .nodes.validator import validator_node
-from .nodes.executor import executor_node
-from .nodes.interpreter import interpreter_node
+from .nodes.triage import triage_node
+from .nodes.schema_analyzer import schema_analyzer
+from .nodes.sql_generator import sql_generator
+from .nodes.validator import validator
+from .nodes.executor import executor
+from .nodes.interpreter import interpreter
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,16 @@ logger = logging.getLogger(__name__)
 
 def error_handler_node(state: TextToSQLState) -> dict:
     """Handle pipeline errors with user-friendly messages."""
-    # Determine error type and message
+    # Check if this is a triage rejection - if so, return as-is (no duplication)
+    if state.get("triage_passed") is False:
+        # Triage already set final_response, schema_overview, and execution_error
+        return {
+            "final_response": state.get("final_response"),
+            "execution_error": state.get("execution_error"),
+            "schema_overview": state.get("schema_overview")
+        }
+
+    # Handle other error types
     if state.get("schema_analysis_error"):
         error = state["schema_analysis_error"]
         msg = "I couldn't find relevant database tables for your query."
@@ -39,26 +49,17 @@ def error_handler_node(state: TextToSQLState) -> dict:
         error = "Unknown error"
         msg = "Something went wrong processing your query."
         hint = "Please try again."
-    overview = state.get("schema_overview") or {}
-    overview_tables = overview.get("tables", [])
-    suggested = overview.get("suggested_queries", [])
 
-    if overview_tables:
-        table_lines = []
-        for table in overview_tables[:5]:
-            description = table.get("description") or table.get("name")
-            table_lines.append(f"- {table.get('name', 'unknown')}: {description}")
-        msg += "\n\nHere are some datasets I know:\n" + "\n".join(table_lines)
-
-    if suggested:
-        hint = "Here are a few example prompts you can try:\n" + "\n".join(
-            f"- {s}" for s in suggested[:5]
-        )
-
+    # Don't add tables/queries to message text - frontend will display schema_overview separately
     return {
         "final_response": f"{msg}\n\n{hint}",
-        "execution_error": error
+        "execution_error": error,
+        "schema_overview": state.get("schema_overview")
     }
+
+def route_after_triage(state: TextToSQLState) -> str:
+    """Route after triage: to schema_analyzer or error handler."""
+    return "schema_analyzer" if state.get("triage_passed") else "error_handler"
 
 def route_after_schema(state: TextToSQLState) -> str:
     """Route after schema analysis: directly to sql_generator or error handler."""
@@ -86,16 +87,21 @@ def create_text_to_sql_graph():
     # Create the workflow
     workflow = StateGraph(TextToSQLState)
 
-    # Add all nodes (removed query_planner)
-    workflow.add_node("schema_analyzer", schema_analyzer_node)
-    workflow.add_node("sql_generator", sql_generator_node)
-    workflow.add_node("validator", validator_node)
-    workflow.add_node("executor", executor_node)
-    workflow.add_node("interpreter", interpreter_node)
+    # Add all pipeline nodes
+    workflow.add_node("triage", triage_node)
+    workflow.add_node("schema_analyzer", schema_analyzer)
+    workflow.add_node("sql_generator", sql_generator)
+    workflow.add_node("validator", validator)
+    workflow.add_node("executor", executor)
+    workflow.add_node("interpreter", interpreter)
     workflow.add_node("error_handler", error_handler_node)
 
-    # Add edges - start directly with schema analyzer
-    workflow.add_edge(START, "schema_analyzer")
+    # Add edges - start with triage node
+    workflow.add_edge(START, "triage")
+
+    # Route from triage to schema analyzer or error handler
+    workflow.add_conditional_edges("triage", route_after_triage,
+                                  {"schema_analyzer": "schema_analyzer", "error_handler": "error_handler"})
 
     # Add conditional routing with error handling
     # Schema analyzer routes directly to SQL generator (no query planner)

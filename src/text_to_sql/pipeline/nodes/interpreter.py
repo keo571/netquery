@@ -62,7 +62,7 @@ def _export_to_html_if_enabled(state: TextToSQLState, formatted_response: str,
         return None
 
 
-def interpreter_node(state: TextToSQLState) -> Dict[str, Any]:
+def interpreter(state: TextToSQLState) -> Dict[str, Any]:
     """Format final response with query results."""
     # Check for pre-set response from error handling
     if state.get("final_response"):

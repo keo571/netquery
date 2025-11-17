@@ -164,7 +164,7 @@ class SafetyValidator:
         
         # Count joins
         join_count = len(re.findall(r'\bJOIN\b', query, re.IGNORECASE))
-        if join_count > 5:
+        if join_count > config.pipeline.max_safe_joins:
             warnings.append(f"High number of joins ({join_count}) may impact performance")
         
         return warnings

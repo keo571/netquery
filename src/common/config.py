@@ -44,12 +44,22 @@ class LLMConfig(BaseModel):
 
 class PipelineConfig(BaseModel):
     """Pipeline-specific configuration."""
-    max_relevant_tables: int = Field(default=5, description="Maximum tables to return after filtering")
+    max_relevant_tables: int = Field(default=3, description="Maximum tables to return after filtering")
     max_expanded_tables: int = Field(default=15, description="Maximum tables after FK expansion (includes semantic + expanded)")
     max_schema_tokens: int = Field(default=8000, description="Maximum tokens for schema context (~25% of LLM context window)")
     relevance_threshold: float = Field(default=0.15, description="Minimum similarity threshold for table relevance (0-1). Uses two-stage filtering: gets 2x candidates, then filters by this threshold.")
     include_sample_data: bool = Field(default=True, description="Include sample data for semantically matched tables only")
+    include_row_counts: bool = Field(default=False, description="Include row counts in schema context (requires COUNT(*) queries)")
     max_execution_time: int = Field(default=30, description="Maximum execution time in seconds")
+
+    # Query embedding cache settings
+    enable_query_cache: bool = Field(default=True, description="Enable SQLite caching of query embeddings to avoid repeated Gemini API calls")
+    query_cache_prune_days: int = Field(default=30, description="Remove cached queries not used in this many days")
+
+    # Performance thresholds
+    query_timeout_seconds: int = Field(default=45, description="Database query timeout in seconds (longer than max_execution_time)")
+    max_concurrent_table_queries: int = Field(default=10, description="Maximum concurrent table info queries")
+    max_safe_joins: int = Field(default=5, description="Maximum number of JOINs considered safe for query validation")
 
 
 class SafetyConfig(BaseModel):

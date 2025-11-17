@@ -12,7 +12,7 @@ from langchain_core.messages import HumanMessage
 
 # Import pipeline and tools
 from .pipeline.graph import text_to_sql_graph
-from .tools.database_toolkit import db_toolkit
+from .tools.database_toolkit import get_db_toolkit
 from setup.create_data_sqlite import create_infrastructure_database
 
 # Configure logging
@@ -26,7 +26,8 @@ mcp = FastMCP("Netquery Text-to-SQL")
 def ensure_database():
     """Create sample database if it doesn't exist."""
     try:
-        if not db_toolkit.test_connection():
+        toolkit = get_db_toolkit()
+        if not toolkit.test_connection():
             logger.info("Creating sample network infrastructure database...")
             create_infrastructure_database()
             logger.info("Sample database created")
@@ -51,7 +52,8 @@ async def text_to_sql(
     """
     if not query.strip():
         # Show available tables and examples
-        tables = db_toolkit.get_table_names()
+        toolkit = get_db_toolkit()
+        tables = toolkit.get_table_names()
         table_list = ", ".join(tables[:8])
         if len(tables) > 8:
             table_list += f" (and {len(tables) - 8} more)"
@@ -93,10 +95,12 @@ def get_schema(table_names: Optional[List[str]] = None, include_sample_data: boo
         table_names: Specific tables to describe (optional, defaults to all tables)
         include_sample_data: Include 3 sample rows per table to understand data format
     """
+    toolkit = get_db_toolkit()
+
     # Get tables to describe
     if table_names is not None and len(table_names) > 0:
         # Validate that the requested tables exist
-        all_tables = db_toolkit.get_table_names()
+        all_tables = toolkit.get_table_names()
         valid_tables = []
         invalid_tables = []
 
@@ -119,13 +123,13 @@ def get_schema(table_names: Optional[List[str]] = None, include_sample_data: boo
                 output.append(f"• {table}")
             return "\n".join(output)
     else:
-        tables_to_show = db_toolkit.get_table_names()
-    
+        tables_to_show = toolkit.get_table_names()
+
     # Build schema info
     output = ["## Database Schema\n"]
-    
+
     for table_name in tables_to_show:
-        table_info = db_toolkit.get_table_info(table_name)
+        table_info = toolkit.get_table_info(table_name)
         if not table_info:
             continue
             

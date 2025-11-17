@@ -8,11 +8,11 @@ import time
 from pathlib import Path
 
 from ...tools.semantic_table_finder import SemanticTableFinder
-from ...tools.database_toolkit import db_toolkit
+from ...tools.database_toolkit import GenericDatabaseToolkit, get_db_toolkit
 from src.schema_ingestion.canonical import CanonicalSchema
 from ....common.config import config
-from ....common.schema_summary import get_schema_overview
-from ..state import TextToSQLState
+from ....common.schema_summary import get_schema_overview, _resolve_schema_path
+from ..state import TextToSQLState, create_success_step, create_warning_step
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +20,15 @@ logger = logging.getLogger(__name__)
 class SchemaAnalyzer:
     """Schema analyzer using embeddings for semantic table selection."""
 
-    def __init__(self, canonical_schema_path: Optional[str] = None):
-        """Initialize the analyzer with embedding support (required)."""
+    def __init__(self, canonical_schema_path: Optional[str] = None,
+                 db_toolkit: Optional[GenericDatabaseToolkit] = None):
+        """
+        Initialize the analyzer with embedding support (required).
+
+        Args:
+            canonical_schema_path: Path to canonical schema file
+            db_toolkit: Database toolkit instance (uses default if None)
+        """
         self.canonical_schema: Optional[CanonicalSchema] = None
         if canonical_schema_path:
             self._load_canonical_schema(canonical_schema_path)
@@ -39,9 +46,17 @@ class SchemaAnalyzer:
             canonical_schema=self.canonical_schema
         )
 
+        # Dependency injection: use provided toolkit or get default
+        self.db_toolkit = db_toolkit or get_db_toolkit()
+
+        # Provide canonical schema to db_toolkit for FK fallback
+        # (Critical for production DBs without FK constraints)
+        self.db_toolkit.set_canonical_schema(self.canonical_schema)
+
         logger.info(
-            "Initialized embedding-based schema analyzer (canonical_schema: %s)",
-            self.canonical_schema is not None
+            "Initialized embedding-based schema analyzer (canonical_schema: %s, db_toolkit: %s)",
+            self.canonical_schema is not None,
+            type(self.db_toolkit).__name__
         )
 
     def _load_canonical_schema(self, canonical_schema_path: str):
@@ -78,7 +93,7 @@ class SchemaAnalyzer:
         
         # If no relevant tables found, treat as analysis error
         if not relevant_results:
-            logger.info(f"No relevant tables found for query: {query[:50]}...")
+            logger.info(f"No relevant tables found for query: {query[:30]}...")
             
             # Get available tables for error message
             all_tables = list(self.semantic_finder.table_embeddings.keys())
@@ -96,7 +111,7 @@ class SchemaAnalyzer:
         # Extract tables and scores directly
         relevant_tables = []
         relevance_scores = {}
-        for table_name, score, _ in relevant_results:
+        for table_name, score in relevant_results:
             relevant_tables.append(table_name)
             relevance_scores[table_name] = score
         
@@ -182,17 +197,20 @@ class SchemaAnalyzer:
         return col_line
     def _expand_tables_via_relationships(self, relevant_tables: list, relevance_scores: dict) -> set:
         """
-        Smart FK expansion with prioritization for speed optimization.
+        OPTIMIZED: Fast FK expansion using pre-computed bidirectional graph.
 
         Strategy:
-        1. Sort semantic tables by relevance score (expand best matches first)
-        2. Add related tables via FKs
-        3. Hard cap at max_expanded_tables
+        1. Get bidirectional FK graph in ONE pass (O(N) where N = total FKs)
+        2. Sort semantic tables by relevance score (expand best matches first)
+        3. Add related tables via outbound + inbound FKs using set lookups (O(1))
+        4. Hard cap at max_expanded_tables
 
-        Note: get_table_relationships() returns Dict[str, List[str]] where
-        the list contains table names that this table has FKs to.
+        Performance: O(K) where K = number of FKs for semantic tables (typically < 30)
+        vs. Old: O(S * T) where S = semantic tables, T = total tables
         """
-        all_relationships = db_toolkit.get_table_relationships()
+        # Get bidirectional relationships in ONE efficient pass
+        outbound_fks, inbound_fks = self.db_toolkit.get_bidirectional_relationships()
+
         expanded_tables = set(relevant_tables)
         max_tables = config.pipeline.max_expanded_tables
 
@@ -205,32 +223,29 @@ class SchemaAnalyzer:
 
         logger.info(f"Starting FK expansion from {len(relevant_tables)} tables (max: {max_tables})")
 
-        # Add FK-related tables (outbound relationships)
+        # Expand in BOTH directions for each semantic table
         for table in sorted_tables:
             if len(expanded_tables) >= max_tables:
                 logger.warning(f"Reached max table limit ({max_tables}), stopping expansion")
                 break
 
-            # Get list of tables this table references via FKs
-            related_tables = all_relationships.get(table, [])
-
-            for related_table in related_tables:
+            # Add outbound relationships (tables this table references)
+            # O(1) set lookup instead of O(N) list iteration
+            outbound = outbound_fks.get(table, set())
+            for related_table in outbound:
                 if len(expanded_tables) >= max_tables:
                     break
+                # Set.add() is idempotent - duplicates are automatically ignored
                 expanded_tables.add(related_table)
 
-        # Also add inbound relationships (tables that reference our semantic matches)
-        # This helps capture parent-child relationships in both directions
-        for table in sorted_tables:
-            if len(expanded_tables) >= max_tables:
-                break
-
-            # Find tables that reference this table
-            for potential_parent, fk_targets in all_relationships.items():
-                if table in fk_targets and potential_parent not in expanded_tables:
-                    if len(expanded_tables) >= max_tables:
-                        break
-                    expanded_tables.add(potential_parent)
+            # Add inbound relationships (tables that reference this table)
+            # O(1) set lookup instead of O(T) where T = total tables
+            inbound = inbound_fks.get(table, set())
+            for related_table in inbound:
+                if len(expanded_tables) >= max_tables:
+                    break
+                # Set.add() is idempotent - duplicates are automatically ignored
+                expanded_tables.add(related_table)
 
         if len(expanded_tables) > len(relevant_tables):
             new_tables = expanded_tables - set(relevant_tables)
@@ -293,6 +308,9 @@ class SchemaAnalyzer:
         max_tokens = config.pipeline.max_schema_tokens
         current_tokens = 0
 
+        # OPTIMIZATION: Fetch all table info in parallel (major speedup!)
+        all_table_info = self.db_toolkit.get_multiple_table_info(table_names)
+
         for table_name in table_names:
             # Check token budget before adding table
             if current_tokens >= max_tokens:
@@ -303,14 +321,18 @@ class SchemaAnalyzer:
                 )
                 break
 
-            table_info = db_toolkit.get_table_info(table_name)
+            table_info = all_table_info.get(table_name, {})
             canonical_table = None
             if self.canonical_schema and table_name in self.canonical_schema.tables:
                 canonical_table = self.canonical_schema.tables[table_name]
 
             table_parts = []
             table_parts.append(f"\n## Table: {table_name}")
-            table_parts.append(f"Rows: {table_info.get('row_count', 'Unknown')}")
+
+            # Only include row count if configured and available
+            row_count = table_info.get('row_count')
+            if row_count is not None:
+                table_parts.append(f"Rows: {row_count}")
 
             if canonical_table:
                 table_parts.append(f"Description: {canonical_table.description}")
@@ -334,7 +356,9 @@ class SchemaAnalyzer:
             )
 
             if include_samples:
-                sample_data = db_toolkit.get_sample_data(table_name, limit=3)
+                # Reuse sample data already fetched in get_multiple_table_info()
+                # instead of making another DB call
+                sample_data = table_info.get('sample_data', [])
                 if sample_data:
                     table_parts.append("Sample data:")
                     for i, row in enumerate(sample_data, 1):
@@ -358,9 +382,19 @@ _analyzer_cache: Dict[tuple, SchemaAnalyzer] = {}
 
 
 def get_analyzer(
-    canonical_schema_path: Optional[str] = None
+    canonical_schema_path: Optional[str] = None,
+    db_toolkit: Optional[GenericDatabaseToolkit] = None
 ) -> SchemaAnalyzer:
-    """Get or create the analyzer instance (cached by schema path)."""
+    """
+    Get or create the analyzer instance (cached by schema path).
+
+    Args:
+        canonical_schema_path: Path to canonical schema
+        db_toolkit: Optional database toolkit (for dependency injection)
+
+    Returns:
+        Cached or new SchemaAnalyzer instance
+    """
     global _analyzer_cache
 
     # Use cache key based on canonical_schema_path
@@ -368,18 +402,19 @@ def get_analyzer(
 
     if cache_key not in _analyzer_cache:
         _analyzer_cache[cache_key] = SchemaAnalyzer(
-            canonical_schema_path=canonical_schema_path
+            canonical_schema_path=canonical_schema_path,
+            db_toolkit=db_toolkit
         )
 
     return _analyzer_cache[cache_key]
 
 
-def schema_analyzer_node(state: TextToSQLState) -> Dict[str, Any]:
+def schema_analyzer(state: TextToSQLState) -> Dict[str, Any]:
     """
-    Schema analyzer node that uses embeddings for semantic table selection.
+    Schema analyzer that uses embeddings for semantic table selection.
     """
-    def create_reasoning_step(tables: list, scores: dict, excel_enhanced: bool = False) -> dict:
-        """Create reasoning step for the analysis."""
+    def create_schema_reasoning_step(tables: list, scores: dict, excel_enhanced: bool = False) -> dict:
+        """Create reasoning step for schema analysis."""
         if tables:
             detail = (
                 f"Used semantic embeddings to identify {len(tables)} relevant tables. "
@@ -387,17 +422,14 @@ def schema_analyzer_node(state: TextToSQLState) -> Dict[str, Any]:
             )
             if excel_enhanced:
                 detail += " (Enhanced with curated schema metadata)"
+            return create_success_step("Schema Analysis", detail)
         else:
-            detail = "No relevant tables found for the query."
-
-        return {
-            "step_name": "Schema Analysis",
-            "details": detail,
-            "status": "✅" if tables else "⚠️"
-        }
+            return create_warning_step("Schema Analysis", "No relevant tables found for the query.")
 
     query = state["original_query"]
-    canonical_schema_path = state.get("canonical_schema_path") or os.getenv("CANONICAL_SCHEMA_PATH")
+    # Resolve canonical schema path
+    resolved_path = _resolve_schema_path(state.get("canonical_schema_path"))
+    canonical_schema_path = str(resolved_path) if resolved_path else None
 
     try:
         # Measure schema analysis time
@@ -427,7 +459,7 @@ def schema_analyzer_node(state: TextToSQLState) -> Dict[str, Any]:
 
         # Create reasoning step (indicate if Excel-enhanced)
         metadata_enhanced = analyzer.canonical_schema is not None
-        reasoning_step = create_reasoning_step(relevant_tables, relevance_scores, metadata_enhanced)
+        reasoning_step = create_schema_reasoning_step(relevant_tables, relevance_scores, metadata_enhanced)
 
         return {
             "schema_context": schema_context,
@@ -439,11 +471,13 @@ def schema_analyzer_node(state: TextToSQLState) -> Dict[str, Any]:
         }
         
     except Exception as e:
-        logger.error(f"Schema analysis failed: {str(e)}")
-
-        # Return error state - graph will route to error handler
+        error_msg = str(e)
+        logger.error(f"Schema Analyzer error: {error_msg}")
+        if query:
+            logger.debug(f"Query context: {query[:200]}...")
         return {
-            "schema_analysis_error": str(e),
+            "schema_analysis_error": error_msg,
             "reasoning_log": [],
+            "error": error_msg,
             "schema_overview": get_schema_overview(canonical_schema_path)
         }

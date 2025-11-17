@@ -4,6 +4,13 @@ Static SVG chart generation for query results.
 from typing import List, Dict, Any, Optional, Tuple
 import math
 
+from src.common.constants import (
+    MAX_CHART_BAR_ITEMS,
+    MAX_CHART_PIE_SLICES,
+    MAX_SCATTER_POINTS,
+    MAX_LINE_CHART_POINTS
+)
+
 
 def generate_chart(results: List[Dict[str, Any]]) -> str:
     """Generate appropriate static SVG chart based on data pattern."""
@@ -37,9 +44,9 @@ def _detect_chart_type(results: List[Dict[str, Any]], columns: List[str]) -> str
     # Decision logic
     if timestamp_col and numerical_cols:
         return "line"  # Time-series data
-    elif len(results) <= 20 and categorical_cols and numerical_cols:
+    elif len(results) <= MAX_CHART_BAR_ITEMS and categorical_cols and numerical_cols:
         # Small dataset with categories
-        if len(results) <= 8 and len(numerical_cols) == 1:
+        if len(results) <= MAX_CHART_PIE_SLICES and len(numerical_cols) == 1:
             return "pie"  # Distribution/breakdown
         else:
             return "bar"  # Comparison by category
@@ -130,10 +137,10 @@ def _generate_bar_chart(results: List[Dict[str, Any]], columns: List[str]) -> st
     if not categorical_col or not numerical_col:
         return ""
     
-    # Prepare data (limit to 20 bars for readability)
+    # Prepare data (limit to MAX_CHART_BAR_ITEMS for readability)
     bar_data = []
-    for row in results[:20]:
-        label = str(row[categorical_col])[:20]  # Truncate long labels
+    for row in results[:MAX_CHART_BAR_ITEMS]:
+        label = str(row[categorical_col])[:MAX_CHART_BAR_ITEMS]  # Truncate long labels
         value = float(row[numerical_col]) if row[numerical_col] is not None else 0
         bar_data.append((label, value))
     
@@ -150,9 +157,9 @@ def _generate_scatter_chart(results: List[Dict[str, Any]], columns: List[str]) -
     x_col = numerical_cols[0]
     y_col = numerical_cols[1]
     
-    # Prepare data (limit to 100 points for readability)
+    # Prepare data (limit to MAX_SCATTER_POINTS for readability)
     scatter_data = []
-    for row in results[:100]:
+    for row in results[:MAX_SCATTER_POINTS]:
         x_val = float(row[x_col]) if row[x_col] is not None else 0
         y_val = float(row[y_col]) if row[y_col] is not None else 0
         scatter_data.append((x_val, y_val))
@@ -176,9 +183,9 @@ def _generate_pie_chart(results: List[Dict[str, Any]], columns: List[str]) -> st
     if not categorical_col or not numerical_col:
         return ""
     
-    # Prepare data (limit to 8 slices)
+    # Prepare data (limit to MAX_CHART_PIE_SLICES slices)
     pie_data = []
-    for row in results[:8]:
+    for row in results[:MAX_CHART_PIE_SLICES]:
         label = str(row[categorical_col])[:15]
         value = float(row[numerical_col]) if row[numerical_col] is not None else 0
         pie_data.append((label, value))
@@ -203,9 +210,9 @@ def _create_svg_line_chart(data_points: List[float], y_label: str, total_points:
     max_val = max(data_points)
     val_range = max_val - min_val if max_val != min_val else 1
     
-    # Sample data if too many points (max 50 for readability, matches cache limit)
-    if len(data_points) > 50:
-        step = len(data_points) // 50
+    # Sample data if too many points (max MAX_LINE_CHART_POINTS for readability)
+    if len(data_points) > MAX_LINE_CHART_POINTS:
+        step = len(data_points) // MAX_LINE_CHART_POINTS
         sampled_points = data_points[::step]
     else:
         sampled_points = data_points

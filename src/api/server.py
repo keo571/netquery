@@ -46,8 +46,9 @@ logger = logging.getLogger(__name__)
 # In-memory cache for query results
 query_cache: Dict[str, Dict[str, Any]] = {}
 CACHE_TTL = 600  # 10 minutes default
-MAX_CACHE_ROWS = 50
-PREVIEW_ROWS = 50  # Return all cached rows - client can paginate if needed
+
+# Import from centralized constants
+from src.common.constants import MAX_CACHE_ROWS, PREVIEW_ROWS
 
 def get_cache_entry(query_id: str) -> Dict[str, Any]:
     """Get cache entry or raise 404 if not found."""
@@ -124,10 +125,10 @@ class GenerateSQLResponse(BaseModel):
     original_query: str = Field(..., description="Original natural language query")
 
 class PreviewResponse(BaseModel):
-    data: List[Dict[str, Any]] = Field(..., description="First 50 rows of results")
+    data: List[Dict[str, Any]] = Field(..., description=f"First {PREVIEW_ROWS} rows of results")
     total_count: Optional[int] = Field(None, description="Exact count if ≤1000 rows, None if >1000")
     columns: List[str] = Field(..., description="Column names")
-    truncated: bool = Field(..., description="Whether preview was truncated to 50 rows")
+    truncated: bool = Field(..., description=f"Whether preview was truncated to {PREVIEW_ROWS} rows")
 
 class InterpretationResponse(BaseModel):
     interpretation: Dict[str, Any] = Field(..., description="Interpretation results")
@@ -189,13 +190,28 @@ async def generate_sql(request: GenerateSQLRequest) -> GenerateSQLResponse:
         generated_sql = result.get("generated_sql")
 
         if not generated_sql:
-            overview = result.get("schema_overview") or get_schema_overview()
-            detail_payload = {
-                "message": result.get("final_response") or "Failed to generate SQL",
-                "schema_overview": overview,
-                "schema_analysis_error": result.get("schema_analysis_error"),
-                "generation_error": result.get("generation_error"),
-            }
+            # Check if this was a triage failure (non-database question)
+            if result.get("triage_passed") is False:
+                # Return the helpful triage message with schema overview
+                schema_overview = result.get("schema_overview") or get_schema_overview()
+                detail_payload = {
+                    "message": result.get("final_response") or "This doesn't appear to be a database query.",
+                    "type": "triage_rejection",
+                    "reason": result.get("execution_error"),
+                    "schema_overview": schema_overview,
+                    "suggested_queries": schema_overview.get("suggested_queries", []) if schema_overview else []
+                }
+            else:
+                # Regular SQL generation failure
+                overview = result.get("schema_overview") or get_schema_overview()
+                detail_payload = {
+                    "message": result.get("final_response") or "Failed to generate SQL",
+                    "type": "generation_error",
+                    "schema_overview": overview,
+                    "suggested_queries": overview.get("suggested_queries", []) if overview else [],
+                    "schema_analysis_error": result.get("schema_analysis_error"),
+                    "generation_error": result.get("generation_error"),
+                }
             raise HTTPException(status_code=422, detail=detail_payload)
 
         # Store in cache
@@ -224,8 +240,8 @@ async def execute_and_preview(query_id: str) -> PreviewResponse:
     """
     Execute SQL query, cache results, and return preview.
     - Executes the SQL query from the cache
-    - Fetches up to 50 rows and caches them
-    - Returns first 50 rows for preview
+    - Fetches up to MAX_CACHE_ROWS rows and caches them
+    - Returns first PREVIEW_ROWS rows for preview
     """
     try:
         # Check cache
@@ -301,7 +317,7 @@ async def interpret_results(query_id: str) -> InterpretationResponse:
     """
     Interpret cached results using LLM.
 
-    IMPORTANT: Uses ONLY the 50 cached rows - does NOT re-execute SQL.
+    IMPORTANT: Uses ONLY the MAX_CACHE_ROWS cached rows - does NOT re-execute SQL.
     Both interpretation and visualization are limited to the cached data.
     """
     try:
@@ -321,7 +337,7 @@ async def interpret_results(query_id: str) -> InterpretationResponse:
         # Get LLM-powered interpretation
         interpretation_result = await get_interpretation(
             query=cache_entry["original_query"],
-            results=data,  # All cached data (≤50 rows)
+            results=data,  # All cached data (≤MAX_CACHE_ROWS rows)
             total_rows=total_count
         )
 

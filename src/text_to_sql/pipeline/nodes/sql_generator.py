@@ -6,7 +6,7 @@ from typing import Dict, Any
 import logging
 import time
 
-from ..state import TextToSQLState
+from ..state import TextToSQLState, create_success_step, create_error_step
 from ...utils.sql_utils import extract_sql_from_response, adapt_sql_for_database
 from ...prompts._shared import create_sql_prompt
 from ....common.config import config
@@ -15,7 +15,7 @@ from ...utils.llm_utils import get_llm
 logger = logging.getLogger(__name__)
 
 
-def sql_generator_node(state: TextToSQLState) -> Dict[str, Any]:
+def sql_generator(state: TextToSQLState) -> Dict[str, Any]:
     """
     Generate SQL query directly from natural language using LLM with schema context.
 
@@ -73,11 +73,10 @@ def sql_generator_node(state: TextToSQLState) -> Dict[str, Any]:
             return {
                 "generated_sql": generated_sql,
                 "sql_generation_time_ms": sql_generation_time_ms,
-                "reasoning_log": [{
-                    "step_name": "SQL Generation",
-                    "details": f"Successfully generated and validated SQL syntax{retry_note}.",
-                    "status": "✅"
-                }]
+                "reasoning_log": [create_success_step(
+                    "SQL Generation",
+                    f"Successfully generated and validated SQL syntax{retry_note}."
+                )]
             }
 
         except Exception as e:
@@ -90,10 +89,9 @@ def sql_generator_node(state: TextToSQLState) -> Dict[str, Any]:
             return {
                 "generated_sql": "",
                 "generation_error": str(e),
-                "reasoning_log": [{
-                    "step_name": "SQL Generation",
-                    "details": f"Failed to generate valid SQL after 2 attempts: {str(e)}",
-                    "status": "❌"
-                }]
+                "reasoning_log": [create_error_step(
+                    "SQL Generation",
+                    f"Failed to generate valid SQL after 2 attempts: {str(e)}"
+                )]
             }
 

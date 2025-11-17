@@ -3,12 +3,12 @@ Common constants used across the application.
 """
 
 # Data limits
-MAX_CACHE_ROWS = 50
-PREVIEW_ROWS = 50
+MAX_CACHE_ROWS = 30
+PREVIEW_ROWS = 30
 MAX_CHART_BAR_ITEMS = 20
 MAX_CHART_PIE_SLICES = 8
 MAX_SCATTER_POINTS = 100
-MAX_LINE_CHART_POINTS = 50
+MAX_LINE_CHART_POINTS = 30
 
 # Status and UI emoji
 STATUS_SUCCESS = "✅"

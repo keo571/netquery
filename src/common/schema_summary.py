@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import os
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
 
 from src.schema_ingestion.canonical import CanonicalSchema
+
+logger = logging.getLogger(__name__)
 
 # Simple in-memory cache keyed by absolute schema path
 _SCHEMA_CACHE: Dict[Path, Dict[str, Any]] = {}
@@ -45,26 +48,54 @@ class TableSummary:
 
 
 def _resolve_schema_path(schema_path: Optional[str] = None) -> Optional[Path]:
-    """Resolve canonical schema path from explicit argument or environment."""
-    if schema_path:
-        return _locate_path(schema_path)
+    """
+    Resolve canonical schema path using consistent fallback logic.
 
+    Priority:
+    1. Explicit path parameter (if provided)
+    2. CANONICAL_SCHEMA_PATH environment variable
+    3. Default location: data/canonical_schema.json
+    4. Legacy fallback: schema_files/{env}_schema.json
+    5. Last resort: schema_files/schema.json
+    """
+    # Priority 1: Explicit path
+    if schema_path:
+        located = _locate_path(schema_path)
+        if located:
+            logger.debug(f"Using explicit schema: {located}")
+            return located
+        else:
+            logger.warning(f"Explicit schema path does not exist: {schema_path}")
+            return None
+
+    # Priority 2: Environment variable
     env_path = os.getenv("CANONICAL_SCHEMA_PATH")
     if env_path:
         located = _locate_path(env_path)
         if located:
+            logger.debug(f"Using schema from environment: {located}")
             return located
+        else:
+            logger.warning(f"CANONICAL_SCHEMA_PATH points to non-existent file: {env_path}")
 
+    # Priority 3: Default location
+    located = _locate_path("data/canonical_schema.json")
+    if located:
+        logger.debug(f"Using default schema: {located}")
+        return located
+
+    # Priority 4: Legacy environment-specific schemas
     env_name = os.getenv("NETQUERY_ENV", "dev")
     located = _locate_path(Path("schema_files") / f"{env_name}_schema.json")
     if located:
         return located
 
-    # Last resort: allow plain schema.json if present
+    # Priority 5: Last resort - plain schema.json
     located = _locate_path("schema_files/schema.json")
     if located:
         return located
 
+    logger.warning("No canonical schema file found in any expected location")
     return None
 
 

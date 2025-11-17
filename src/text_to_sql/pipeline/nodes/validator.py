@@ -18,7 +18,7 @@ from ..state import TextToSQLState
 logger = logging.getLogger(__name__)
 
 
-def validator_node(state: TextToSQLState) -> Dict[str, Any]:
+def validator(state: TextToSQLState) -> Dict[str, Any]:
     """
     Validate the generated SQL query for safety and security.
 

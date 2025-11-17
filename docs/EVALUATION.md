@@ -145,9 +145,9 @@ GEMINI_API_KEY=your_key_here
 
 📂 Basic Queries (6 queries)
    1. Testing: Show me all load balancers
-      ✅ SUCCESS (1.2s, 50 rows)
+      ✅ SUCCESS (1.2s, 30 rows)
    2. Testing: List all servers
-      ✅ SUCCESS (0.8s, 50 rows)
+      ✅ SUCCESS (0.8s, 30 rows)
    ...
 
 📂 SSL Certificate Management (5 queries)

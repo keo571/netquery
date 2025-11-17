@@ -6,11 +6,13 @@ An AI-powered assistant that converts natural language queries into SQL. Optimiz
 
 ```mermaid
 flowchart TD
-    A([Natural Language Query]) --> B[Schema Analysis<br/>Semantic Similarity]
+    A([Natural Language Query]) --> T[Query Triage<br/>Fast Heuristics]
+    T -->|✅ Database Query| B[Schema Analysis<br/>Semantic Similarity]
+    T -->|❌ Non-Query| H[Helpful Response<br/>with Suggestions]
     B --> C[SQL Generation<br/>Direct LLM Call]
     C --> D[Safety Validation<br/>Read-Only Check]
     D -->|✅ Pass| E[Query Execution<br/>Timeout Handling]
-    D -->|❌ Block| H[Error Response]
+    D -->|❌ Block| H
     E --> F[Result Interpretation<br/>Chart Generation]
     F --> G([Response with Charts])
 
@@ -21,6 +23,7 @@ flowchart TD
     DB --> E
 
     style A fill:#4FC3F7,color:#000
+    style T fill:#B39DDB,color:#000
     style G fill:#81C784,color:#000
     style H fill:#FF8A65,color:#000
     style D fill:#FFB74D,color:#000
@@ -213,7 +216,7 @@ python -m pytest testing/api_tests/test_large_query.py          # Large dataset 
 
 **API Endpoints:**
 - `POST /api/generate-sql` - Convert natural language to SQL
-- `GET /api/execute/{query_id}` - Execute SQL and return preview (30 rows)
+- `GET /api/execute/{query_id}` - Execute SQL and return preview (PREVIEW_ROWS rows)
 - `POST /api/interpret/{query_id}` - Get LLM analysis and visualization suggestions
 - `GET /api/download/{query_id}` - Download complete results as CSV
 - `GET /api/schema/overview` - Discover available tables and suggested starter prompts

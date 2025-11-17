@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from ...common.stores.embedding_store import create_embedding_store, EmbeddingStore
 from ...common.embeddings import EmbeddingService
+from .query_embedding_cache import QueryEmbeddingCache
 
 if TYPE_CHECKING:
     from src.schema_ingestion.canonical import CanonicalSchema
@@ -25,6 +26,7 @@ class SemanticTableFinder:
         canonical_schema: Optional['CanonicalSchema'] = None,
         embedding_store: Optional[EmbeddingStore] = None,
         embedding_service: Optional[EmbeddingService] = None,
+        enable_query_cache: bool = True,
     ):
         """
         Initialize with Gemini embeddings model.
@@ -35,10 +37,22 @@ class SemanticTableFinder:
             canonical_schema: Optional canonical schema (preferred)
             embedding_store: Optional pre-configured embedding store (pgvector or local file)
             embedding_service: Optional embedding service override (defaults to Gemini embeddings)
+            enable_query_cache: Enable SQLite caching of query embeddings (default: True)
         """
         self.embedding_service = embedding_service or EmbeddingService(model_name=model_name)
         self.model_name = model_name
         self.canonical_schema = canonical_schema
+
+        # Initialize query embedding cache (normalization + fuzzy matching)
+        self.query_cache = None
+        if enable_query_cache:
+            cache_db_path = os.path.join(cache_dir, "query_cache.db")
+            self.query_cache = QueryEmbeddingCache(
+                db_path=cache_db_path,
+                enable_fuzzy_fallback=True,  # Two-tier matching
+                fuzzy_threshold=0.85
+            )
+            logger.info(f"Query embedding cache (normalization + fuzzy) enabled at {cache_db_path}")
 
         # Determine namespace for embedding isolation
         if canonical_schema:
@@ -96,14 +110,20 @@ class SemanticTableFinder:
 
         logger.info(f"Built embeddings for {len(self.table_descriptions)} tables")
     
-    def find_relevant_tables(self, query: str, max_tables: int, threshold: float) -> List[Tuple[str, float, str]]:
+    def find_relevant_tables(self, query: str, max_tables: int, threshold: float) -> List[Tuple[str, float]]:
         """
         Find tables relevant to query using semantic similarity.
 
-        Returns: List of (table_name, similarity_score, description)
+        Returns: List of (table_name, similarity_score)
         """
-        # Get query embedding
-        query_embedding = self.embedding_service.embed_query(query)
+        # Get query embedding (with caching if enabled)
+        if self.query_cache:
+            query_embedding = self.query_cache.get_or_create(
+                query,
+                lambda q: self.embedding_service.embed_query(q)
+            )
+        else:
+            query_embedding = self.embedding_service.embed_query(query)
 
         # Search for similar tables using embedding store
         # The store handles the similarity computation (in-database for pgvector)
@@ -114,14 +134,9 @@ class SemanticTableFinder:
             min_similarity=threshold
         )
 
-        # Format results: (table_name, similarity_score, description)
-        results = []
-        for table_name, similarity in similar_tables:
-            # Get description from cache or create it
-            if table_name not in self.table_descriptions:
-                self.table_descriptions[table_name] = self._create_table_description(table_name)
-            description = self.table_descriptions[table_name]
-            results.append((table_name, similarity, description))
+        # Format results: (table_name, similarity_score)
+        # Note: We don't return descriptions since they're not used by callers
+        results = [(table_name, similarity) for table_name, similarity in similar_tables]
 
         logger.info(f"Found {len(results)} relevant tables for query (threshold: {threshold})")
         return results
