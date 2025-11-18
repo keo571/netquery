@@ -34,6 +34,14 @@ class TextToSQLState(TypedDict):
     triage_passed: Optional[bool]  # Whether query passed triage check
     schema_overview: Optional[Dict[str, Any]]  # Schema overview for helpful suggestions
 
+    # Cache Lookup
+    query_cache: Optional[Any]  # QueryEmbeddingCache instance (shared across pipeline)
+    cache_hit_type: Optional[str]  # 'full', 'partial', or None
+    cached_sql: Optional[str]  # Cached SQL (if full cache hit)
+    cached_embedding: Optional[List[float]]  # Cached embedding (if any cache hit)
+    extracted_query: Optional[str]  # Current query extracted from conversation context
+    query_for_embedding: Optional[str]  # Query to use for embedding (may be rewritten for follow-ups)
+
     # Schema Input
     canonical_schema_path: Optional[str]  # Path to canonical schema JSON
     canonical_schema: Optional[Any]  # Loaded CanonicalSchema object (use Any to avoid TypedDict issues)

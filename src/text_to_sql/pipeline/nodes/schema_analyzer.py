@@ -21,13 +21,15 @@ class SchemaAnalyzer:
     """Schema analyzer using embeddings for semantic table selection."""
 
     def __init__(self, canonical_schema_path: Optional[str] = None,
-                 db_toolkit: Optional[GenericDatabaseToolkit] = None):
+                 db_toolkit: Optional[GenericDatabaseToolkit] = None,
+                 query_cache: Optional[Any] = None):
         """
         Initialize the analyzer with embedding support (required).
 
         Args:
             canonical_schema_path: Path to canonical schema file
             db_toolkit: Database toolkit instance (uses default if None)
+            query_cache: Optional query cache instance (shared across pipeline)
         """
         self.canonical_schema: Optional[CanonicalSchema] = None
         if canonical_schema_path:
@@ -40,10 +42,12 @@ class SchemaAnalyzer:
                 "Provide canonical_schema_path or set CANONICAL_SCHEMA_PATH."
             )
 
+        # Pass query cache to semantic finder (if provided)
         self.semantic_finder = SemanticTableFinder(
             model_name=os.getenv("EMBEDDING_MODEL", "gemini-embedding-001"),
             cache_dir=os.getenv("EMBEDDING_CACHE_DIR", ".embeddings_cache"),
-            canonical_schema=self.canonical_schema
+            canonical_schema=self.canonical_schema,
+            query_cache=query_cache
         )
 
         # Dependency injection: use provided toolkit or get default
@@ -76,20 +80,21 @@ class SchemaAnalyzer:
             logger.error(f"Failed to load canonical schema: {exc}")
             self.canonical_schema = None
     
-    def analyze_schema(self, query: str) -> Dict[str, Any]:
+    def analyze_schema(self, query: str, cached_embedding: Optional[list] = None) -> Dict[str, Any]:
         """
         Analyze schema using embeddings for semantic table selection.
-        
+
         Args:
             query: Natural language query
-            
+            cached_embedding: Pre-computed embedding (if available from cache)
+
         Returns:
             Dictionary with analysis results
         """
         logger.info(f"Analyzing schema for: {query[:100]}...")
-        
-        # Find relevant tables using embeddings
-        relevant_results = self._find_relevant_tables(query)
+
+        # Find relevant tables using embeddings (use cached if available)
+        relevant_results = self._find_relevant_tables(query, cached_embedding)
         
         # If no relevant tables found, treat as analysis error
         if not relevant_results:
@@ -125,12 +130,13 @@ class SchemaAnalyzer:
             "relevance_scores": relevance_scores,
         }
     
-    def _find_relevant_tables(self, query: str):
+    def _find_relevant_tables(self, query: str, cached_embedding: Optional[list] = None):
         """Find tables relevant to the query using embeddings."""
         return self.semantic_finder.find_relevant_tables(
             query=query,
             max_tables=config.pipeline.max_relevant_tables,
-            threshold=config.pipeline.relevance_threshold
+            threshold=config.pipeline.relevance_threshold,
+            cached_embedding=cached_embedding
         )
 
     def _is_uuid_column(self, col: dict, canonical_table: Optional[Any]) -> bool:
@@ -383,14 +389,18 @@ _analyzer_cache: Dict[tuple, SchemaAnalyzer] = {}
 
 def get_analyzer(
     canonical_schema_path: Optional[str] = None,
-    db_toolkit: Optional[GenericDatabaseToolkit] = None
+    db_toolkit: Optional[GenericDatabaseToolkit] = None,
+    query_cache: Optional[Any] = None
 ) -> SchemaAnalyzer:
     """
     Get or create the analyzer instance (cached by schema path).
 
+    Note: We don't cache by query_cache because it's a shared global instance.
+
     Args:
         canonical_schema_path: Path to canonical schema
         db_toolkit: Optional database toolkit (for dependency injection)
+        query_cache: Optional query cache (shared across pipeline)
 
     Returns:
         Cached or new SchemaAnalyzer instance
@@ -403,8 +413,12 @@ def get_analyzer(
     if cache_key not in _analyzer_cache:
         _analyzer_cache[cache_key] = SchemaAnalyzer(
             canonical_schema_path=canonical_schema_path,
-            db_toolkit=db_toolkit
+            db_toolkit=db_toolkit,
+            query_cache=query_cache
         )
+    elif query_cache and _analyzer_cache[cache_key].semantic_finder.query_cache != query_cache:
+        # Update the query cache if it changed (though it shouldn't in practice)
+        _analyzer_cache[cache_key].semantic_finder.query_cache = query_cache
 
     return _analyzer_cache[cache_key]
 
@@ -412,6 +426,10 @@ def get_analyzer(
 def schema_analyzer(state: TextToSQLState) -> Dict[str, Any]:
     """
     Schema analyzer that uses embeddings for semantic table selection.
+
+    For follow-up questions:
+    - Uses extracted_query for embedding (table selection)
+    - Original query with full history is passed to SQL generator for LLM context
     """
     def create_schema_reasoning_step(tables: list, scores: dict, excel_enhanced: bool = False) -> dict:
         """Create reasoning step for schema analysis."""
@@ -427,20 +445,37 @@ def schema_analyzer(state: TextToSQLState) -> Dict[str, Any]:
             return create_warning_step("Schema Analysis", "No relevant tables found for the query.")
 
     query = state["original_query"]
+
+    # Use query_for_embedding for table selection
+    # This may be the extracted query or a rewritten version (for follow-ups)
+    # Cache lookup node handles the rewriting logic
+    query_for_embedding = state.get("query_for_embedding") or state.get("extracted_query") or query
+
     # Resolve canonical schema path
     resolved_path = _resolve_schema_path(state.get("canonical_schema_path"))
     canonical_schema_path = str(resolved_path) if resolved_path else None
+
+    # Get cached embedding if available (from partial cache hit)
+    cached_embedding = state.get("cached_embedding")
+
+    # Get query cache from state (initialized by cache_lookup node)
+    query_cache = state.get("query_cache")
 
     try:
         # Measure schema analysis time
         start_time = time.time()
 
-        # Analyze schema using embeddings
+        # Analyze schema using embeddings (use cached embedding if available)
+        # Use extracted_query for embedding to ensure consistency
         analyzer = get_analyzer(
-            canonical_schema_path=canonical_schema_path
+            canonical_schema_path=canonical_schema_path,
+            query_cache=query_cache
         )
-        analysis_result = analyzer.analyze_schema(query=query)
-        
+        analysis_result = analyzer.analyze_schema(
+            query=query_for_embedding,  # Use extracted query for embedding/table selection
+            cached_embedding=cached_embedding
+        )
+
         schema_analysis_time_ms = (time.time() - start_time) * 1000
         
         # Check if schema analysis found an error

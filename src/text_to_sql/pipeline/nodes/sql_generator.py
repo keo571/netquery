@@ -23,10 +23,16 @@ def sql_generator(state: TextToSQLState) -> Dict[str, Any]:
     1. Takes the natural language query and schema context
     2. Generates SQL directly in one LLM call (no intermediate planning step)
     3. Validates basic syntax and safety rules
-    4. Returns the generated SQL or error state
+    4. Caches the generated SQL for future use
+    5. Returns the generated SQL or error state
     """
     query = state["original_query"]
     schema_context = state["schema_context"]
+    query_cache = state.get("query_cache")
+
+    # Use extracted_query for caching (from cache_lookup_node)
+    # This is the clean query without conversation context
+    extracted_query = state.get("extracted_query", query)
 
     logger.info(f"Generating SQL for query: {query[:100]}...")
 
@@ -69,6 +75,15 @@ def sql_generator(state: TextToSQLState) -> Dict[str, Any]:
             # Success!
             retry_note = " (after retry)" if attempt > 0 else ""
             logger.info(f"SQL generated and syntax validated successfully{retry_note}")
+
+            # Cache the generated SQL for future use
+            # Use extracted_query (without conversation context) for caching
+            if query_cache:
+                # Update only the SQL (embedding already cached by schema analyzer)
+                if query_cache.update_sql(extracted_query, generated_sql):
+                    logger.info(f"Cached generated SQL for query: '{extracted_query[:60]}...'")
+                else:
+                    logger.warning(f"Could not cache SQL - no entry found in cache for query: '{extracted_query[:60]}...'")
 
             return {
                 "generated_sql": generated_sql,

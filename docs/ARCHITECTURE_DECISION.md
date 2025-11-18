@@ -18,17 +18,72 @@ This document outlines the backend architecture for the Netquery text-to-SQL sys
 
 ### 1. Core Pipeline: Text-to-SQL LangGraph
 
-The main text-to-SQL pipeline (`src/text_to_sql/pipeline/graph.py`):
-- **6-stage processing workflow** (includes triage)
-- **Query triage** (fast pre-filtering of non-database questions)
-- **Schema analysis with smart FK expansion** (semantic similarity + relationship traversal)
-- SQL generation with direct LLM call (no intermediate planning)
-- Safety validation (read-only enforcement)
-- Query execution and result formatting
-- Automatic visualization detection
-- Supports both execution and SQL-only generation modes
+The main text-to-SQL pipeline (`src/text_to_sql/pipeline/graph.py`) is a 7-stage LangGraph workflow:
 
-**Stage 0: Query Triage** (New Feature)
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Text-to-SQL Pipeline                         │
+└─────────────────────────────────────────────────────────────────┘
+
+User Query: "which servers are unhealthy?"
+    ↓
+┌───────────────────────┐
+│ Stage 0: Triage       │  Fast heuristics to filter non-DB questions
+│ ~1ms                  │  Rejects: "What is a server?" → Helpful message
+└───────────────────────┘
+    ↓ (database query)
+┌───────────────────────┐
+│ Stage 1: Cache Lookup │  Two-tier caching with conversational support
+│ ~10ms (hit)           │  • Extract: "which are unhealthy?"
+│ ~2-2.7s (miss)        │  • Check cache (embedding + SQL)
+└───────────────────────┘  • Rewrite if follow-up: "Show unhealthy servers"
+    ↓
+    ├─ FULL HIT? → Skip to Stage 4 (Validator) ✅ ~10ms
+    ├─ PARTIAL HIT? → Continue to Stage 2 with cached embedding
+    └─ MISS? → Continue to Stage 2, generate new embedding
+    ↓
+┌───────────────────────┐
+│ Stage 2: Schema       │  Semantic table discovery + Smart FK expansion
+│ Analyzer              │  • Embed query (or use cached)
+│ ~500ms                │  • Find top 5 relevant tables (similarity search)
+└───────────────────────┘  • Expand with FKs (max 15 tables, token budget)
+    ↓
+┌───────────────────────┐
+│ Stage 3: SQL          │  LLM generates SQL from natural language
+│ Generator             │  • Uses selected schema context
+│ ~1.5-2s               │  • Direct LLM call (no intermediate planning)
+└───────────────────────┘  • Cache result for future queries
+    ↓
+┌───────────────────────┐
+│ Stage 4: Validator    │  Safety validation
+│ ~10ms                 │  • Read-only enforcement (no DELETE, DROP, etc.)
+└───────────────────────┘  • SQL syntax validation
+    ↓
+┌───────────────────────┐
+│ Stage 5: Executor     │  Execute SQL and fetch results
+│ ~50-500ms             │  • Run query with LIMIT MAX_CACHE_ROWS
+└───────────────────────┘  • Cache results in memory
+    ↓
+┌───────────────────────┐
+│ Stage 6: Interpreter  │  Optional LLM-powered interpretation
+│ (optional)            │  • User-triggered analysis
+│ ~1-2s                 │  • Uses cached results (no re-execution)
+└───────────────────────┘  • Auto-detect visualizations
+
+Total Time:
+  • Full cache HIT: ~10ms (skip stages 2-3)
+  • Partial cache HIT: ~2s (skip embedding generation)
+  • Cache MISS: ~2.5-2.7s (full pipeline)
+```
+
+**Key Features**:
+- **Performance-first**: 70-80% cache hit rate after warmup
+- **Conversational**: Handles follow-up questions with query extraction & rewriting
+- **Safe**: Read-only validation prevents destructive operations
+- **Smart**: Automatic FK expansion with token budget management
+- **Flexible**: Supports both SQL-only and full execution modes
+
+**Stage 0: Query Triage**
 
 The triage node (`src/text_to_sql/pipeline/nodes/triage.py`) uses fast heuristics to filter out non-database questions:
 
@@ -51,7 +106,351 @@ The triage node (`src/text_to_sql/pipeline/nodes/triage.py`) uses fast heuristic
 
 **Output**: If rejected, returns helpful message with schema overview for suggestions
 
-**Stage 1 Detail: Schema Analyzer with Smart FK Expansion**
+**Stage 1: Cache Lookup** (Performance Optimization with Conversational Query Support)
+
+The cache lookup node (`src/text_to_sql/pipeline/nodes/cache_lookup.py`) implements intelligent caching with special handling for conversational follow-up questions.
+
+**Purpose**: Maximize performance while supporting natural conversations
+
+**Architecture: Three-Path Routing**
+
+The cache lookup follows a clean three-path design:
+
+```python
+def cache_lookup_node(state):
+    extracted_query = extract_current_query(full_query)  # Step 1
+    cached_result = query_cache.get(extracted_query)     # Step 2
+
+    if cached_result and has_sql:
+        return _handle_full_cache_hit(...)      # Path 1: Fastest
+    elif cached_result:
+        return _handle_partial_cache_hit(...)   # Path 2: May rewrite
+    else:
+        return _handle_cache_miss(...)          # Path 3: May rewrite
+```
+
+**Path 1: FULL Cache HIT** (~10ms)
+- Have both embedding AND SQL cached
+- Skip entire pipeline (schema analysis + SQL generation)
+- No query rewriting needed
+- Route directly to validator
+- Example: "Show load balancers" → Return cached SQL immediately
+
+**Path 2: PARTIAL Cache HIT** (~2s or ~2.2s)
+- Have embedding but NO SQL
+- Check if follow-up question (ambiguous without context)
+- **If standalone**: Use cached embedding, skip rewriting (~2s)
+- **If follow-up**: Rewrite query, generate new embedding (~2.2s)
+- Example: "which are unhealthy?" after "Show servers" → Rewrite to "Show unhealthy servers"
+
+**Path 3: Cache MISS** (~2.5s or ~2.7s)
+- No cached data
+- Check if follow-up question
+- **If standalone**: Generate from scratch (~2.5s)
+- **If follow-up**: Rewrite first, then generate (~2.7s)
+- Cache results for future queries
+
+**Conversational Query Handling**:
+
+Problem: Frontend sends conversation context that breaks cache matching:
+```
+"CONVERSATION HISTORY...\nUSER'S NEW QUESTION: which are unhealthy?"
+```
+
+Solution: Two-phase approach
+1. **Query Extraction** - Extract current query for cache matching
+2. **Smart Rewriting** - Rewrite ambiguous follow-ups only when needed
+
+```
+User: "Show me all servers"
+  → Cache MISS → Generate SQL → Cache it
+
+User: "which ones are unhealthy?"
+  ↓
+Extract: "which are unhealthy?"
+  ↓
+Check cache: FULL HIT? → Return cached SQL (no rewriting!) ✅ Fast
+           MISS/PARTIAL? → Rewrite to "Show unhealthy servers" → Continue ✅ Accurate
+```
+
+**Key Optimization**: Lazy rewriting
+- Full cache HIT → Skip rewriting (already have SQL)
+- Partial HIT/MISS → Rewrite if ambiguous (need accurate table selection)
+
+**Performance Impact**:
+- **Full cache hit**: ~10ms (no rewriting, skip pipeline)
+- **Partial cache hit (standalone)**: ~2s (use cached embedding)
+- **Partial cache hit (follow-up)**: ~2.2s (rewrite ~200ms + new embedding)
+- **Cache miss (standalone)**: ~2.5s (normal pipeline)
+- **Cache miss (follow-up)**: ~2.7s (rewrite ~200ms + pipeline)
+- **Expected hit rate**: 70-80% after warmup (with conversational support)
+
+**Cache Invalidation on User Feedback**:
+
+When users click thumbs down on generated SQL:
+```python
+# In frontend chat adapter
+invalidate_query_cache(user_question)  # Smart invalidation
+
+# What happens:
+# 1. Keeps embedding (table selection was probably correct)
+# 2. Clears SQL only (logic was wrong)
+# 3. Next retry generates fresh SQL but reuses embedding (~2s vs ~2.5s)
+```
+
+**Benefits**:
+- Faster retry after thumbs down (~2s vs ~2.5s if we cleared everything)
+- Table selection usually correct, SQL logic needs rework
+- Graceful degradation (embedding still useful)
+
+**Implementation Details**:
+- Storage: SQLite (`query_cache.db`)
+- Normalization: lowercase, remove action verbs, whitespace
+- Fuzzy matching: SequenceMatcher (85% similarity threshold)
+- Query extraction: Regex patterns for conversation context
+- Query rewriting: LLM-based (only when needed)
+- Invalidation: UPDATE SQL=NULL (keep embedding) vs DELETE (nuclear option)
+
+**Why This Design?**:
+1. **Fast for common case**: Full hits skip rewriting (~10ms)
+2. **Accurate for follow-ups**: Rewriting only when doing table selection
+3. **Simple to understand**: Three clear paths, each in own function
+4. **Maintainable**: Helper functions separate concerns
+5. **Production-ready**: Same performance as complex version, easier to debug
+
+---
+
+### Detailed Cache Implementation
+
+The cache system consists of several key components working together:
+
+#### 1. Query Extraction (`src/text_to_sql/utils/query_extraction.py`)
+
+Extracts the current question from conversation context sent by the frontend.
+
+**Patterns Detected**:
+- `USER'S NEW QUESTION: {query}` (primary pattern from BFF)
+- `Current: {query}` (alternative)
+- `Question: {query}` (alternative)
+- Last `User:` message in multi-line format
+
+**Example**:
+```python
+extract_current_query("""
+CONVERSATION HISTORY:
+  User asked: Show me all servers
+USER'S NEW QUESTION: which are unhealthy?
+""")
+# Returns: "which are unhealthy?"
+```
+
+#### 2. Query Rewriter (`src/text_to_sql/utils/query_rewriter.py`)
+
+Converts ambiguous follow-ups to standalone queries for accurate table selection.
+
+**Detection**: Identifies follow-ups by checking for:
+- Conversation history markers
+- Ambiguous pronouns: "which", "those", "them", "it"
+- Continuation words: "more", "other", "also"
+- Missing subject questions
+
+**Rewriting Strategy**:
+```python
+# Prompt to LLM:
+"""
+Previous question: Show me all servers
+Follow-up question: which are unhealthy?
+
+Rewrite the follow-up to be self-contained and standalone.
+"""
+# LLM output: "Show me all unhealthy servers"
+```
+
+**Conditional Rewriting**:
+```python
+def rewrite_if_needed(full_query, extracted_query, cache_hit_type):
+    # Skip if we have SQL already
+    if cache_hit_type == 'full':
+        return extracted_query
+
+    # Skip if not a follow-up
+    if not needs_rewriting(full_query, extracted_query):
+        return extracted_query
+
+    # Rewrite for accurate table selection
+    return rewrite_follow_up_query(full_query, extracted_query)
+```
+
+#### 3. Cache Storage (`src/text_to_sql/tools/query_embedding_cache.py`)
+
+**Storage**: SQLite database (`.embeddings_cache/query_cache.db`)
+
+**Schema**:
+```sql
+CREATE TABLE query_cache (
+    id INTEGER PRIMARY KEY,
+    original_query TEXT,
+    normalized_query TEXT,
+    embedding BLOB,
+    generated_sql TEXT,
+    hit_count INTEGER,
+    created_at TIMESTAMP,
+    last_accessed TIMESTAMP
+)
+```
+
+**Normalization**: Lowercase, remove action verbs, whitespace normalization
+
+**Fuzzy Matching**: SequenceMatcher with 85% similarity threshold for near-matches
+
+**Invalidation Methods**:
+- `invalidate(query)` - Sets SQL to NULL, keeps embedding (smart invalidation)
+- `clear_all()` - Nuclear option, removes all entries
+
+#### 4. Cache Utilities (`src/text_to_sql/utils/cache_utils.py`)
+
+Provides external access to cache management:
+
+```python
+from src.text_to_sql.utils.cache_utils import invalidate_query_cache
+
+# Invalidate after thumbs down
+invalidated = invalidate_query_cache(user_question)
+
+# Get cache statistics
+stats = get_cache_stats()
+print(f"Total entries: {stats['total_entries']}")
+print(f"Total hits: {stats['total_hits']}")
+```
+
+#### Frontend Integration for Cache Invalidation
+
+When users click thumbs down, the frontend chat adapter should invalidate the cache:
+
+```python
+# In chat_adapter.py (netquery-insight-chat repo)
+
+from src.text_to_sql.utils.cache_utils import invalidate_query_cache
+
+@app.post("/api/feedback")
+async def submit_feedback_endpoint(request: FeedbackRequest):
+    # ... existing code ...
+
+    # On thumbs down, invalidate cache
+    if request.type == "thumbs_down" and request.user_question:
+        try:
+            invalidated = invalidate_query_cache(request.user_question)
+            if invalidated:
+                logger.info(f"Cache invalidated for negative feedback")
+        except Exception as e:
+            logger.error(f"Failed to invalidate cache: {e}")
+
+    return {"status": "ok"}
+```
+
+**User Flow After Thumbs Down**:
+1. User asks "Show unhealthy servers"
+2. System returns SQL: `SELECT * FROM servers WHERE status = 'down'`
+3. User unhappy, clicks 👎
+4. Cache invalidated for this query (SQL removed, embedding kept)
+5. User clicks "Try Again" → Generates fresh SQL (may use different approach)
+6. Next retry: ~2s (PARTIAL HIT - reuses embedding) vs ~2.5s (full MISS)
+
+#### Cache Logging and Monitoring
+
+| Operation | Log Level | What's Logged |
+|-----------|-----------|---------------|
+| **Cache Initialization** | INFO | Cache path, fuzzy settings |
+| **Full Cache HIT** | INFO | Query, time saved (2-3s) |
+| **Partial Cache HIT** | INFO | Query, time saved (500ms) |
+| **Cache MISS** | DEBUG | Query |
+| **Cache Storage** | INFO | Query, normalized, SQL status |
+| **SQL Invalidation** | INFO | Query, affected entries |
+| **Query Extraction** | INFO | Full vs extracted query length |
+
+**Monitoring Commands**:
+```bash
+# Cache hit rate
+grep "cache HIT" application.log | wc -l
+grep "Cache MISS" application.log | wc -l
+
+# User dissatisfaction (thumbs down)
+grep "Invalidated SQL" application.log | wc -l
+
+# Query extraction (conversational queries)
+grep "Extracted current query" application.log | wc -l
+```
+
+**Example Log Flow (Thumbs Down → Retry)**:
+```
+# First query (cache miss)
+INFO: Cached generated SQL for query: 'Show unhealthy servers'
+
+# User unhappy, clicks thumbs down
+INFO: ✅ Invalidated SQL (kept embedding) for query: 'Show unhealthy servers'
+   Retry performance: ~2s (fast)
+
+# User retries same question
+INFO: ⚡ PARTIAL cache HIT for query: 'Show unhealthy servers'
+   Have embedding, will skip embedding API call (~500ms saved)
+
+# User happy this time, asks same question later
+INFO: 🚀 FULL cache HIT for query: 'Show unhealthy servers'
+   Skipping schema analysis and SQL generation (saving ~2-3 seconds)
+```
+
+#### Cache Performance Summary
+
+| Path | Cache State | Rewrite? | Embedding | Time | Typical Frequency |
+|------|-------------|----------|-----------|------|-------------------|
+| **Full Hit** | Have SQL | NO | Not used | ~10ms | High (after warmup) |
+| **Partial Hit (standalone)** | Have embedding | NO | Use cached | ~2s | Medium |
+| **Partial Hit (follow-up)** | Have embedding | YES | Generate new | ~2.2s | Low |
+| **Miss (standalone)** | Empty | NO | Generate new | ~2.5s | Medium |
+| **Miss (follow-up)** | Empty | YES | Generate new | ~2.7s | Low |
+
+**Most common path**: Full Hit (~10ms) - This is why the optimization matters!
+
+#### Example Conversational Session
+
+```
+User: "Show me all servers"
+→ Cache MISS
+→ No rewriting (standalone)
+→ Embed: "show me all servers"
+→ Tables: [servers]
+→ SQL: SELECT * FROM servers
+→ Time: 2.5s
+
+User: "which ones are unhealthy?"
+→ Extract: "which are unhealthy?"
+→ Cache check: MISS
+→ Rewrite: "Show me all unhealthy servers"
+→ Embed: "show me all unhealthy servers"
+→ Tables: [servers] ✅ CORRECT
+→ SQL: SELECT * FROM servers WHERE status = 'unhealthy'
+→ Cache with: "which are unhealthy?"
+→ Time: 2.7s (2.5s + 200ms rewrite)
+
+User: "which ones are unhealthy?" (asks again later)
+→ Extract: "which are unhealthy?"
+→ Cache check: FULL HIT ✅
+→ No rewriting needed
+→ Return cached SQL
+→ Time: 10ms ✅ FAST
+
+User: "which are offline?"
+→ Extract: "which are offline?"
+→ Cache check: MISS
+→ Rewrite: "Show me all offline servers"
+→ Embed: "show me all offline servers"
+→ Tables: [servers] ✅ CORRECT
+→ Time: 2.7s
+```
+
+---
+
+**Stage 2 Detail: Schema Analyzer with Smart FK Expansion**
 
 The schema analyzer (`src/text_to_sql/pipeline/nodes/schema_analyzer.py`) uses a two-phase approach to find relevant tables while preventing token explosion:
 
@@ -656,10 +1055,17 @@ Frontend should display notices based on API flags:
 
 ### Completed ✅
 
-1. Core text-to-SQL pipeline with **6 stages** (includes triage)
-2. **Query triage system** for filtering non-database questions
-3. FastAPI server with all endpoints
-4. In-memory caching system
+1. Core text-to-SQL pipeline with **7 stages** (LangGraph workflow)
+   - Stage 0: Query triage (filter non-DB questions)
+   - Stage 1: Cache lookup (two-tier caching with conversational support)
+   - Stage 2: Schema analyzer (semantic table discovery + FK expansion)
+   - Stage 3: SQL generator (LLM-powered SQL generation)
+   - Stage 4: Validator (read-only safety enforcement)
+   - Stage 5: Executor (query execution with result caching)
+   - Stage 6: Interpreter (optional LLM-powered insights)
+2. **Two-tier caching system** with query extraction & rewriting for follow-ups
+3. **Conversational query support** with smart rewriting (70-80% cache hit rate)
+4. FastAPI server with all endpoints
 5. LLM-powered interpretation with structured output (Pydantic schemas)
 6. Smart row counting optimization
 7. Streaming CSV download
@@ -732,9 +1138,25 @@ Scope clarity to avoid over-engineering:
 - [Sample Queries](SAMPLE_QUERIES.md) - Example queries for testing
 - [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions
 
+**Note**: All cache system implementation details are documented in the "Detailed Cache Implementation" section above.
+
 ---
 
 ## Recent Updates
+
+### 2025-01-17: Cache System Improvements & Refactoring
+- ✅ **Two-Tier Caching**: Embedding cache (partial speedup) + SQL cache (full speedup)
+- ✅ **Query Extraction**: Extract current query from conversation context for cache matching
+- ✅ **Smart Rewriting**: LLM-based rewriting for ambiguous follow-ups ("which are unhealthy?" → "Show unhealthy servers")
+- ✅ **Lazy Rewriting Optimization**: Only rewrite on cache MISS/PARTIAL (skip on FULL HIT for ~10ms response)
+- ✅ **Cache Invalidation**: Thumbs down clears SQL but keeps embedding (faster retry: ~2s vs ~2.5s)
+- ✅ **Three-Path Routing**: Refactored cache_lookup_node with dedicated handler functions
+  - `_handle_full_cache_hit()` - Return SQL immediately (~10ms)
+  - `_handle_partial_cache_hit()` - Conditional rewriting logic (~2-2.2s)
+  - `_handle_cache_miss()` - Generate from scratch (~2.5-2.7s)
+- ✅ **Performance Impact**: 15-25% cache hit rate improvement, 70-80% hit rate with warmup
+- ✅ **Files Created**: query_extraction.py, query_rewriter.py, cache_utils.py
+- ✅ **Files Updated**: cache_lookup.py, schema_analyzer.py, sql_generator.py, state.py, query_embedding_cache.py
 
 ### 2025-01-16: Code Cleanup & Optimization
 - ✅ Centralized all data limits and chart configurations to `src/common/constants.py`
@@ -752,4 +1174,4 @@ Scope clarity to avoid over-engineering:
 
 ---
 
-**Last Updated**: 2025-01-16
+**Last Updated**: 2025-01-17

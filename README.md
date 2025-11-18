@@ -4,31 +4,53 @@ An AI-powered assistant that converts natural language queries into SQL. Optimiz
 
 ## Architecture Overview
 
+### 7-Stage Pipeline with Smart Caching
+
 ```mermaid
 flowchart TD
-    A([Natural Language Query]) --> T[Query Triage<br/>Fast Heuristics]
-    T -->|✅ Database Query| B[Schema Analysis<br/>Semantic Similarity]
+    A([Natural Language Query]) --> T[Stage 0: Query Triage<br/>Fast Heuristics]
+    T -->|✅ Database Query| CL[Stage 1: Cache Lookup<br/>Query Extraction & Rewriting]
     T -->|❌ Non-Query| H[Helpful Response<br/>with Suggestions]
-    B --> C[SQL Generation<br/>Direct LLM Call]
-    C --> D[Safety Validation<br/>Read-Only Check]
-    D -->|✅ Pass| E[Query Execution<br/>Timeout Handling]
-    D -->|❌ Block| H
-    E --> F[Result Interpretation<br/>Chart Generation]
+
+    CL -->|🚀 Full HIT<br/>~10ms| V[Stage 4: Safety Validation<br/>Read-Only Check]
+    CL -->|⚡ Partial HIT<br/>~2s| B[Stage 2: Schema Analysis<br/>Semantic Similarity]
+    CL -->|❌ MISS<br/>~2.5s| B
+
+    B --> C[Stage 3: SQL Generation<br/>Direct LLM Call]
+    C --> V
+    V -->|✅ Pass| E[Stage 5: Query Execution<br/>Timeout Handling]
+    V -->|❌ Block| H
+    E --> F[Stage 6: Result Interpretation<br/>Chart Generation]
     F --> G([Response with Charts])
 
-    DB[(Database)] -.->|schema reflection<br/>at startup| CACHE
-    CACHE[(Embedding Cache)] -.->|table similarity<br/>scoring| B
+    DB[(Database)] -.->|schema reflection<br/>at startup| SCHEMA_CACHE
+    SCHEMA_CACHE[(Schema Embeddings)] -.->|table similarity<br/>scoring| B
+    QUERY_CACHE[(Query Cache<br/>Embedding + SQL)] -.->|cache lookup| CL
     LLM[Gemini API] --> C
     LLM --> F
     DB --> E
 
     style A fill:#4FC3F7,color:#000
     style T fill:#B39DDB,color:#000
+    style CL fill:#9FA8DA,color:#000
     style G fill:#81C784,color:#000
     style H fill:#FF8A65,color:#000
-    style D fill:#FFB74D,color:#000
-    style CACHE fill:#E1BEE7,color:#000
+    style V fill:#FFB74D,color:#000
+    style SCHEMA_CACHE fill:#E1BEE7,color:#000
+    style QUERY_CACHE fill:#CE93D8,color:#000
 ```
+
+**Performance Optimization:**
+- **Full Cache HIT** (~10ms): Skip schema analysis + SQL generation entirely
+- **Partial HIT** (~2s): Reuse embedding, skip embedding API call (~500ms saved)
+- **Cache MISS** (~2.5s): Generate from scratch
+
+**Conversational Query Handling:**
+- Extracts current question from conversation context for cache matching
+- Rewrites ambiguous follow-ups ("which are unhealthy?") for accurate table selection
+- Caches with extracted query for high hit rates on repeated follow-ups
+
+See [docs/ARCHITECTURE_DECISION.md](docs/ARCHITECTURE_DECISION.md) for detailed pipeline design.
 
 ## Quick Start
 
@@ -320,11 +342,25 @@ See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for startup scripts and m
 
 ## Pipeline Architecture
 
-1. **Schema Analysis** → Uses semantic similarity to identify relevant tables from embeddings cache
-2. **SQL Generation** → Generates optimized SQL queries directly from natural language (blocks CTEs, uses subqueries)
-3. **Safety Validation** → Enforces read-only operations, blocks destructive queries
-4. **Query Execution** → Runs SQL with timeout protection and error handling
-5. **Result Interpretation** → Generates charts, formats responses, and provides insights
+The text-to-SQL pipeline consists of 7 stages with intelligent caching:
+
+0. **Query Triage** → Fast heuristic classification (database query vs. conversational)
+1. **Cache Lookup** → Query extraction, rewriting, and two-tier cache check (embedding + SQL)
+   - Full HIT: Skip to validation (~10ms)
+   - Partial HIT: Skip embedding generation (~500ms saved)
+   - MISS: Continue to schema analysis
+2. **Schema Analysis** → Semantic similarity search to identify relevant tables
+3. **SQL Generation** → LLM-powered SQL generation with schema context
+4. **Safety Validation** → Read-only enforcement, blocks destructive operations
+5. **Query Execution** → Database execution with timeout protection
+6. **Result Interpretation** → Chart generation, insights, and formatted responses
+
+**Key Features:**
+- Two-tier caching: Embeddings (partial speedup) + SQL (full speedup)
+- Follow-up query handling: Automatic rewriting of ambiguous questions
+- Feedback-based invalidation: Thumbs down clears bad SQL from cache
+
+See [docs/ARCHITECTURE_DECISION.md](docs/ARCHITECTURE_DECISION.md) for complete design rationale and [docs/CACHE_INVALIDATION_INTEGRATION.md](docs/CACHE_INVALIDATION_INTEGRATION.md) for frontend integration.
 
 ## Development & Testing
 

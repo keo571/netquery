@@ -134,7 +134,7 @@ def triage_node(state: TextToSQLState) -> Dict[str, Any]:
             "schema_overview": schema_overview  # Frontend will display this separately
         }
 
-    logger.info(f"✅ Query triaged as database question: '{query}' | Reason: {reason}")
+    logger.info(f"✅ Triage passed | {reason}")
 
     return {
         "triage_passed": True

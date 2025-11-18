@@ -344,7 +344,6 @@ DATABASE_URL=sqlite:///data/infrastructure.db  # Query target database (default)
 # Embedding Cache Configuration (Optional)
 EMBEDDING_DATABASE_URL=postgresql://localhost/your-embedding-db  # Use pgvector for embeddings
 # If not set, uses local file cache (.embeddings_cache/)
-# See EMBEDDING_CACHE_STRATEGY.md for details
 
 # Model Configuration (Optional)
 EMBEDDING_MODEL=gemini-embedding-001         # Gemini embedding model (default)

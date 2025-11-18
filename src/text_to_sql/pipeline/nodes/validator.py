@@ -27,23 +27,21 @@ def validator(state: TextToSQLState) -> Dict[str, Any]:
     """
     generated_sql = state["generated_sql"]
     
-    logger.info(f"Validating SQL query: {generated_sql[:100]}...")
-    
     # Perform comprehensive validation using safety validator
     validation_result = safety_validator.validate_query(generated_sql)
-    
+
     # Create safety checks summary
     safety_checks = {
         "no_critical_errors": len(validation_result["errors"]) == 0,
         "safe_tables_only": len(validation_result["allowed_tables"]) > 0,
         "is_valid": validation_result["is_valid"]
     }
-    
+
     # Log validation results
     if validation_result["is_valid"]:
-        logger.info("SQL validation passed all safety checks")
+        logger.info("✅ SQL validation passed")
     else:
-        logger.warning(f"SQL validation failed: {validation_result['errors']}")
+        logger.warning(f"❌ SQL validation failed: {validation_result['errors']}")
     
     # Log the reasoning step
     if validation_result["errors"]:

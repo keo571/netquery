@@ -7,6 +7,7 @@ import logging
 
 from .state import TextToSQLState
 from .nodes.triage import triage_node
+from .nodes.cache_lookup import cache_lookup_node
 from .nodes.schema_analyzer import schema_analyzer
 from .nodes.sql_generator import sql_generator
 from .nodes.validator import validator
@@ -58,8 +59,26 @@ def error_handler_node(state: TextToSQLState) -> dict:
     }
 
 def route_after_triage(state: TextToSQLState) -> str:
-    """Route after triage: to schema_analyzer or error handler."""
-    return "schema_analyzer" if state.get("triage_passed") else "error_handler"
+    """Route after triage: to cache_lookup or error handler."""
+    return "cache_lookup" if state.get("triage_passed") else "error_handler"
+
+def route_after_cache(state: TextToSQLState) -> str:
+    """
+    Route after cache lookup based on cache hit type.
+
+    - full: Skip to validator (have SQL)
+    - partial: Go to schema_analyzer (have embedding, need SQL)
+    - None: Go to schema_analyzer (need everything)
+    """
+    cache_hit_type = state.get("cache_hit_type")
+
+    if cache_hit_type == "full":
+        # We have cached SQL - skip schema analysis and SQL generation
+        return "validator"
+    else:
+        # Partial hit or miss - need to run schema analysis
+        # (schema analyzer will use cached embedding if available)
+        return "schema_analyzer"
 
 def route_after_schema(state: TextToSQLState) -> str:
     """Route after schema analysis: directly to sql_generator or error handler."""
@@ -89,6 +108,7 @@ def create_text_to_sql_graph():
 
     # Add all pipeline nodes
     workflow.add_node("triage", triage_node)
+    workflow.add_node("cache_lookup", cache_lookup_node)
     workflow.add_node("schema_analyzer", schema_analyzer)
     workflow.add_node("sql_generator", sql_generator)
     workflow.add_node("validator", validator)
@@ -99,9 +119,13 @@ def create_text_to_sql_graph():
     # Add edges - start with triage node
     workflow.add_edge(START, "triage")
 
-    # Route from triage to schema analyzer or error handler
+    # Route from triage to cache lookup or error handler
     workflow.add_conditional_edges("triage", route_after_triage,
-                                  {"schema_analyzer": "schema_analyzer", "error_handler": "error_handler"})
+                                  {"cache_lookup": "cache_lookup", "error_handler": "error_handler"})
+
+    # Route from cache lookup based on cache hit type
+    workflow.add_conditional_edges("cache_lookup", route_after_cache,
+                                  {"validator": "validator", "schema_analyzer": "schema_analyzer"})
 
     # Add conditional routing with error handling
     # Schema analyzer routes directly to SQL generator (no query planner)

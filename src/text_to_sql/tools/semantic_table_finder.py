@@ -27,6 +27,7 @@ class SemanticTableFinder:
         embedding_store: Optional[EmbeddingStore] = None,
         embedding_service: Optional[EmbeddingService] = None,
         enable_query_cache: bool = True,
+        query_cache: Optional[QueryEmbeddingCache] = None,
     ):
         """
         Initialize with Gemini embeddings model.
@@ -38,14 +39,15 @@ class SemanticTableFinder:
             embedding_store: Optional pre-configured embedding store (pgvector or local file)
             embedding_service: Optional embedding service override (defaults to Gemini embeddings)
             enable_query_cache: Enable SQLite caching of query embeddings (default: True)
+            query_cache: Optional pre-initialized query cache (if None, creates new one)
         """
         self.embedding_service = embedding_service or EmbeddingService(model_name=model_name)
         self.model_name = model_name
         self.canonical_schema = canonical_schema
 
         # Initialize query embedding cache (normalization + fuzzy matching)
-        self.query_cache = None
-        if enable_query_cache:
+        self.query_cache = query_cache  # Use provided cache if available
+        if self.query_cache is None and enable_query_cache:
             cache_db_path = os.path.join(cache_dir, "query_cache.db")
             self.query_cache = QueryEmbeddingCache(
                 db_path=cache_db_path,
@@ -53,6 +55,8 @@ class SemanticTableFinder:
                 fuzzy_threshold=0.85
             )
             logger.info(f"Query embedding cache (normalization + fuzzy) enabled at {cache_db_path}")
+        elif self.query_cache:
+            logger.info(f"Using provided query cache instance")
 
         # Determine namespace for embedding isolation
         if canonical_schema:
@@ -110,19 +114,38 @@ class SemanticTableFinder:
 
         logger.info(f"Built embeddings for {len(self.table_descriptions)} tables")
     
-    def find_relevant_tables(self, query: str, max_tables: int, threshold: float) -> List[Tuple[str, float]]:
+    def find_relevant_tables(
+        self,
+        query: str,
+        max_tables: int,
+        threshold: float,
+        cached_embedding: Optional[List[float]] = None
+    ) -> List[Tuple[str, float]]:
         """
         Find tables relevant to query using semantic similarity.
+
+        Args:
+            query: Natural language query
+            max_tables: Maximum number of tables to return
+            threshold: Minimum similarity threshold
+            cached_embedding: Pre-computed embedding (if available from cache)
 
         Returns: List of (table_name, similarity_score)
         """
         # Get query embedding (with caching if enabled)
-        if self.query_cache:
-            query_embedding = self.query_cache.get_or_create(
+        if cached_embedding:
+            # Use the provided cached embedding (from partial cache hit)
+            query_embedding = cached_embedding
+            logger.info("Using cached embedding from partial cache hit")
+        elif self.query_cache:
+            # Check cache and potentially generate new embedding
+            embedding, cached_sql = self.query_cache.get_or_create(
                 query,
                 lambda q: self.embedding_service.embed_query(q)
             )
+            query_embedding = embedding
         else:
+            # No cache - generate embedding directly
             query_embedding = self.embedding_service.embed_query(query)
 
         # Search for similar tables using embedding store

@@ -1,32 +1,40 @@
 """
-SQLite-based cache for query embeddings with normalization + fuzzy matching fallback.
+SQLite-based cache for query embeddings AND generated SQL with normalization + fuzzy matching.
 
-This cache stores query embeddings to avoid repeated Gemini API calls for similar queries.
+This cache stores BOTH:
+1. Query embeddings (saves ~250-500ms Gemini embedding API call)
+2. Generated SQL (saves ~1-2 seconds LLM SQL generation call)
 
 Two-tier matching strategy:
 1. Exact match after normalization (fast, ~1ms)
 2. Fuzzy string matching fallback (slower, ~10ms for 100 cached queries)
 
 Performance Impact:
-- Cache HIT (exact): ~1ms
-- Cache HIT (fuzzy): ~10ms (vs 250-500ms Gemini API call)
-- Cache MISS: ~511ms (10ms check + 500ms API call)
+- Cache HIT (exact): ~1ms (skips BOTH embedding + LLM calls)
+- Cache HIT (fuzzy): ~10ms (skips BOTH embedding + LLM calls)
+- Cache MISS: ~2.5 seconds (embedding + SQL generation)
+- Expected savings: 2-3 seconds per cache hit
 - Expected hit rate: 55-65% for typical usage patterns
 
 Example:
     cache = QueryEmbeddingCache(enable_fuzzy_fallback=True)
 
     # First query
-    embedding = cache.get_or_create("Show me all load balancers", embed_fn)
-    # → Cache MISS, calls embed_fn() (500ms)
+    result = cache.get("Show me all load balancers")
+    # → Cache MISS (None)
+
+    # Generate SQL and cache it
+    embedding = embed_fn(query)
+    sql = generate_sql_fn(query)
+    cache.set(query, embedding, sql)
 
     # Similar query (exact match after normalization)
-    embedding = cache.get_or_create("List all load balancers", embed_fn)
-    # → Exact cache HIT (1ms)
+    result = cache.get("List all load balancers")
+    # → Exact cache HIT (1ms) - returns (embedding, sql)
 
     # Slightly different query (fuzzy match)
-    embedding = cache.get_or_create("Show all load balancers", embed_fn)
-    # → Fuzzy cache HIT (10ms)
+    result = cache.get("Show all load balancers")
+    # → Fuzzy cache HIT (10ms) - returns (embedding, sql)
 """
 import sqlite3
 import pickle
@@ -67,9 +75,8 @@ class QueryEmbeddingCache:
         self.fuzzy_threshold = fuzzy_threshold
         self._create_tables()
 
-        logger.info(
-            f"Initialized query embedding cache at {db_path} "
-            f"(fuzzy fallback: {enable_fuzzy_fallback})"
+        logger.debug(
+            f"Initialized query cache at {db_path} (fuzzy: {enable_fuzzy_fallback})"
         )
 
     def _create_tables(self):
@@ -80,6 +87,7 @@ class QueryEmbeddingCache:
                 original_query TEXT NOT NULL,
                 normalized_query TEXT NOT NULL,
                 embedding BLOB NOT NULL,
+                generated_sql TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 hit_count INTEGER DEFAULT 1
@@ -144,7 +152,7 @@ class QueryEmbeddingCache:
 
         return normalized
 
-    def _fuzzy_match(self, query: str) -> Optional[Tuple[str, List[float], float]]:
+    def _fuzzy_match(self, query: str) -> Optional[Tuple[str, List[float], Optional[str], float]]:
         """
         Find similar cached query using fuzzy string matching.
 
@@ -152,14 +160,14 @@ class QueryEmbeddingCache:
             query: Normalized query to match
 
         Returns:
-            Tuple of (cached_query, embedding, similarity) or None
+            Tuple of (cached_query, embedding, generated_sql, similarity) or None
         """
         if not self.enable_fuzzy_fallback:
             return None
 
-        # Get all cached normalized queries
+        # Get all cached normalized queries with SQL
         cached_queries = self.conn.execute(
-            "SELECT normalized_query, embedding FROM query_embeddings"
+            "SELECT normalized_query, embedding, generated_sql FROM query_embeddings"
         ).fetchall()
 
         if not cached_queries:
@@ -168,28 +176,29 @@ class QueryEmbeddingCache:
         best_match = None
         best_similarity = 0.0
 
-        for cached_query, embedding_blob in cached_queries:
+        for cached_query, embedding_blob, generated_sql in cached_queries:
             # Calculate similarity ratio
             similarity = SequenceMatcher(None, query, cached_query).ratio()
 
             if similarity > best_similarity and similarity >= self.fuzzy_threshold:
                 best_similarity = similarity
-                best_match = (cached_query, pickle.loads(embedding_blob), similarity)
+                best_match = (cached_query, pickle.loads(embedding_blob), generated_sql, similarity)
 
         if best_match:
-            cached_query, embedding, similarity = best_match
+            cached_query, embedding, generated_sql, similarity = best_match
             logger.info(
                 f"✅ Fuzzy cache HIT (similarity: {similarity:.2f})\n"
                 f"   Query:  '{query}'\n"
-                f"   Cached: '{cached_query}'"
+                f"   Cached: '{cached_query}'\n"
+                f"   SQL cached: {generated_sql is not None}"
             )
             return best_match
 
         return None
 
-    def get(self, query: str) -> Optional[List[float]]:
+    def get(self, query: str) -> Optional[Tuple[List[float], Optional[str]]]:
         """
-        Get cached embedding for a query.
+        Get cached embedding AND generated SQL for a query.
 
         Uses two-tier matching:
         1. Exact match after normalization (fast)
@@ -199,14 +208,16 @@ class QueryEmbeddingCache:
             query: Query text to look up
 
         Returns:
-            Cached embedding (list of floats) or None if not found
+            Tuple of (embedding, generated_sql) or None if not found
+            - embedding: list of floats
+            - generated_sql: SQL string or None if not cached
         """
         normalized = self.normalize_query(query)
 
         # Try exact match first (fast path)
         result = self.conn.execute(
             """
-            SELECT embedding
+            SELECT embedding, generated_sql
             FROM query_embeddings
             WHERE normalized_query = ?
             ORDER BY last_used_at DESC
@@ -228,15 +239,16 @@ class QueryEmbeddingCache:
             self.conn.commit()
 
             embedding = pickle.loads(result[0])
-            logger.info(
-                f"✅ Exact cache HIT: '{query}' (normalized: '{normalized}')"
+            generated_sql = result[1]
+            logger.debug(
+                f"Cache HIT (exact): '{query[:60]}...' - SQL: {generated_sql is not None}"
             )
-            return embedding
+            return (embedding, generated_sql)
 
         # Try fuzzy matching fallback
         fuzzy_result = self._fuzzy_match(normalized)
         if fuzzy_result:
-            cached_query, embedding, similarity = fuzzy_result
+            cached_query, embedding, generated_sql, similarity = fuzzy_result
 
             # Update usage stats for the matched query
             self.conn.execute(
@@ -249,18 +261,19 @@ class QueryEmbeddingCache:
             )
             self.conn.commit()
 
-            return embedding
+            return (embedding, generated_sql)
 
         logger.debug(f"❌ Cache MISS for query: '{query}' (normalized: '{normalized}')")
         return None
 
-    def set(self, query: str, embedding: List[float]) -> None:
+    def set(self, query: str, embedding: List[float], generated_sql: Optional[str] = None) -> None:
         """
-        Store embedding in cache.
+        Store embedding and generated SQL in cache.
 
         Args:
             query: Original query text
             embedding: Query embedding (list of floats)
+            generated_sql: Generated SQL query (optional, can be added later)
         """
         normalized = self.normalize_query(query)
 
@@ -275,59 +288,118 @@ class QueryEmbeddingCache:
             self.conn.execute(
                 """
                 UPDATE query_embeddings
-                SET original_query = ?, embedding = ?, last_used_at = ?
+                SET original_query = ?, embedding = ?, generated_sql = ?, last_used_at = ?
                 WHERE normalized_query = ?
                 """,
-                (query, pickle.dumps(embedding), datetime.now(), normalized)
+                (query, pickle.dumps(embedding), generated_sql, datetime.now(), normalized)
             )
-            logger.debug(f"Updated cache for normalized query: '{normalized}'")
+            logger.debug(f"Updated cache for normalized query: '{normalized}' (SQL: {generated_sql is not None})")
         else:
             # Insert new entry
             self.conn.execute(
                 """
                 INSERT INTO query_embeddings
-                (original_query, normalized_query, embedding, created_at, last_used_at)
-                VALUES (?, ?, ?, ?, ?)
+                (original_query, normalized_query, embedding, generated_sql, created_at, last_used_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (query, normalized, pickle.dumps(embedding), datetime.now(), datetime.now())
+                (query, normalized, pickle.dumps(embedding), generated_sql, datetime.now(), datetime.now())
             )
-            logger.info(f"Cached new query: '{query}' (normalized: '{normalized}')")
+            logger.info(f"Cached new query: '{query}' (normalized: '{normalized}', SQL: {generated_sql is not None})")
 
         self.conn.commit()
 
-    def get_or_create(self, query: str, embed_fn: Callable[[str], List[float]]) -> List[float]:
+    def get_or_create(self, query: str, embed_fn: Callable[[str], List[float]]) -> Tuple[List[float], Optional[str]]:
         """
-        Get cached embedding or create new one if not found.
+        Get cached embedding/SQL or create new embedding if not found.
 
-        This is the main method to use. It handles cache lookup and fallback
-        to embedding generation automatically.
+        Note: This only creates embeddings on cache miss, not SQL.
+        For SQL caching, use get() to check cache, then call set() with SQL after generation.
 
         Args:
             query: Query text
             embed_fn: Function to call if cache miss (e.g., gemini.embed_query)
 
         Returns:
-            Query embedding (either from cache or newly generated)
+            Tuple of (embedding, generated_sql)
+            - embedding: always present (from cache or newly generated)
+            - generated_sql: may be None if not cached yet
 
         Example:
-            embedding = cache.get_or_create(
+            embedding, cached_sql = cache.get_or_create(
                 "Show me all servers",
                 lambda q: embedding_service.embed_query(q)
             )
+
+            if cached_sql:
+                # Use cached SQL (fast path)
+                return cached_sql
+            else:
+                # Generate SQL and cache it
+                sql = generate_sql(query, embedding)
+                cache.set(query, embedding, sql)
+                return sql
         """
         # Try cache first
         cached = self.get(query)
         if cached is not None:
-            return cached
+            embedding, generated_sql = cached
+            return (embedding, generated_sql)
 
-        # Cache miss - generate new embedding
+        # Cache miss - generate new embedding (but not SQL yet)
         logger.info(f"Generating new embedding for: '{query}'")
         embedding = embed_fn(query)
 
-        # Store in cache for future use
-        self.set(query, embedding)
+        # Store embedding in cache (SQL can be added later)
+        self.set(query, embedding, generated_sql=None)
 
-        return embedding
+        return (embedding, None)
+
+    def update_sql(self, query: str, generated_sql: str) -> bool:
+        """
+        Update the generated SQL for an existing cached query.
+
+        Useful for caching SQL after embedding has already been cached.
+
+        Args:
+            query: Original query text
+            generated_sql: Generated SQL to cache
+
+        Returns:
+            True if updated, False if query not found in cache
+
+        Example:
+            # First, cache comes with just embedding
+            embedding, cached_sql = cache.get_or_create(query, embed_fn)
+
+            # Later, after generating SQL
+            sql = generate_sql(query, embedding)
+            cache.update_sql(query, sql)
+        """
+        normalized = self.normalize_query(query)
+
+        # Check if entry exists
+        existing = self.conn.execute(
+            "SELECT id FROM query_embeddings WHERE normalized_query = ?",
+            (normalized,)
+        ).fetchone()
+
+        if not existing:
+            logger.warning(f"Cannot update SQL: query '{query}' not found in cache")
+            return False
+
+        # Update SQL
+        self.conn.execute(
+            """
+            UPDATE query_embeddings
+            SET generated_sql = ?, last_used_at = ?
+            WHERE normalized_query = ?
+            """,
+            (generated_sql, datetime.now(), normalized)
+        )
+        self.conn.commit()
+
+        logger.info(f"Updated SQL cache for query: '{query}' (normalized: '{normalized}')")
+        return True
 
     def clear(self) -> int:
         """
@@ -379,6 +451,68 @@ class QueryEmbeddingCache:
         ]
 
         return stats
+
+    def invalidate(self, query: str, keep_embedding: bool = True) -> bool:
+        """
+        Invalidate cached SQL for a query.
+
+        Useful when user provides negative feedback (thumbs down) on a result.
+        Forces fresh SQL generation on next request.
+
+        Args:
+            query: Query text to invalidate
+            keep_embedding: If True (default), only invalidate SQL and keep embedding.
+                          This is faster for retries (~2s vs ~2.5s).
+                          If False, delete entire cache entry (embedding + SQL).
+
+        Returns:
+            True if entry was invalidated, False if not found in cache
+
+        Example:
+            # User clicks thumbs down (default: keep embedding for faster retry)
+            cache.invalidate("Show unhealthy servers")
+            # Next retry: ~2 seconds (reuses embedding, regenerates SQL only)
+
+            # Nuclear option: delete everything
+            cache.invalidate("Show unhealthy servers", keep_embedding=False)
+            # Next retry: ~2.5 seconds (regenerates embedding + SQL)
+        """
+        normalized = self.normalize_query(query)
+
+        if keep_embedding:
+            # More efficient: Only invalidate SQL, keep embedding
+            # Saves ~500ms on retry (embedding API call avoided)
+            cursor = self.conn.execute(
+                """
+                UPDATE query_embeddings
+                SET generated_sql = NULL, last_used_at = ?
+                WHERE normalized_query = ?
+                """,
+                (datetime.now(), normalized)
+            )
+            action = "Invalidated SQL (kept embedding)"
+        else:
+            # Nuclear option: Delete entire entry (embedding + SQL)
+            # Use this if table selection was also wrong
+            cursor = self.conn.execute(
+                "DELETE FROM query_embeddings WHERE normalized_query = ?",
+                (normalized,)
+            )
+            action = "Deleted entire cache entry (embedding + SQL)"
+
+        affected = cursor.rowcount
+        self.conn.commit()
+
+        if affected > 0:
+            logger.info(
+                f"✅ {action} for query: '{query}' (normalized: '{normalized}')\n"
+                f"   Affected {affected} entries\n"
+                f"   Retry performance: {'~2s (fast)' if keep_embedding else '~2.5s (full regeneration)'}"
+            )
+            return True
+        else:
+            logger.debug(f"No cache entry found to invalidate: '{query}'")
+            return False
 
     def prune_old_entries(self, days: int = 30) -> int:
         """
