@@ -147,7 +147,7 @@ User: "What is DNS? Show all DNS records"
 
 ## Files Modified
 
-### Modified (3 files)
+### Modified (5 files)
 
 1. **[src/text_to_sql/pipeline/state.py](src/text_to_sql/pipeline/state.py#L39-L43)**
    - Removed `cached_sql: Optional[str]` field
@@ -160,7 +160,17 @@ User: "What is DNS? Show all DNS records"
 3. **[src/text_to_sql/pipeline/nodes/interpreter.py](src/text_to_sql/pipeline/nodes/interpreter.py)**
    - Added `general_section` to `_create_simple_response()` (lines 113-116)
    - Added `general_section` to `_create_full_response()` (lines 168-171)
-   - Prepends general answer with separator for mixed queries
+   - Prepends general answer with separator for mixed queries (MCP/CLI)
+
+4. **[src/api/services/interpretation_service.py](src/api/services/interpretation_service.py#L217-L281)**
+   - Added `general_answer` parameter to `get_interpretation_only()`
+   - Prepends general answer for mixed queries (lines 268-270)
+   - Error handling: Still shows general answer even if interpretation fails (lines 277-279)
+
+5. **[src/api/server.py](src/api/server.py#L382-L403)**
+   - Extract `general_answer` from cache_entry (line 385)
+   - Pass `general_answer` to `get_interpretation_only()` (line 402)
+   - Added comment explaining mixed query handling (line 395)
 
 ---
 

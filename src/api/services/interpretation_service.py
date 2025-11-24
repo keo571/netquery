@@ -217,7 +217,8 @@ def select_visualization_fast(
 async def get_interpretation_only(
     query: str,
     results: List[Dict],
-    total_rows: Optional[int] = None
+    total_rows: Optional[int] = None,
+    general_answer: Optional[str] = None
 ) -> str:
     """
     Get LLM-powered interpretation ONLY (no visualization decision).
@@ -226,10 +227,13 @@ async def get_interpretation_only(
 
     SMART OPTIMIZATION: Skips LLM for trivial queries that don't need analysis.
 
+    For mixed queries, prepends the general answer before SQL interpretation.
+
     Args:
         query: Original natural language query
         results: Query results (list of dicts, up to 30 cached rows)
         total_rows: Total number of rows in the dataset (if known, up to 1000)
+        general_answer: General answer for mixed queries (prepended to interpretation)
 
     Returns:
         Markdown-formatted interpretation string
@@ -259,10 +263,21 @@ async def get_interpretation_only(
 
         # Get markdown response directly
         response = await llm.ainvoke(prompt)
-        return response.content.strip()
+        interpretation = response.content.strip()
+
+        # Prepend general answer for mixed queries
+        if general_answer:
+            return f"## Answer\n\n{general_answer}\n\n---\n\n{interpretation}"
+
+        return interpretation
 
     except Exception as e:
         logger.error(f"Error in LLM interpretation: {e}")
+
+        # If there's a general answer, still return it even if interpretation failed
+        if general_answer:
+            return f"## Answer\n\n{general_answer}\n\n---\n\nError generating data interpretation."
+
         return "Error generating interpretation. Please see results above."
 
 

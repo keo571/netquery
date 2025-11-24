@@ -382,6 +382,7 @@ async def interpret_results(query_id: str) -> InterpretationResponse:
         data = cache_entry["data"]
         total_count = cache_entry.get("total_count")
         query = cache_entry["original_query"]
+        general_answer = cache_entry.get("general_answer")
 
         # STEP 1: INSTANT visualization selection (no LLM, 0ms)
         from src.api.services.interpretation_service import select_visualization_fast
@@ -391,12 +392,14 @@ async def interpret_results(query_id: str) -> InterpretationResponse:
         visualization = select_visualization_fast(query, data, patterns)
 
         # STEP 2: LLM interpretation (runs async, slower but higher quality)
+        # For mixed queries, this will prepend the general answer
         from src.api.services.interpretation_service import get_interpretation_only
 
         interpretation = await get_interpretation_only(
             query=query,
             results=data,  # All cached data (≤MAX_CACHE_ROWS rows)
-            total_rows=total_count
+            total_rows=total_count,
+            general_answer=general_answer
         )
 
         # Data is truncated if total_count is None (>1000 rows) OR total_count > cache size
