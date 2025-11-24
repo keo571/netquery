@@ -1,8 +1,9 @@
 """
 Query rewriter for converting follow-up questions into standalone queries.
 
-This module handles the rewriting of ambiguous follow-up questions into
-self-contained queries that can be properly embedded for table selection.
+This module handles:
+1. Intent classification (sql/general/mixed) using LLM with JSON output
+2. Rewriting of ambiguous follow-up questions into self-contained queries
 
 Example:
     User asks: "Show me all servers"
@@ -10,164 +11,146 @@ Example:
 
     Rewriter output: "Show me all unhealthy servers"
 """
+import json
 import logging
 import re
-from typing import Optional
+from typing import Optional, Dict, Any
+from dataclasses import dataclass
 from ...common.config import config
 from ..utils.llm_utils import get_llm
 
 logger = logging.getLogger(__name__)
 
 
-def needs_rewriting(full_query: str, extracted_query: str) -> bool:
+def cleanup_json_response(text: str) -> str:
     """
-    Determine if a query needs rewriting.
+    Clean LLM response to extract valid JSON.
 
-    A query needs rewriting if:
-    1. It has conversation history (is a follow-up)
-    2. The extracted query is ambiguous (has pronouns, missing context)
-
-    Args:
-        full_query: Full query with conversation context
-        extracted_query: Extracted current question
+    Handles:
+    - Markdown code blocks (```json ... ```)
+    - Extra text before/after JSON
+    - Whitespace and formatting issues
 
     Returns:
-        True if rewriting is recommended
+        Cleaned JSON string ready for parsing
     """
-    # Check if this is a follow-up question (has conversation history)
-    has_history = "CONVERSATION HISTORY" in full_query or "USER'S NEW QUESTION" in full_query
+    # Remove markdown code blocks (```json or just ```)
+    text = re.sub(r'```(?:json)?\s*\n?', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\n?```\s*$', '', text)
 
-    if not has_history:
-        return False
+    # Find JSON object (in case LLM adds extra text)
+    # Look for outermost { ... }
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        return match.group(0).strip()
 
-    # Check for ambiguous patterns in extracted query
-    ambiguous_patterns = [
-        r'\b(which|those|these|them|they|it|its)\b',  # Pronouns
-        r'\b(more|other|also|too)\b',  # Continuation words
-        r'^(and|or|but)\b',  # Starting with conjunctions
-        r'\?$',  # Questions without clear subject
-    ]
-
-    extracted_lower = extracted_query.lower()
-    for pattern in ambiguous_patterns:
-        if re.search(pattern, extracted_lower):
-            logger.info(
-                f"Detected ambiguous follow-up query: '{extracted_query[:60]}...' "
-                f"(matched pattern: {pattern})"
-            )
-            return True
-
-    return False
+    return text.strip()
 
 
-def rewrite_follow_up_query(full_query: str, extracted_query: str) -> str:
+@dataclass
+class IntentClassification:
+    """Result of intent classification."""
+    intent: str  # "sql", "general", or "mixed"
+    sql_query: Optional[str] = None  # Rewritten SQL-relevant query (for sql/mixed)
+    general_answer: Optional[str] = None  # Direct answer for general questions
+
+
+def classify_intent(query: str, full_query: str = None, schema_summary: str = "") -> IntentClassification:
     """
-    Rewrite a follow-up question into a standalone query using LLM.
+    Classify query intent using LLM with JSON structured output.
 
-    This function takes a follow-up question with conversation context and
-    rewrites it into a self-contained question that includes all necessary context.
+    Determines if a query is:
+    - "sql": Requires database query (e.g., "List all servers")
+    - "general": General knowledge question (e.g., "What is a load balancer?")
+    - "mixed": Contains both (e.g., "What is DNS? Show all DNS records")
 
     Args:
-        full_query: Full query string with conversation history
-        extracted_query: The current follow-up question
+        query: The extracted user's query
+        full_query: Optional full query with conversation context
+        schema_summary: Optional schema context to help LLM understand what's in the DB
 
     Returns:
-        Rewritten standalone query
-
-    Example:
-        Input:
-            full_query = '''
-            CONVERSATION HISTORY:
-            Exchange 1:
-              User asked: Show me all servers
-              SQL query: SELECT * FROM servers
-            USER'S NEW QUESTION: which ones are unhealthy?
-            '''
-            extracted_query = "which ones are unhealthy?"
-
-        Output:
-            "Show me all unhealthy servers"
+        IntentClassification with intent type and appropriate responses
     """
-    # Extract conversation history for context
-    history_lines = []
-    for line in full_query.split('\n'):
-        if 'User asked:' in line:
-            prev_question = line.split('User asked:')[1].strip()
-            history_lines.append(f"Previous: {prev_question}")
+    schema_context = ""
+    if schema_summary:
+        schema_context = f"\nAvailable database tables: {schema_summary}"
 
-    context = "\n".join(history_lines) if history_lines else "No previous context"
+    # Extract conversation history if available
+    conversation_context = ""
+    if full_query and "CONVERSATION HISTORY" in full_query:
+        history_lines = []
+        for line in full_query.split('\n'):
+            if 'User asked:' in line:
+                prev_question = line.split('User asked:')[1].strip()
+                history_lines.append(f"- {prev_question}")
 
-    # Create rewriting prompt
-    prompt = f"""You are a query rewriter. Rewrite the follow-up question into a complete, standalone question.
+        if history_lines:
+            conversation_context = f"\n\nPrevious questions in this conversation:\n" + "\n".join(history_lines)
 
-{context}
+    prompt = f"""You are a network engineer AI assistant analyzing user queries.{schema_context}{conversation_context}
 
-Follow-up question: {extracted_query}
+Current query: "{query}"
 
-Instructions:
-- Rewrite the follow-up question to be self-contained
-- Include context from the previous question
-- Keep it concise (one sentence)
-- Do not add new requirements not in the follow-up
-- Output ONLY the rewritten question, nothing else
+CRITICAL: Your response must be ONLY valid JSON. No markdown, no explanations, no code blocks.
 
-Rewritten question:"""
+Classification rules:
+- "sql": Query asks for data from database (list, count, show, find, get records)
+- "general": Query asks for explanation or knowledge (what is X, how does Y work, explain Z)
+- "mixed": Query contains BOTH a general question AND a database query
+
+IMPORTANT: For sql_query field, you MUST:
+1. For standalone queries: Use the query as-is
+2. For follow-up queries: Rewrite into a complete standalone query using conversation context
+3. ALWAYS provide sql_query for "sql" and "mixed" intents (never null)
+
+Your response must be a single JSON object:
+{{"intent": "sql", "sql_query": "...", "general_answer": null}}
+
+Examples:
+- "Show all servers" → {{"intent": "sql", "sql_query": "Show all servers", "general_answer": null}}
+- "which are unhealthy?" (follow-up) → {{"intent": "sql", "sql_query": "Show all unhealthy servers", "general_answer": null}}
+- "remove column x" (follow-up) → {{"intent": "sql", "sql_query": "Show all servers excluding column x", "general_answer": null}}
+- "What is DNS?" → {{"intent": "general", "sql_query": null, "general_answer": "DNS (Domain Name System) is..."}}
+- "What is DNS? Show all DNS records" → {{"intent": "mixed", "sql_query": "Show all DNS records", "general_answer": "DNS is..."}}
+
+For mixed queries: extract the data request into sql_query, answer the knowledge part in general_answer.
+For sql queries: ALWAYS rewrite follow-ups into standalone queries, set general_answer to null.
+For general queries: provide helpful answer, set sql_query to null.
+
+JSON response:"""
 
     try:
         llm = get_llm()
         response = llm.invoke(prompt)
-        rewritten = response.content.strip()
+        response_text = response.content.strip()
 
-        # Clean up common LLM artifacts
-        rewritten = rewritten.strip('"\'')  # Remove quotes
-        rewritten = rewritten.split('\n')[0]  # Take first line only
+        # Clean up response (remove markdown, extract JSON)
+        cleaned_text = cleanup_json_response(response_text)
 
-        logger.info(
-            f"Rewrote follow-up query:\n"
-            f"  Original: '{extracted_query}'\n"
-            f"  Rewritten: '{rewritten}'"
+        result = json.loads(cleaned_text)
+
+        intent = result.get("intent", "sql").lower()
+        if intent not in ("sql", "general", "mixed"):
+            intent = "sql"  # Default to sql for safety
+
+        classification = IntentClassification(
+            intent=intent,
+            sql_query=result.get("sql_query"),
+            general_answer=result.get("general_answer")
         )
 
-        return rewritten
+        logger.info(f"Intent classification: {intent} for query: '{query[:50]}...'")
+        return classification
 
-    except Exception as e:
+    except json.JSONDecodeError as e:
         logger.warning(
-            f"Failed to rewrite query, using original: {e}\n"
-            f"  Query: '{extracted_query}'"
+            f"Failed to parse intent JSON, defaulting to sql.\n"
+            f"Error: {e}\n"
+            f"Raw response: {response_text[:200]}..."
         )
-        # Fallback: return original extracted query
-        return extracted_query
-
-
-def rewrite_if_needed(
-    full_query: str,
-    extracted_query: str,
-    cache_hit_type: Optional[str] = None
-) -> str:
-    """
-    Conditionally rewrite query only if needed.
-
-    Optimization: Skip rewriting if we have a full cache hit (have SQL).
-    Only rewrite for cache MISS or PARTIAL hit (need table selection).
-
-    Args:
-        full_query: Full query with conversation context
-        extracted_query: Extracted current question
-        cache_hit_type: 'full', 'partial', or None
-
-    Returns:
-        Rewritten query if needed, otherwise original extracted_query
-    """
-    # Fast path: Full cache hit means we have SQL, no need to rewrite
-    if cache_hit_type == 'full':
-        logger.debug("Full cache hit - skipping query rewriting")
-        return extracted_query
-
-    # Check if rewriting is needed
-    if not needs_rewriting(full_query, extracted_query):
-        logger.debug("Query does not need rewriting (standalone)")
-        return extracted_query
-
-    # Rewrite for accurate table selection
-    logger.info("Cache miss/partial for follow-up - rewriting query for accurate table selection")
-    return rewrite_follow_up_query(full_query, extracted_query)
+        # Default to treating as SQL query
+        return IntentClassification(intent="sql", sql_query=query)
+    except Exception as e:
+        logger.warning(f"Intent classification failed, defaulting to sql: {e}")
+        return IntentClassification(intent="sql", sql_query=query)
