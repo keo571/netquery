@@ -92,6 +92,8 @@ def _create_simple_response(state: TextToSQLState) -> Dict[str, Any]:
     Formats query results as table, generates optional chart, and exports to HTML.
     Used when show_explanation=False for faster responses.
 
+    For mixed queries, prepends the general answer before SQL results.
+
     Args:
         state: Pipeline state with query_results
 
@@ -108,6 +110,11 @@ def _create_simple_response(state: TextToSQLState) -> Dict[str, Any]:
     # Generate chart for visualization
     chart_html = generate_chart(query_results)
 
+    # Prepend general answer for mixed queries
+    general_section = ""
+    if state.get("general_answer"):
+        general_section = f"## Answer\n\n{state['general_answer']}\n\n---\n\n"
+
     # Format SQL section
     sql_section = _format_sql_section(state["generated_sql"])
 
@@ -115,7 +122,7 @@ def _create_simple_response(state: TextToSQLState) -> Dict[str, Any]:
     table_section = _format_results_section(display_results, total_count)
 
     # Create initial formatted response for HTML export
-    initial_formatted_response = f"{sql_section}{table_section}"
+    initial_formatted_response = f"{general_section}{sql_section}{table_section}"
 
     # Export to HTML if enabled
     html_export_path = _export_to_html_if_enabled(state, initial_formatted_response, chart_html)
@@ -128,7 +135,7 @@ def _create_simple_response(state: TextToSQLState) -> Dict[str, Any]:
         html_path=html_export_path
     )
 
-    formatted_response = f"{sql_section}{table_section}{performance_warning}{footer}"
+    formatted_response = f"{general_section}{sql_section}{table_section}{performance_warning}{footer}"
 
     return {
         "formatted_response": formatted_response,
@@ -138,7 +145,10 @@ def _create_simple_response(state: TextToSQLState) -> Dict[str, Any]:
 
 
 def _create_full_response(state: TextToSQLState) -> Dict[str, Any]:
-    """Create full response with LLM insights and reasoning."""
+    """Create full response with LLM insights and reasoning.
+
+    For mixed queries, prepends the general answer before SQL results.
+    """
     # Measure interpretation time
     start_time = time.time()
 
@@ -155,6 +165,11 @@ def _create_full_response(state: TextToSQLState) -> Dict[str, Any]:
     # Generate chart
     chart_html = generate_chart(state["query_results"])
 
+    # Prepend general answer for mixed queries
+    general_section = ""
+    if state.get("general_answer"):
+        general_section = f"## Answer\n\n{state['general_answer']}\n\n---\n\n"
+
     # Format sections
     sql_section = _format_sql_section(state["generated_sql"])
     reasoning_section = _format_reasoning_section(state.get("reasoning_log", []))
@@ -168,7 +183,7 @@ def _create_full_response(state: TextToSQLState) -> Dict[str, Any]:
     performance_warning = _format_performance_warning(total_results)
 
     # Create initial formatted response for HTML export
-    initial_formatted_response = f"""{sql_section}
+    initial_formatted_response = f"""{general_section}{sql_section}
 
 {reasoning_section}
 
@@ -189,7 +204,7 @@ def _create_full_response(state: TextToSQLState) -> Dict[str, Any]:
         html_path=html_export_path
     )
 
-    formatted_response = f"""{sql_section}
+    formatted_response = f"""{general_section}{sql_section}
 
 {reasoning_section}
 

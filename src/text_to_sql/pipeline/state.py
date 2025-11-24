@@ -30,15 +30,15 @@ class TextToSQLState(TypedDict):
     export_html: Optional[bool]
     execute: Optional[bool]  # Whether to execute the SQL query
 
-    # Triage
-    triage_passed: Optional[bool]  # Whether query passed triage check
+    # Intent Classification (replaces triage)
+    intent: Optional[str]  # "sql", "general", or "mixed"
+    general_answer: Optional[str]  # Direct answer for general questions
+    sql_query: Optional[str]  # SQL-relevant query extracted/rewritten by intent classifier
     schema_overview: Optional[Dict[str, Any]]  # Schema overview for helpful suggestions
 
     # Cache Lookup
-    query_cache: Optional[Any]  # QueryEmbeddingCache instance (shared across pipeline)
-    cache_hit_type: Optional[str]  # 'full', 'partial', or None
-    cached_sql: Optional[str]  # Cached SQL (if full cache hit)
-    cached_embedding: Optional[List[float]]  # Cached embedding (if any cache hit)
+    sql_cache: Optional[Any]  # SQLCache instance (shared across pipeline)
+    cache_hit_type: Optional[str]  # "full" if cache hit, None if miss
     extracted_query: Optional[str]  # Current query extracted from conversation context
     query_for_embedding: Optional[str]  # Query to use for embedding (may be rewritten for follow-ups)
 
