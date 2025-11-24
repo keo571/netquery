@@ -22,14 +22,16 @@ class SchemaAnalyzer:
 
     def __init__(self, canonical_schema_path: Optional[str] = None,
                  db_toolkit: Optional[GenericDatabaseToolkit] = None,
-                 query_cache: Optional[Any] = None):
+                 embedding_store = None,
+                 embedding_service = None):
         """
         Initialize the analyzer with embedding support (required).
 
         Args:
             canonical_schema_path: Path to canonical schema file
             db_toolkit: Database toolkit instance (uses default if None)
-            query_cache: Optional query cache instance (shared across pipeline)
+            embedding_store: Pre-configured embedding store (avoids creating new one)
+            embedding_service: Pre-configured embedding service
         """
         self.canonical_schema: Optional[CanonicalSchema] = None
         if canonical_schema_path:
@@ -42,12 +44,13 @@ class SchemaAnalyzer:
                 "Provide canonical_schema_path or set CANONICAL_SCHEMA_PATH."
             )
 
-        # Pass query cache to semantic finder (if provided)
+        # Create semantic finder with provided stores to avoid creating duplicates
         self.semantic_finder = SemanticTableFinder(
             model_name=os.getenv("EMBEDDING_MODEL", "gemini-embedding-001"),
             cache_dir=os.getenv("EMBEDDING_CACHE_DIR", ".embeddings_cache"),
             canonical_schema=self.canonical_schema,
-            query_cache=query_cache
+            embedding_store=embedding_store,
+            embedding_service=embedding_service
         )
 
         # Dependency injection: use provided toolkit or get default
@@ -80,28 +83,27 @@ class SchemaAnalyzer:
             logger.error(f"Failed to load canonical schema: {exc}")
             self.canonical_schema = None
     
-    def analyze_schema(self, query: str, cached_embedding: Optional[list] = None) -> Dict[str, Any]:
+    def analyze_schema(self, query: str) -> Dict[str, Any]:
         """
         Analyze schema using embeddings for semantic table selection.
 
         Args:
             query: Natural language query
-            cached_embedding: Pre-computed embedding (if available from cache)
 
         Returns:
             Dictionary with analysis results
         """
         logger.info(f"Analyzing schema for: {query[:100]}...")
 
-        # Find relevant tables using embeddings (use cached if available)
-        relevant_results = self._find_relevant_tables(query, cached_embedding)
+        # Find relevant tables using embeddings
+        relevant_results = self._find_relevant_tables(query)
         
         # If no relevant tables found, treat as analysis error
         if not relevant_results:
             logger.info(f"No relevant tables found for query: {query[:30]}...")
             
             # Get available tables for error message
-            all_tables = list(self.semantic_finder.table_embeddings.keys())
+            all_tables = list(self.semantic_finder.canonical_schema.tables.keys())
             table_list = ", ".join(all_tables[:8])
             if len(all_tables) > 8:
                 table_list += f" (and {len(all_tables) - 8} more)"
@@ -130,13 +132,12 @@ class SchemaAnalyzer:
             "relevance_scores": relevance_scores,
         }
     
-    def _find_relevant_tables(self, query: str, cached_embedding: Optional[list] = None):
+    def _find_relevant_tables(self, query: str):
         """Find tables relevant to the query using embeddings."""
         return self.semantic_finder.find_relevant_tables(
             query=query,
             max_tables=config.pipeline.max_relevant_tables,
-            threshold=config.pipeline.relevance_threshold,
-            cached_embedding=cached_embedding
+            threshold=config.pipeline.relevance_threshold
         )
 
     def _is_uuid_column(self, col: dict, canonical_table: Optional[Any]) -> bool:
@@ -165,40 +166,32 @@ class SchemaAnalyzer:
 
         return False
 
-    def _format_column_line(self, col: dict, canonical_table: Optional[Any]) -> str:
+    def _format_column_line_from_canonical(self, col_schema) -> str:
         """
-        Format a single column line for schema context.
+        Format a single column line from canonical schema (pure canonical approach).
 
         Args:
-            col: Column info dictionary from database
-            canonical_table: Optional canonical schema table
+            col_schema: ColumnSchema object from canonical schema
 
         Returns:
             Formatted column line string
         """
-        is_uuid = self._is_uuid_column(col, canonical_table)
+        # Build column type and attributes from canonical schema
+        col_line = f"  - {col_schema.name} ({col_schema.data_type}"
 
-        # Build column type and attributes
-        col_line = f"  - {col['name']} ({col['type']}"
-
-        if col.get('nullable') is False:
+        if not col_schema.is_nullable:
             col_line += ", NOT NULL"
-        if col.get('primary_key'):
-            col_line += ", PRIMARY KEY"
-        if col.get('foreign_keys'):
-            col_line += ", FOREIGN KEY"
-
-        # Mark UUID columns for analytics use case
-        if is_uuid:
-            col_line += ", UUID - for JOINs only, do not SELECT"
 
         col_line += ")"
 
-        # Add description from canonical schema if available
-        if canonical_table and col['name'] in canonical_table.columns:
-            description = canonical_table.columns[col['name']].description
-            if description and not description.startswith("Column:"):
-                col_line += f" - {description}"
+        # Add description
+        if col_schema.description and not col_schema.description.startswith("Column:"):
+            col_line += f" - {col_schema.description}"
+
+        # Add sample values if available
+        if col_schema.sample_values:
+            samples_str = ", ".join(str(v) for v in col_schema.sample_values[:5])  # Limit to 5
+            col_line += f" (examples: {samples_str})"
 
         return col_line
     def _expand_tables_via_relationships(self, relevant_tables: list, relevance_scores: dict) -> set:
@@ -281,13 +274,9 @@ class SchemaAnalyzer:
             semantic_tables=semantic_tables
         )
 
-        # Add relevance scores to context
+        # Add relevance scores header if available
         if relevance_scores:
-            score_context = "\n\nTable Relevance Scores:\n"
-            for table in relevant_tables[:5]:
-                score = relevance_scores.get(table, 0)
-                score_context += f"- {table}: {score:.1%} relevant\n"
-            schema_context = score_context + "\n" + schema_context
+            schema_context = self._add_relevance_scores_header(relevant_tables, relevance_scores) + schema_context
 
         logger.info(
             f"Schema context: {len(expanded_tables)} tables, "
@@ -295,6 +284,23 @@ class SchemaAnalyzer:
         )
 
         return schema_context
+
+    def _add_relevance_scores_header(self, relevant_tables: list, relevance_scores: dict) -> str:
+        """
+        Format relevance scores as context header.
+
+        Args:
+            relevant_tables: List of table names
+            relevance_scores: Dict mapping table names to relevance scores (0-1)
+
+        Returns:
+            Formatted string with top 5 relevance scores
+        """
+        score_lines = ["\n\nTable Relevance Scores:"]
+        for table in relevant_tables[:5]:
+            score = relevance_scores.get(table, 0)
+            score_lines.append(f"- {table}: {score:.1%} relevant")
+        return "\n".join(score_lines) + "\n\n"
     
     def _format_schema_for_llm(self, table_names: list, semantic_tables: set) -> tuple[str, int]:
         """
@@ -314,8 +320,10 @@ class SchemaAnalyzer:
         max_tokens = config.pipeline.max_schema_tokens
         current_tokens = 0
 
-        # OPTIMIZATION: Fetch all table info in parallel (major speedup!)
-        all_table_info = self.db_toolkit.get_multiple_table_info(table_names)
+        # PURE CANONICAL SCHEMA APPROACH:
+        # All table/column info comes from canonical schema JSON.
+        # No database introspection during SQL generation.
+        # Drift detection at startup ensures canonical schema matches database.
 
         for table_name in table_names:
             # Check token budget before adding table
@@ -327,48 +335,30 @@ class SchemaAnalyzer:
                 )
                 break
 
-            table_info = all_table_info.get(table_name, {})
-            canonical_table = None
-            if self.canonical_schema and table_name in self.canonical_schema.tables:
-                canonical_table = self.canonical_schema.tables[table_name]
+            # Get table schema from canonical schema
+            if not self.canonical_schema or table_name not in self.canonical_schema.tables:
+                logger.warning(f"Table {table_name} not found in canonical schema, skipping")
+                continue
+
+            canonical_table = self.canonical_schema.tables[table_name]
 
             table_parts = []
             table_parts.append(f"\n## Table: {table_name}")
+            table_parts.append(f"Description: {canonical_table.description}")
 
-            # Only include row count if configured and available
-            row_count = table_info.get('row_count')
-            if row_count is not None:
-                table_parts.append(f"Rows: {row_count}")
+            # Show explicit JOIN paths to help LLM generate correct SQL
+            if canonical_table.relationships:
+                table_parts.append("Relationships:")
+                for rel in canonical_table.relationships:
+                    join_hint = f"  - JOIN {rel.referenced_table} ON {table_name}.{rel.foreign_key_column} = {rel.referenced_table}.{rel.referenced_column}"
+                    table_parts.append(join_hint)
 
-            if canonical_table:
-                table_parts.append(f"Description: {canonical_table.description}")
-                if canonical_table.relationships:
-                    related = sorted({rel.referenced_table for rel in canonical_table.relationships})
-                    if related:
-                        table_parts.append(f"Related tables: {', '.join(related)}")
-
-            columns = table_info.get('columns', [])
-            if columns:
+            # Add columns from canonical schema
+            if canonical_table.columns:
                 table_parts.append("Columns:")
-                for col in columns:
-                    col_line = self._format_column_line(col, canonical_table)
+                for col_name, col_schema in canonical_table.columns.items():
+                    col_line = self._format_column_line_from_canonical(col_schema)
                     table_parts.append(col_line)
-
-            # SPEED OPTIMIZATION: Only include sample data for semantically matched tables
-            # FK-expanded tables get schema only (saves ~300 tokens per table)
-            include_samples = (
-                config.pipeline.include_sample_data
-                and table_name in semantic_tables
-            )
-
-            if include_samples:
-                # Reuse sample data already fetched in get_multiple_table_info()
-                # instead of making another DB call
-                sample_data = table_info.get('sample_data', [])
-                if sample_data:
-                    table_parts.append("Sample data:")
-                    for i, row in enumerate(sample_data, 1):
-                        table_parts.append(f"  {i}. {row}")
 
             # Estimate tokens for this table (rough: 1 token ~= 4 characters)
             table_text = "\n".join(table_parts)
@@ -383,44 +373,23 @@ class SchemaAnalyzer:
         return final_schema, final_tokens
 
 
-# Global instance cache
-_analyzer_cache: Dict[tuple, SchemaAnalyzer] = {}
-
-
 def get_analyzer(
     canonical_schema_path: Optional[str] = None,
     db_toolkit: Optional[GenericDatabaseToolkit] = None,
-    query_cache: Optional[Any] = None
+    embedding_store = None,
+    embedding_service = None
 ) -> SchemaAnalyzer:
     """
-    Get or create the analyzer instance (cached by schema path).
+    Get the analyzer instance from AppContext.
 
-    Note: We don't cache by query_cache because it's a shared global instance.
-
-    Args:
-        canonical_schema_path: Path to canonical schema
-        db_toolkit: Optional database toolkit (for dependency injection)
-        query_cache: Optional query cache (shared across pipeline)
+    Note: Parameters are kept for backward compatibility but are ignored.
+    The analyzer is now managed by AppContext with resources initialized at startup.
 
     Returns:
-        Cached or new SchemaAnalyzer instance
+        Cached SchemaAnalyzer instance from AppContext
     """
-    global _analyzer_cache
-
-    # Use cache key based on canonical_schema_path
-    cache_key = (canonical_schema_path,)
-
-    if cache_key not in _analyzer_cache:
-        _analyzer_cache[cache_key] = SchemaAnalyzer(
-            canonical_schema_path=canonical_schema_path,
-            db_toolkit=db_toolkit,
-            query_cache=query_cache
-        )
-    elif query_cache and _analyzer_cache[cache_key].semantic_finder.query_cache != query_cache:
-        # Update the query cache if it changed (though it shouldn't in practice)
-        _analyzer_cache[cache_key].semantic_finder.query_cache = query_cache
-
-    return _analyzer_cache[cache_key]
+    from ....api.app_context import AppContext
+    return AppContext.get_instance().get_schema_analyzer()
 
 
 def schema_analyzer(state: TextToSQLState) -> Dict[str, Any]:
@@ -455,25 +424,17 @@ def schema_analyzer(state: TextToSQLState) -> Dict[str, Any]:
     resolved_path = _resolve_schema_path(state.get("canonical_schema_path"))
     canonical_schema_path = str(resolved_path) if resolved_path else None
 
-    # Get cached embedding if available (from partial cache hit)
-    cached_embedding = state.get("cached_embedding")
-
-    # Get query cache from state (initialized by cache_lookup node)
-    query_cache = state.get("query_cache")
-
     try:
         # Measure schema analysis time
         start_time = time.time()
 
-        # Analyze schema using embeddings (use cached embedding if available)
+        # Analyze schema using embeddings
         # Use extracted_query for embedding to ensure consistency
         analyzer = get_analyzer(
-            canonical_schema_path=canonical_schema_path,
-            query_cache=query_cache
+            canonical_schema_path=canonical_schema_path
         )
         analysis_result = analyzer.analyze_schema(
-            query=query_for_embedding,  # Use extracted query for embedding/table selection
-            cached_embedding=cached_embedding
+            query=query_for_embedding  # Use extracted query for embedding/table selection
         )
 
         schema_analysis_time_ms = (time.time() - start_time) * 1000

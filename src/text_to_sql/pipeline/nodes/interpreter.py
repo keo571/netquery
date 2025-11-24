@@ -6,7 +6,7 @@ import logging
 import time
 
 from ..state import TextToSQLState
-from ...prompts import create_result_interpretation_prompt
+from ...prompts._shared import create_interpretation_prompt
 from ...utils.llm_utils import get_llm
 from ...utils.chart_generator import generate_chart
 from ...utils.html_exporter import export_to_html
@@ -63,7 +63,18 @@ def _export_to_html_if_enabled(state: TextToSQLState, formatted_response: str,
 
 
 def interpreter(state: TextToSQLState) -> Dict[str, Any]:
-    """Format final response with query results."""
+    """
+    Format final response with query results and optional LLM insights.
+
+    Routes to either full response (with reasoning/chart/HTML) or simple response
+    based on show_explanation flag. Handles pre-set error responses.
+
+    Args:
+        state: Current pipeline state with query_results and show_explanation flag
+
+    Returns:
+        Dict with formatted_response and optional chart_html/csv_export_path
+    """
     # Check for pre-set response from error handling
     if state.get("final_response"):
         return {"formatted_response": state["final_response"]}
@@ -75,7 +86,18 @@ def interpreter(state: TextToSQLState) -> Dict[str, Any]:
 
 
 def _create_simple_response(state: TextToSQLState) -> Dict[str, Any]:
-    """Create simple response without reasoning."""
+    """
+    Create simple response without reasoning or LLM insights.
+
+    Formats query results as table, generates optional chart, and exports to HTML.
+    Used when show_explanation=False for faster responses.
+
+    Args:
+        state: Pipeline state with query_results
+
+    Returns:
+        Dict with formatted_response, chart_html, and csv_export_path
+    """
     query_results = state["query_results"] or []
     display_results = query_results[:10]
     total_count = len(query_results)
@@ -122,7 +144,7 @@ def _create_full_response(state: TextToSQLState) -> Dict[str, Any]:
 
     # Generate insights
     llm = get_llm()
-    prompt = create_result_interpretation_prompt(
+    prompt = create_interpretation_prompt(
         query=state["original_query"],
         results=state["query_results"],
         sql_query=state["generated_sql"]

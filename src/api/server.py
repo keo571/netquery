@@ -29,7 +29,7 @@ load_environment()
 from src.common.database.engine import get_engine
 from src.common.schema_summary import get_schema_overview
 from src.text_to_sql.pipeline.graph import text_to_sql_graph
-from src.api.services import get_interpretation
+from src.api.app_context import initialize_app_context, cleanup_app_context
 
 # ================================
 # CONFIGURATION & SETUP
@@ -45,10 +45,16 @@ logger = logging.getLogger(__name__)
 
 # In-memory cache for query results
 query_cache: Dict[str, Dict[str, Any]] = {}
-CACHE_TTL = 600  # 10 minutes default
 
 # Import from centralized constants
-from src.common.constants import MAX_CACHE_ROWS, PREVIEW_ROWS
+from src.common.constants import (
+    MAX_CACHE_ROWS,
+    PREVIEW_ROWS,
+    CACHE_TTL_SECONDS,
+    CACHE_CLEANUP_INTERVAL_SECONDS,
+    CSV_CHUNK_SIZE,
+    LARGE_RESULT_SET_THRESHOLD
+)
 
 def get_cache_entry(query_id: str) -> Dict[str, Any]:
     """Get cache entry or raise 404 if not found."""
@@ -65,30 +71,47 @@ async def cleanup_expired_cache():
             expired_keys = []
 
             for query_id, cache_entry in query_cache.items():
-                if current_time - cache_entry["timestamp"] > timedelta(seconds=CACHE_TTL):
+                if current_time - cache_entry["timestamp"] > timedelta(seconds=CACHE_TTL_SECONDS):
                     expired_keys.append(query_id)
 
             for key in expired_keys:
                 del query_cache[key]
                 logger.info(f"Cleaned up expired cache entry: {key}")
 
-            await asyncio.sleep(60)  # Check every minute
+            await asyncio.sleep(CACHE_CLEANUP_INTERVAL_SECONDS)
         except Exception as e:
             logger.error(f"Error in cache cleanup: {e}")
-            await asyncio.sleep(60)
+            await asyncio.sleep(CACHE_CLEANUP_INTERVAL_SECONDS)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
     # Startup
+    logger.info("Starting up application...")
+
+    # Initialize all AppContext resources eagerly
+    initialize_app_context()
+
+    # Start cache cleanup task
     cleanup_task = asyncio.create_task(cleanup_expired_cache())
+
+    logger.info("Application startup complete")
+
     yield
+
     # Shutdown
+    logger.info("Shutting down application...")
+
     cleanup_task.cancel()
     try:
         await cleanup_task
     except asyncio.CancelledError:
         pass
+
+    # Clean up AppContext resources
+    cleanup_app_context()
+
+    logger.info("Application shutdown complete")
 
 # ================================
 # FASTAPI APP SETUP
@@ -103,9 +126,11 @@ app = FastAPI(
 )
 
 # Add CORS middleware for React frontend
+# Allow multiple origins from environment variable (comma-separated)
+cors_origins = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # React dev server
+    allow_origins=[origin.strip() for origin in cors_origins],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -121,17 +146,21 @@ class GenerateSQLRequest(BaseModel):
 
 class GenerateSQLResponse(BaseModel):
     query_id: str = Field(..., description="Unique query identifier")
-    sql: str = Field(..., description="Generated SQL query")
+    sql: Optional[str] = Field(None, description="Generated SQL query (null for general questions)")
     original_query: str = Field(..., description="Original natural language query")
+    intent: Optional[str] = Field(None, description="Query intent: sql, general, or mixed")
+    general_answer: Optional[str] = Field(None, description="Direct answer for general/mixed questions")
 
 class PreviewResponse(BaseModel):
     data: List[Dict[str, Any]] = Field(..., description=f"First {PREVIEW_ROWS} rows of results")
-    total_count: Optional[int] = Field(None, description="Exact count if ≤1000 rows, None if >1000")
+    total_count: Optional[int] = Field(None, description=f"Exact count if ≤{LARGE_RESULT_SET_THRESHOLD} rows, None if >{LARGE_RESULT_SET_THRESHOLD}")
     columns: List[str] = Field(..., description="Column names")
     truncated: bool = Field(..., description=f"Whether preview was truncated to {PREVIEW_ROWS} rows")
+    intent: Optional[str] = Field(None, description="Query intent: sql, general, or mixed")
+    general_answer: Optional[str] = Field(None, description="Direct answer for general/mixed questions")
 
 class InterpretationResponse(BaseModel):
-    interpretation: Dict[str, Any] = Field(..., description="Interpretation results")
+    interpretation: str = Field(..., description="Markdown-formatted interpretation")
     visualization: Optional[Dict[str, Any]] = Field(None, description="Single best chart specification")
     data_truncated: bool = Field(..., description="Whether data was truncated for interpretation")
 
@@ -140,6 +169,7 @@ class SchemaOverviewTable(BaseModel):
     name: str
     description: str
     key_columns: List[str] = Field(default_factory=list)
+    columns: List[Dict[str, str]] = Field(default_factory=list)
     related_tables: List[str] = Field(default_factory=list)
 
 
@@ -154,9 +184,14 @@ class SchemaOverviewResponse(BaseModel):
 
 
 @app.get("/api/schema/overview", response_model=SchemaOverviewResponse)
-async def schema_overview() -> SchemaOverviewResponse:
-    """Return a high-level overview of available tables and sample prompts."""
-    overview = get_schema_overview()
+async def schema_overview(database: str = "sample") -> SchemaOverviewResponse:
+    """
+    Return a high-level overview of available tables and sample prompts.
+
+    Args:
+        database: Database name (e.g., 'sample', 'neila') - defaults to 'sample'
+    """
+    overview = get_schema_overview(database=database)
     tables = overview.get("tables", [])
     if not tables:
         detail = overview.get("error") or {
@@ -189,18 +224,20 @@ async def generate_sql(request: GenerateSQLRequest) -> GenerateSQLResponse:
 
         generated_sql = result.get("generated_sql")
 
+        intent = result.get("intent")
+        general_answer = result.get("general_answer")
+
         if not generated_sql:
-            # Check if this was a triage failure (non-database question)
-            if result.get("triage_passed") is False:
-                # Return the helpful triage message with schema overview
-                schema_overview = result.get("schema_overview") or get_schema_overview()
-                detail_payload = {
-                    "message": result.get("final_response") or "This doesn't appear to be a database query.",
-                    "type": "triage_rejection",
-                    "reason": result.get("execution_error"),
-                    "schema_overview": schema_overview,
-                    "suggested_queries": schema_overview.get("suggested_queries", []) if schema_overview else []
-                }
+            # Check if this was a general question (not needing SQL)
+            if intent == "general":
+                # Return the direct answer for general questions
+                return GenerateSQLResponse(
+                    query_id=query_id,
+                    sql=None,
+                    original_query=request.query,
+                    intent="general",
+                    general_answer=general_answer or result.get("final_response")
+                )
             else:
                 # Regular SQL generation failure
                 overview = result.get("schema_overview") or get_schema_overview()
@@ -218,6 +255,8 @@ async def generate_sql(request: GenerateSQLRequest) -> GenerateSQLResponse:
         query_cache[query_id] = {
             "sql": generated_sql,
             "original_query": request.query,
+            "intent": intent,
+            "general_answer": general_answer,
             "data": None,  # No data yet
             "total_count": None,
             "timestamp": datetime.now()
@@ -226,7 +265,9 @@ async def generate_sql(request: GenerateSQLRequest) -> GenerateSQLResponse:
         return GenerateSQLResponse(
             query_id=query_id,
             sql=generated_sql,
-            original_query=request.query
+            original_query=request.query,
+            intent=intent or "sql",  # Default to "sql" if not set
+            general_answer=general_answer  # Will be None for pure SQL, set for mixed
         )
 
     except HTTPException:
@@ -254,7 +295,9 @@ async def execute_and_preview(query_id: str) -> PreviewResponse:
                 data=data[:PREVIEW_ROWS],
                 total_count=cache_entry["total_count"],
                 columns=list(data[0].keys()) if data else [],
-                truncated=len(data) > PREVIEW_ROWS
+                truncated=len(data) > PREVIEW_ROWS,
+                intent=cache_entry.get("intent"),
+                general_answer=cache_entry.get("general_answer")
             )
 
         # Execute the query
@@ -263,19 +306,18 @@ async def execute_and_preview(query_id: str) -> PreviewResponse:
         sql = sql.rstrip(';')
         engine = get_engine()
 
-        # Check if there's more data than 1000 rows for counting
+        # Check if there's more data than LARGE_RESULT_SET_THRESHOLD rows for counting
         # This is MUCH faster than counting all rows
-        count_limit = 1000
-        check_more_sql = f"SELECT 1 FROM ({sql}) as sq LIMIT {count_limit + 1}"
+        check_more_sql = f"SELECT 1 FROM ({sql}) as sq LIMIT {LARGE_RESULT_SET_THRESHOLD + 1}"
         with engine.connect() as conn:
             check_results = conn.execute(text(check_more_sql)).fetchall()
-            has_more_than_count_limit = len(check_results) > count_limit
+            has_more_than_threshold = len(check_results) > LARGE_RESULT_SET_THRESHOLD
 
-            # Set total_count based on 1000 row limit
-            if has_more_than_count_limit:
-                total_count = None  # We don't know the exact count (>1000)
+            # Set total_count based on LARGE_RESULT_SET_THRESHOLD
+            if has_more_than_threshold:
+                total_count = None  # We don't know the exact count (>threshold)
             else:
-                total_count = len(check_results)  # Exact count ≤1000
+                total_count = len(check_results)  # Exact count ≤threshold
 
         # Fetch up to MAX_CACHE_ROWS rows for actual data
         # Check if SQL already has a LIMIT clause
@@ -293,7 +335,7 @@ async def execute_and_preview(query_id: str) -> PreviewResponse:
         data = [dict(zip(columns, row)) for row in rows]
 
         # Format data for better display (import the function)
-        from .data_utils import format_data_for_display
+        from .services.data_utils import format_data_for_display
         data = format_data_for_display(data)
 
         # Update cache
@@ -305,7 +347,9 @@ async def execute_and_preview(query_id: str) -> PreviewResponse:
             data=data[:PREVIEW_ROWS],
             total_count=total_count,
             columns=columns,
-            truncated=len(data) > PREVIEW_ROWS
+            truncated=len(data) > PREVIEW_ROWS,
+            intent=cache_entry.get("intent"),
+            general_answer=cache_entry.get("general_answer")
         )
 
     except Exception as e:
@@ -315,10 +359,14 @@ async def execute_and_preview(query_id: str) -> PreviewResponse:
 @app.post("/api/interpret/{query_id}", response_model=InterpretationResponse)
 async def interpret_results(query_id: str) -> InterpretationResponse:
     """
-    Interpret cached results using LLM.
+    Interpret cached results with FAST visualization + async LLM interpretation.
+
+    PERFORMANCE OPTIMIZED:
+    - Visualization: Selected locally (0ms, no LLM) using pre-computed patterns
+    - Interpretation: LLM-powered insights (async, runs in background)
+    - Users see visualization INSTANTLY, interpretation arrives when ready
 
     IMPORTANT: Uses ONLY the MAX_CACHE_ROWS cached rows - does NOT re-execute SQL.
-    Both interpretation and visualization are limited to the cached data.
     """
     try:
         # Check cache
@@ -333,22 +381,30 @@ async def interpret_results(query_id: str) -> InterpretationResponse:
 
         data = cache_entry["data"]
         total_count = cache_entry.get("total_count")
+        query = cache_entry["original_query"]
 
-        # Get LLM-powered interpretation
-        interpretation_result = await get_interpretation(
-            query=cache_entry["original_query"],
+        # STEP 1: INSTANT visualization selection (no LLM, 0ms)
+        from src.api.services.interpretation_service import select_visualization_fast
+        from src.api.services.data_utils import analyze_data_patterns
+
+        patterns = analyze_data_patterns(data) if data else {}
+        visualization = select_visualization_fast(query, data, patterns)
+
+        # STEP 2: LLM interpretation (runs async, slower but higher quality)
+        from src.api.services.interpretation_service import get_interpretation_only
+
+        interpretation = await get_interpretation_only(
+            query=query,
             results=data,  # All cached data (≤MAX_CACHE_ROWS rows)
             total_rows=total_count
         )
-
-        # No need to add warning here - frontend will handle based on data_truncated flag
 
         # Data is truncated if total_count is None (>1000 rows) OR total_count > cache size
         data_truncated = total_count is None or (total_count and total_count > MAX_CACHE_ROWS)
 
         return InterpretationResponse(
-            interpretation=interpretation_result["interpretation"],
-            visualization=interpretation_result["visualization"],
+            interpretation=interpretation,
+            visualization=visualization,
             data_truncated=data_truncated
         )
 
@@ -371,10 +427,9 @@ async def download_csv(query_id: str):
             engine = get_engine()
             with engine.connect() as conn:
                 # Use pandas to read SQL in chunks and write to CSV
-                chunk_size = 1000
                 first_chunk = True
 
-                for chunk_df in pd.read_sql(sql, conn, chunksize=chunk_size):
+                for chunk_df in pd.read_sql(sql, conn, chunksize=CSV_CHUNK_SIZE):
                     # Convert chunk to CSV
                     csv_buffer = StringIO()
                     chunk_df.to_csv(csv_buffer, index=False, header=first_chunk)

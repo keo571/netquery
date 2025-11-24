@@ -22,7 +22,24 @@ def adapt_sql_for_database(sql_query: str, database_url: str) -> str:
 
 
 def clean_sql_query(sql_query: str) -> str:
-    """Clean and normalize SQL query."""
+    """
+    Clean and normalize SQL query from LLM output.
+
+    Performs the following operations:
+    - Strips whitespace and removes comments
+    - Normalizes multiple spaces to single space
+    - Extracts SELECT statement if embedded in text
+    - Ensures query ends with semicolon
+
+    Args:
+        sql_query: Raw SQL query string from LLM
+
+    Returns:
+        Cleaned and normalized SQL query
+
+    Raises:
+        ValueError: If query is empty or contains no SELECT statement
+    """
     if not sql_query or not sql_query.strip():
         raise ValueError("Empty SQL query")
     

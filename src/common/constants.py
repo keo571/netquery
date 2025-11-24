@@ -20,6 +20,11 @@ ICON_HTML = "🌐"
 # Performance thresholds
 LARGE_RESULT_SET_THRESHOLD = 1000
 
+# Cache and timing configuration
+CACHE_TTL_SECONDS = 600  # 10 minutes
+CACHE_CLEANUP_INTERVAL_SECONDS = 60  # Check every minute
+CSV_CHUNK_SIZE = 1000  # Rows per chunk for CSV streaming
+
 # Aggregation column names (lowercase)
 AGGREGATION_COLUMN_NAMES = frozenset(['count', 'sum', 'avg', 'total', 'amount'])
 

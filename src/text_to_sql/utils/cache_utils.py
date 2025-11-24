@@ -1,14 +1,18 @@
 """
 Utility functions for cache management.
 
-These functions provide convenient access to the query cache for
+These functions provide convenient access to the SQL cache for
 external use (e.g., by the chat adapter BFF layer).
 """
 import logging
-from typing import Optional
-from ..pipeline.nodes.cache_lookup import _get_query_cache
+from ...api.app_context import AppContext
 
 logger = logging.getLogger(__name__)
+
+
+def _get_sql_cache():
+    """Get SQL cache from AppContext."""
+    return AppContext.get_instance().get_sql_cache()
 
 
 def invalidate_query_cache(user_question: str) -> bool:
@@ -34,7 +38,7 @@ def invalidate_query_cache(user_question: str) -> bool:
             logger.info("Cache invalidated - next query will generate fresh SQL")
     """
     try:
-        cache = _get_query_cache()
+        cache = _get_sql_cache()
         result = cache.invalidate(user_question)
 
         if result:
@@ -51,7 +55,7 @@ def invalidate_query_cache(user_question: str) -> bool:
 
 def clear_all_cache() -> int:
     """
-    Clear entire query cache.
+    Clear entire SQL cache.
 
     Useful for admin/debugging purposes.
 
@@ -59,7 +63,7 @@ def clear_all_cache() -> int:
         Number of entries deleted
     """
     try:
-        cache = _get_query_cache()
+        cache = _get_sql_cache()
         count = cache.clear()
         logger.info(f"✅ Cleared entire cache: {count} entries deleted")
         return count
@@ -77,7 +81,7 @@ def get_cache_stats() -> dict:
         Dictionary with cache stats (total entries, total hits, top queries)
     """
     try:
-        cache = _get_query_cache()
+        cache = _get_sql_cache()
         stats = cache.get_stats()
         return stats
 
