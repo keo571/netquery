@@ -10,60 +10,45 @@ LOGGER = logging.getLogger(__name__)
 
 
 def load_environment() -> Optional[Path]:
-    """Load environment variables based on SCHEMA_ID, NETQUERY_ENV, or DOTENV_PATH.
+    """Load environment variables based on SCHEMA_ID.
 
-    Precedence:
-    1. DOTENV_PATH environment variable (explicit override)
-    2. NETQUERY_ENV or SCHEMA_ID environment variable (loads .env.<name>)
-    3. Fallback to .env if present, otherwise .env.dev, then default load.
+    Loading order:
+    1. SCHEMA_ID environment variable → loads .env.<schema_id> (e.g., .env.sample)
+    2. Falls back to .env if SCHEMA_ID not set
 
     Returns:
         Path to the dotenv file that was loaded, or None if nothing matched.
     """
-    explicit_path = os.getenv("DOTENV_PATH")
-    search_paths = []
-
-    if explicit_path:
-        search_paths.append(Path(explicit_path))
-
-    # Check both NETQUERY_ENV and SCHEMA_ID for environment name
-    configured_env = os.getenv("NETQUERY_ENV") or os.getenv("SCHEMA_ID")
-    if configured_env:
-        search_paths.append(Path(f".env.{configured_env}"))
-
-    # Fallbacks (skip duplicates while preserving order)
-    fallback_candidates = [Path(".env"), Path(".env.dev")]
-    for candidate in fallback_candidates:
-        if candidate not in search_paths:
-            search_paths.append(candidate)
-
+    schema_id = os.getenv("SCHEMA_ID")
     loaded_path: Optional[Path] = None
-    for path in search_paths:
-        if path.exists():
-            load_dotenv(dotenv_path=path)
-            loaded_path = path
-            LOGGER.info("Loaded environment variables from %s", path)
-            break
 
-    if loaded_path is None:
-        load_dotenv()
-        LOGGER.warning(
-            "No explicit dotenv file found; relying on default load order."
-        )
+    if schema_id:
+        # Load .env.<schema_id> (e.g., .env.sample, .env.neila)
+        env_file = Path(f".env.{schema_id}")
+        if env_file.exists():
+            load_dotenv(dotenv_path=env_file)
+            loaded_path = env_file
+            LOGGER.info("Loaded environment from %s", env_file)
+        else:
+            LOGGER.warning("SCHEMA_ID=%s but %s not found", schema_id, env_file)
+    else:
+        # Fall back to .env
+        env_file = Path(".env")
+        if env_file.exists():
+            load_dotenv(dotenv_path=env_file)
+            loaded_path = env_file
+            LOGGER.info("Loaded environment from %s", env_file)
+        else:
+            LOGGER.warning("No .env file found and SCHEMA_ID not set")
 
-    # Determine the active environment after loading dotenv values
-    env_name = os.getenv("NETQUERY_ENV")
-    if not env_name and loaded_path and loaded_path.name.startswith(".env."):
-        env_name = loaded_path.name.split(".env.", 1)[1]
-    env_name = env_name or configured_env or "dev"
+    # Set SCHEMA_ID from loaded file if not already set
+    if not schema_id and loaded_path:
+        schema_id = os.getenv("SCHEMA_ID", "sample")
+        os.environ.setdefault("SCHEMA_ID", schema_id)
 
-    os.environ.setdefault("NETQUERY_ENV", env_name)
-
-    if "SCHEMA_ID" not in os.environ:
-        os.environ["SCHEMA_ID"] = env_name
-
-    if "CANONICAL_SCHEMA_PATH" not in os.environ:
-        canonical_candidate = Path("schema_files") / f"{env_name}_schema.json"
+    # Auto-detect canonical schema path if not set
+    if schema_id and "CANONICAL_SCHEMA_PATH" not in os.environ:
+        canonical_candidate = Path("schema_files") / f"{schema_id}_schema.json"
         if canonical_candidate.is_file():
             os.environ["CANONICAL_SCHEMA_PATH"] = str(canonical_candidate.resolve())
 
