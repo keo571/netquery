@@ -428,14 +428,14 @@ SCHEMA_ID=sample python -m src.api.server --port 8000
 SCHEMA_ID=neila python -m src.api.server --port 8001
 ```
 
-Or use the environment files:
+Or run manually with SCHEMA_ID:
 
 ```bash
 # Terminal 1: Sample database
-cp .env.sample .env && python -m src.api.server --port 8000
+SCHEMA_ID=sample python -m src.api.server --port 8000
 
 # Terminal 2: Neila database
-cp .env.neila .env && python -m src.api.server --port 8001
+SCHEMA_ID=neila python -m src.api.server --port 8001
 ```
 
 **Frontend Implementation:**

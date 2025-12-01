@@ -15,25 +15,15 @@ if [ ! -f ".env.sample" ]; then
     exit 1
 fi
 
-# Copy .env.sample to .env (preserve API key if exists)
-if [ -f ".env" ]; then
-    # Preserve existing GEMINI_API_KEY
-    existing_key=$(grep "^GEMINI_API_KEY=" .env 2>/dev/null | cut -d'=' -f2- || echo "")
-    cp .env.sample .env
-    if [ -n "$existing_key" ] && [ "$existing_key" != "your_gemini_api_key_here" ]; then
-        # Use sed to replace the API key line
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            sed -i '' "s|^GEMINI_API_KEY=.*|GEMINI_API_KEY=$existing_key|" .env
-        else
-            sed -i "s|^GEMINI_API_KEY=.*|GEMINI_API_KEY=$existing_key|" .env
-        fi
-        echo "✓ Preserved existing GEMINI_API_KEY"
-    fi
-else
-    cp .env.sample .env
+# Check if API key is configured
+api_key=$(grep "^GEMINI_API_KEY=" .env.sample 2>/dev/null | cut -d'=' -f2- | tr -d ' ' || echo "")
+if [ -z "$api_key" ] || [ "$api_key" = "your_gemini_api_key_here" ]; then
+    echo "⚠️  Warning: GEMINI_API_KEY not configured in .env.sample"
+    echo "Please edit .env.sample and add your API key"
+    echo ""
 fi
 
-echo "✓ Activated sample database configuration (.env.sample → .env)"
+echo "✓ Using .env.sample configuration"
 echo ""
 
 # Activate virtual environment if it exists
@@ -74,5 +64,5 @@ echo "📝 Try a CLI query:"
 echo '   python gemini_cli.py "Show me all load balancers"'
 echo ""
 echo "💡 For frontend/API usage, use dual backends instead:"
-echo "   ./start_dual_backends.sh"
+echo "   ./start-dual-backends.sh"
 echo ""

@@ -50,10 +50,6 @@ That's it! Everything else is automatic.
 If you need fine-grained control:
 
 ```bash
-# Manual database switching
-cp .env.sample .env   # Use sample database
-cp .env.neila .env    # Use neila database
-
 # Manual data creation
 python scripts/create_sample_data.py
 
@@ -66,30 +62,31 @@ python -m src.schema_ingestion build \
 
 ## Config Files
 
-- `.env.sample` - Sample database configuration (SQLite)
+- `.env.sample` - Sample database configuration (SQLite) - **default**
 - `.env.neila` - Neila database configuration (SQLite)
-- `.env` - Active config (gitignored, created by setup scripts)
+
+The app automatically loads `.env.sample` by default, or `.env.<schema_id>` when `SCHEMA_ID` is set.
 
 ## Common Commands
 
 ### Starting Netquery
 ```bash
 ./setup-cli.sh                    # Setup CLI environment
-./start_dual_backends.sh          # Start dual backends (sample on :8000, neila on :8001)
+./start-dual-backends.sh          # Start dual backends (sample on :8000, neila on :8001)
 SCHEMA_ID=sample python -m src.api.server --port 8000  # Manual: single API backend
 ```
 
 ### Checking Status
 ```bash
-grep "^SCHEMA_ID=" .env           # What database am I using?
-grep "^DATABASE_URL=" .env        # Database connection
+echo $SCHEMA_ID                   # What database am I using?
+grep "^DATABASE_URL=" .env.sample # Database connection
 ```
 
 ### Switching Databases
 ```bash
-# For CLI usage
-cp .env.sample .env               # Use sample database
-cp .env.neila .env                # Use neila database
+# For CLI usage - set SCHEMA_ID
+python gemini_cli.py "query"                    # Uses .env.sample (default)
+SCHEMA_ID=neila python gemini_cli.py "query"    # Uses .env.neila
 
 # For API backends - run separate instances
 SCHEMA_ID=sample python -m src.api.server --port 8000
