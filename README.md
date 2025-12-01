@@ -115,9 +115,12 @@ See [docs/SCHEMA_INGESTION.md](docs/SCHEMA_INGESTION.md) for advanced usage.
 **For Frontend Integration (Recommended):**
 ```bash
 # Dual backends - supports database switching in frontend
-./start_dual_backends.sh
+./start-dual-backends.sh
 # Sample: http://localhost:8000
 # Neila:  http://localhost:8001
+
+# Development mode with auto-reload
+./start-dual-backends.sh --dev
 
 # Or single backend
 SCHEMA_ID=sample python -m src.api.server --port 8000
