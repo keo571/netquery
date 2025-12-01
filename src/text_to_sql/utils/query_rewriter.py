@@ -55,14 +55,80 @@ class IntentClassification:
     general_answer: Optional[str] = None  # Direct answer for general questions
 
 
+def _is_obvious_sql_query(query: str) -> bool:
+    """
+    Fast heuristic to detect obvious SQL-intent queries without LLM.
+
+    Returns True ONLY for queries that are unambiguously asking for data.
+    Conservative approach: Only match clear data request patterns.
+
+    This saves ~200ms by skipping the LLM call for obvious cases.
+    """
+    query_lower = query.lower().strip()
+
+    # Clear SQL action patterns with articles (unambiguous)
+    sql_start_patterns = [
+        'show all ', 'show the ',
+        'list all ', 'list the ',
+        'get all ', 'get the ',
+        'find all ', 'find the ',
+        'display all ', 'display the ',
+        'count all ', 'count the ',
+        'give me all ', 'give me the ',
+        'fetch all ', 'fetch the ',
+    ]
+
+    # Check if query starts with clear SQL patterns
+    for pattern in sql_start_patterns:
+        if query_lower.startswith(pattern):
+            return True
+
+    # "show me X" needs special handling - check what X is
+    if query_lower.startswith('show me '):
+        words = query_lower.split()
+        if len(words) > 2:
+            third_word = words[2]
+            question_words = ['how', 'why', 'what', 'when', 'where', 'who']
+            if third_word not in question_words:
+                return True
+        return False
+
+    # Also match "show X" without article (e.g., "show servers")
+    simple_show_match = re.match(r'^(show|list|get|find|display|count)\s+\w+', query_lower)
+    if simple_show_match:
+        # Question words that indicate NOT a data request
+        question_words = ['how', 'why', 'what', 'when', 'where', 'who']
+        words = query_lower.split()
+        second_word = words[1] if len(words) > 1 else ''
+
+        # "show me X" - check third word
+        if second_word == 'me' and len(words) > 2:
+            third_word = words[2]
+            if third_word not in question_words:
+                return True
+        # "show X" (not "me") - check second word
+        elif second_word not in question_words and second_word != 'me':
+            return True
+
+    # "How many X" is clearly asking for data count
+    if re.match(r'^how many\b', query_lower):
+        return True
+
+    return False
+
+
 def classify_intent(query: str, full_query: str = None, schema_summary: str = "") -> IntentClassification:
     """
-    Classify query intent using LLM with JSON structured output.
+    Classify query intent using heuristics first, then LLM as fallback.
 
     Determines if a query is:
     - "sql": Requires database query (e.g., "List all servers")
     - "general": General knowledge question (e.g., "What is a load balancer?")
     - "mixed": Contains both (e.g., "What is DNS? Show all DNS records")
+
+    Performance optimization:
+    - Uses fast heuristics (~1ms) for obvious SQL queries
+    - Falls back to LLM (~200ms) for ambiguous cases and general questions
 
     Args:
         query: The extracted user's query
@@ -72,6 +138,19 @@ def classify_intent(query: str, full_query: str = None, schema_summary: str = ""
     Returns:
         IntentClassification with intent type and appropriate responses
     """
+    # ================================================================
+    # Fast-path: Use heuristics for obvious SQL queries (~1ms vs ~200ms LLM)
+    # Only skip LLM for unambiguous data requests
+    # ================================================================
+
+    # Check for obvious SQL queries (conservative matching)
+    if _is_obvious_sql_query(query):
+        logger.info(f"⚡ Fast-path: Obvious SQL query detected (skipped LLM)")
+        return IntentClassification(intent="sql", sql_query=query)
+
+    # ================================================================
+    # Slow-path: Use LLM for all other cases (general, mixed, ambiguous)
+    # ================================================================
     # Build dynamic domain scope from schema
     schema_context = ""
     domain_scope_section = ""

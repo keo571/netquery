@@ -149,7 +149,10 @@ class SQLCache:
 
     def _fuzzy_match(self, query: str) -> Optional[tuple[str, float]]:
         """
-        Find similar cached query using fuzzy string matching.
+        Find similar cached query using fuzzy string matching with length pre-filtering.
+
+        Optimization: Only compare queries with similar length (within 50% range)
+        since very different length queries are unlikely to match at 0.85 threshold.
 
         Args:
             query: Normalized query to match
@@ -160,9 +163,21 @@ class SQLCache:
         if not self.enable_fuzzy_fallback:
             return None
 
-        # Get all cached normalized queries with SQL
+        query_len = len(query)
+
+        # Pre-filter by length: only fetch candidates within reasonable range
+        # For 0.85 threshold, strings must be within ~50% length of each other
+        min_len = int(query_len * 0.5)
+        max_len = int(query_len * 2.0)
+
+        # Get length-filtered cached queries (much faster for large caches)
         cached_queries = self.conn.execute(
-            "SELECT normalized_query, generated_sql FROM sql_cache"
+            """
+            SELECT normalized_query, generated_sql
+            FROM sql_cache
+            WHERE LENGTH(normalized_query) BETWEEN ? AND ?
+            """,
+            (min_len, max_len)
         ).fetchall()
 
         if not cached_queries:
