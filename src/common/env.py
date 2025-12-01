@@ -14,7 +14,7 @@ def load_environment() -> Optional[Path]:
 
     Loading order:
     1. SCHEMA_ID environment variable → loads .env.<schema_id> (e.g., .env.sample)
-    2. Falls back to .env if SCHEMA_ID not set
+    2. Falls back to .env.sample if SCHEMA_ID not set
 
     Returns:
         Path to the dotenv file that was loaded, or None if nothing matched.
@@ -32,19 +32,16 @@ def load_environment() -> Optional[Path]:
         else:
             LOGGER.warning("SCHEMA_ID=%s but %s not found", schema_id, env_file)
     else:
-        # Fall back to .env
-        env_file = Path(".env")
+        # Default to .env.sample (no .env file needed)
+        env_file = Path(".env.sample")
         if env_file.exists():
             load_dotenv(dotenv_path=env_file)
             loaded_path = env_file
-            LOGGER.info("Loaded environment from %s", env_file)
+            schema_id = "sample"
+            os.environ["SCHEMA_ID"] = schema_id
+            LOGGER.info("Loaded environment from %s (default)", env_file)
         else:
-            LOGGER.warning("No .env file found and SCHEMA_ID not set")
-
-    # Set SCHEMA_ID from loaded file if not already set
-    if not schema_id and loaded_path:
-        schema_id = os.getenv("SCHEMA_ID", "sample")
-        os.environ.setdefault("SCHEMA_ID", schema_id)
+            LOGGER.warning("No .env.sample found and SCHEMA_ID not set")
 
     # Auto-detect canonical schema path if not set
     if schema_id and "CANONICAL_SCHEMA_PATH" not in os.environ:
