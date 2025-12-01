@@ -53,12 +53,18 @@ async def main():
         os.environ['DATABASE_URL'] = args.database_url
     if args.embedding_database_url:
         os.environ['EMBEDDING_DATABASE_URL'] = args.embedding_database_url
-    
+
     # Check for API key
     if not os.getenv("GEMINI_API_KEY"):
         print("Error: GEMINI_API_KEY environment variable not set")
         return
-    
+
+    # Initialize AppContext singleton (same as API server)
+    # This initializes all resources: LLM, embeddings, caches, schema analyzer
+    from src.api.app_context import AppContext
+    print("Initializing resources...")
+    ctx = AppContext.get_instance()
+
     print(f"Processing: {query}")
     if args.schema:
         print(f"Using canonical schema: {args.schema}")

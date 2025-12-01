@@ -8,22 +8,21 @@ The Query Evaluation framework tests the complete text-to-SQL pipeline end-to-en
 
 ## Test Query Sets
 
-The evaluation framework uses environment-specific query sets stored in JSON files:
+The evaluation framework uses the sample database query set:
 
-- **Dev Mode (SQLite)**: `testing/query_sets/dev.json` - 80+ queries testing SQLite database
-- **Prod Mode (PostgreSQL)**: `testing/query_sets/prod.json` - 90+ queries testing PostgreSQL database
+- **Sample Database**: `testing/query_sets/dev.json` - 80+ queries testing the sample SQLite database
 
-### Dev Mode Query Categories
+### Query Categories
 
-Tests for SQLite database with SSL certificates, network monitoring, and detailed health tracking:
+Tests for the sample database with SSL certificates, network monitoring, and detailed health tracking:
 
 1. **Basic Queries** - Simple table queries and filtering
 2. **Health & Status** - Server health, load balancer scores, SSL status
 3. **Aggregations** - Counting, statistics, averages
 4. **Traffic & Performance** - Network traffic, response times, error rates
 5. **Multi-Table Joins** - Complex relationships across tables
-6. **SSL Certificate Management** - Certificate expiry, issuers, monitoring (dev only)
-7. **Network Monitoring** - Latency, packet loss, connectivity (dev only)
+6. **SSL Certificate Management** - Certificate expiry, issuers, monitoring
+7. **Network Monitoring** - Latency, packet loss, connectivity
 8. **Time-based Queries** - Trends, historical data, time-series
 9. **Comparative & Advanced** - Above/below average, complex filtering
 10. **HAVING & Filters** - Aggregate filtering, group conditions
@@ -32,27 +31,6 @@ Tests for SQLite database with SSL certificates, network monitoring, and detaile
 13. **Conditional Logic** - CASE statements, categorization
 14. **Complex Analytics** - Multi-table comprehensive analysis
 15. **Edge Cases** - Error handling, invalid queries, safety checks
-
-### Prod Mode Query Categories
-
-Tests for PostgreSQL database with wide IPs and global load balancing:
-
-1. **Basic Queries** - Simple table queries
-2. **Inventory & Filtering** - Resource discovery and filtering
-3. **Status & Health** - Backend server and load balancer health
-4. **Aggregations & Summaries** - Counting and distribution
-5. **Relationship Queries** - Joins across core tables
-6. **Wide IP & Global Load Balancing** - Global routing, DNS (prod only)
-7. **Traffic Analysis** - Traffic statistics and metrics (prod only)
-8. **Multi-Table Joins** - Complex hierarchical relationships
-9. **Comparative & Advanced** - Above/below average analysis
-10. **HAVING & Aggregation Filters** - Aggregate conditions
-11. **Existence & NULL Checks** - Missing associations
-12. **String Operations** - Text search and patterns
-13. **Conditional Logic** - Categorization and classification
-14. **Time-based Queries** - Temporal data and trends
-15. **Complex Analytics** - Comprehensive multi-table analysis
-16. **Edge Cases** - Error handling and safety validation
 
 ## Metrics
 
@@ -91,11 +69,8 @@ Each query is evaluated through all pipeline stages:
 Run comprehensive evaluation with HTML report:
 
 ```bash
-# Evaluate dev mode queries (SQLite)
+# Evaluate all queries in the sample database
 python testing/evaluate_queries.py
-
-# Evaluate prod mode queries (PostgreSQL)
-NETQUERY_ENV=prod python testing/evaluate_queries.py
 
 # Use custom query file
 python testing/evaluate_queries.py --queries /path/to/queries.json
@@ -110,11 +85,8 @@ python testing/evaluate_queries.py --queries /path/to/queries.json
 Test individual queries for quick validation:
 
 ```bash
-# Test a single query (dev mode)
+# Test a single query
 python testing/evaluate_queries.py --single "Show all load balancers"
-
-# Test a single query (prod mode)
-NETQUERY_ENV=prod python testing/evaluate_queries.py --single "List all virtual IPs"
 ```
 
 **Output**: Console-only pass/fail status with error details
@@ -138,7 +110,7 @@ GEMINI_API_KEY=your_key_here
 
 ```
 🚀 Starting Netquery Evaluation...
-   Environment: dev
+   Environment: sample
    Query file:  testing/query_sets/dev.json
 📊 Testing 85 queries across 15 categories
 ================================================================================
@@ -241,13 +213,12 @@ GitHub Actions example:
     python testing/evaluate_queries.py
   env:
     GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-    NETQUERY_ENV: dev
 ```
 
 ### Performance Monitoring
 
 Track metrics over time:
-- Success rates by environment
+- Success rates across query categories
 - Query execution times
 - Failure pattern analysis
 - Chart generation rates
@@ -257,24 +228,13 @@ Track metrics over time:
 
 ### Adding Queries
 
-Edit the appropriate query set file:
+Edit the query set file (`testing/query_sets/dev.json`):
 
-**Dev queries** (`testing/query_sets/dev.json`):
 ```json
 {
   "Your Category": [
     "Your test query here",
     "Another test query"
-  ]
-}
-```
-
-**Prod queries** (`testing/query_sets/prod.json`):
-```json
-{
-  "Wide IP & Global Load Balancing": [
-    "Show all wide IPs",
-    "List wide IP pool members"
   ]
 }
 ```
@@ -297,9 +257,8 @@ Edit the appropriate query set file:
 
 ### Best Practices
 
-1. **Environment-Specific**: Don't query tables that don't exist in that environment
-   - Dev: Has `ssl_certificates`, `network_connectivity` tables
-   - Prod: Has `wide_ips`, `wide_ip_pools`, `traffic_stats` tables
+1. **Sample Database Schema**: Only query tables that exist in the sample database
+   - Available tables: `servers`, `load_balancers`, `vip_pools`, `backends`, `ssl_certificates`, `network_connectivity`, `network_traffic`
 
 2. **Include Edge Cases**: Test error handling
    - Invalid table names
@@ -319,10 +278,9 @@ Edit the appropriate query set file:
 ## Files and Locations
 
 - **Evaluation Script**: `testing/evaluate_queries.py`
-- **Dev Query Set**: `testing/query_sets/dev.json`
-- **Prod Query Set**: `testing/query_sets/prod.json`
+- **Query Set**: `testing/query_sets/dev.json`
 - **Reports Directory**: `testing/evaluations/`
-- **Configuration**: `.env` for API keys and database URLs
+- **Configuration**: `.env` or `.env.sample` for database configuration
 
 ## Troubleshooting
 
@@ -335,11 +293,17 @@ export GEMINI_API_KEY="your-api-key"
 ### Database connection errors
 Ensure database is set up:
 ```bash
-# Dev mode
-./start-dev.sh
+# Setup sample database
+./setup-cli.sh
 
-# Prod mode
-./start-prod.sh
+# Or manually create sample database
+python scripts/create_sample_data.py
+
+# Build schema embeddings
+python -m src.schema_ingestion build \
+  --schema-id sample \
+  --excel-path schema_files/sample_schema.xlsx \
+  --output-path schema_files/sample_schema.json
 ```
 
 ### Import errors
@@ -352,7 +316,7 @@ source .venv/bin/activate
 Check file exists:
 ```bash
 ls testing/query_sets/
-# Should show: dev.json  prod.json
+# Should show: dev.json
 ```
 
 ## Future Improvements
@@ -397,16 +361,16 @@ ls testing/query_sets/
 
 **Reporting Enhancements**
 - Trend analysis over multiple runs
-- Comparison between dev and prod success rates
 - Performance regression detection
 - Query recommendation based on successful patterns
+- Historical comparison of success rates
 
 ## Summary
 
 The evaluation framework ensures Netquery maintains high quality and reliability across:
-- Multiple environments (dev SQLite, prod PostgreSQL)
+- The sample SQLite database with 80+ test queries
 - Diverse query types (basic to advanced SQL)
-- Different complexity levels
+- Different complexity levels (15 categories)
 - Edge cases and error scenarios
 - Visualization generation capabilities
 

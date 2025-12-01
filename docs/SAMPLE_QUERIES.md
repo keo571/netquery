@@ -5,7 +5,7 @@ This guide provides comprehensive query examples for both **dev mode (SQLite)** 
 ## Dataset Overview
 
 ### Dev Mode (SQLite)
-The dev profile uses SQLite with synthetic load balancer data (see [setup/create_data_sqlite.py](../setup/create_data_sqlite.py)):
+The dev profile uses SQLite with synthetic load balancer data (see [scripts/create_data_sqlite.py](../scripts/create_data_sqlite.py)):
 
 **Tables**:
 - `load_balancers` - Load balancer instances with VIP addresses
@@ -21,7 +21,7 @@ The dev profile uses SQLite with synthetic load balancer data (see [setup/create
 **Scale**: ~50 load balancers, ~50 servers across 4 datacenters (us-east-1, us-west-2, eu-west-1, ap-southeast-1)
 
 ### Prod Mode (PostgreSQL)
-The prod profile uses PostgreSQL with a schema from Excel (see [setup/create_data_postgres.py](../setup/create_data_postgres.py)):
+The prod profile uses PostgreSQL with a schema from Excel (see [scripts/create_data_postgres.py](../scripts/create_data_postgres.py)):
 
 **Tables**:
 - `load_balancers` - Load balancer instances

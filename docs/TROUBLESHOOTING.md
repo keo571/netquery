@@ -69,25 +69,6 @@ pip install -r requirements.txt
 
 ---
 
-### PostgreSQL: "Connection refused on port 5432"
-
-**Cause:** PostgreSQL not running
-
-**Solution:**
-```bash
-# Check if running
-docker ps | grep postgres
-
-# Start PostgreSQL (easiest way)
-./start-prod.sh
-
-# Or manually
-docker compose up -d postgres
-./profile.sh prod init
-```
-
----
-
 ## Performance Issues
 
 ### First query slow (~5 seconds), subsequent queries fast
@@ -142,8 +123,11 @@ export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 # Kill existing
 pkill -f "uvicorn"
 
-# Restart
-./api-server.sh
+# Restart dual backends
+./start_dual_backends.sh
+
+# Or single backend
+SCHEMA_ID=sample python -m src.api.server --port 8000
 ```
 
 ---
@@ -165,8 +149,9 @@ This shows:
 ### Check System Status
 
 ```bash
-# Database connection
-./profile.sh status
+# Check current database configuration
+grep "^SCHEMA_ID=" .env
+grep "^DATABASE_URL=" .env
 
 # API server (if running)
 curl http://localhost:8000/health
@@ -176,15 +161,8 @@ curl http://localhost:8000/health
 
 ```bash
 # Nuclear option: Reset everything
-
-# For dev mode
-rm -rf .embeddings_cache/
-rm data/*.db
-./start-dev.sh
-
-# For prod mode
-docker compose down -v
-./start-prod.sh
+rm -rf data/*.db
+./setup-cli.sh
 ```
 
 ---
@@ -197,4 +175,4 @@ docker compose down -v
 4. File an issue on GitHub with:
    - Your query
    - Error message
-   - Output of `./profile.sh status`
+   - Output of `grep "SCHEMA_ID\|DATABASE_URL" .env`

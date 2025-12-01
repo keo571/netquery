@@ -43,8 +43,14 @@ def store_embeddings(schema: CanonicalSchema, embedding_database_url: str = None
     """
     logger.info(f"Creating embedding store...")
 
+    # Get schema ID (namespace is embedded in schema object)
+    namespace = schema.get_embedding_namespace()
+
+    # Derive cache path from schema ID for automatic namespace isolation
+    db_path = f"data/{namespace}_embeddings_cache.db"
+
     # Create embedding store (pgvector or local file)
-    store = create_embedding_store(database_url=embedding_database_url)
+    store = create_embedding_store(database_url=embedding_database_url, db_path=db_path)
 
     # Load embedding model
     model_name = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
@@ -67,8 +73,9 @@ def store_embeddings(schema: CanonicalSchema, embedding_database_url: str = None
             logger.debug(f"Skipping {table_name} (no description)")
             continue
 
-        # Generate embedding
-        embedding = embedding_service.embed_text(table.description)
+        # Generate embedding using embed_query for consistency with query-time embeddings
+        # NOTE: Using embed_query instead of embed_text ensures compatibility
+        embedding = embedding_service.embed_query(table.description)
 
         # Store embedding
         store.store(
@@ -79,12 +86,12 @@ def store_embeddings(schema: CanonicalSchema, embedding_database_url: str = None
         )
         logger.debug(f"Stored embedding for {table_name}")
 
-    logger.info(f"✅ Successfully stored embeddings for {len(schema.tables)} tables in namespace {namespace}")
+    logger.info(f"Successfully stored embeddings for {len(schema.tables)} tables in namespace {namespace}")
 
     if embedding_database_url and embedding_database_url.startswith('postgresql'):
-        logger.info(f"📊 Embeddings stored in PostgreSQL pgvector: {embedding_database_url}")
+        logger.info(f"Embeddings stored in PostgreSQL pgvector: {embedding_database_url}")
     else:
-        logger.info(f"📊 Embeddings stored in local file cache: .embeddings_cache/{namespace}/")
+        logger.info(f"Embeddings stored in SQLite: {db_path} (namespace: {namespace})")
 
 
 def cmd_build(args):
@@ -139,9 +146,9 @@ def cmd_build(args):
 
     # Descriptions handling
     if args.excel:
-        logger.info("✓ Using descriptions from Excel file")
+        logger.info("Using descriptions from Excel file")
     else:
-        logger.info("✓ Using table/column names as descriptions (database introspection)")
+        logger.info("Using table/column names as descriptions (database introspection)")
 
     # Save schema
     output_path = Path(args.output)
@@ -158,16 +165,16 @@ def cmd_build(args):
     logger.info("SCHEMA BUILD COMPLETE")
     logger.info("=" * 60)
     print(schema.summary())
-    print(f"\n✅ Schema saved to: {output_path}")
+    print(f"\nSchema saved to: {output_path}")
 
     # Validate
     errors = schema.validate()
     if errors:
-        print(f"\n⚠️  Validation warnings:")
+        print(f"\n[WARN] Validation warnings:")
         for error in errors:
             print(f"  - {error}")
     else:
-        print("\n✅ Schema validation passed")
+        print("\nSchema validation passed")
 
 
 
@@ -185,12 +192,12 @@ def cmd_validate(args):
 
     errors = schema.validate()
     if errors:
-        print(f"\n❌ Found {len(errors)} validation errors:\n")
+        print(f"\n[ERROR] Found {len(errors)} validation errors:\n")
         for error in errors:
             print(f"  - {error}")
         sys.exit(1)
     else:
-        print("\n✅ Schema validation passed")
+        print("\nSchema validation passed")
 
 
 def cmd_diff(args):
@@ -216,12 +223,12 @@ def cmd_diff(args):
     print(f"Schema 2: {len(tables2)} tables")
 
     if added:
-        print(f"\n✅ Added tables ({len(added)}):")
+        print(f"\n[+] Added tables ({len(added)}):")
         for table in sorted(added):
             print(f"  + {table}")
 
     if removed:
-        print(f"\n❌ Removed tables ({len(removed)}):")
+        print(f"\n[-] Removed tables ({len(removed)}):")
         for table in sorted(removed):
             print(f"  - {table}")
 
@@ -246,7 +253,7 @@ def cmd_diff(args):
             })
 
     if changes:
-        print(f"\n⚠️  Modified tables ({len(changes)}):")
+        print(f"\n[~] Modified tables ({len(changes)}):")
         for change in changes:
             print(f"  ~ {change['table']}")
             if change['added_cols']:
@@ -257,7 +264,7 @@ def cmd_diff(args):
                     print(f"      - {col}")
 
     if not added and not removed and not changes:
-        print("\n✅ Schemas are identical")
+        print("\nSchemas are identical")
 
 
 def cmd_summary(args):

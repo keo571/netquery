@@ -1,12 +1,15 @@
 """
 Text-to-SQL pipeline graph implementation.
-Uses LangGraph to orchestrate the five-node processing pipeline.
+Uses LangGraph to orchestrate the processing pipeline.
+
+Pipeline flow:
+START → intent_classifier → (general? → END | sql/mixed → cache_lookup → ...)
 """
 from langgraph.graph import StateGraph, START, END
 import logging
 
 from .state import TextToSQLState
-from .nodes.triage import triage_node
+from .nodes.intent_classifier import intent_classifier_node
 from .nodes.cache_lookup import cache_lookup_node
 from .nodes.schema_analyzer import schema_analyzer
 from .nodes.sql_generator import sql_generator
@@ -20,16 +23,7 @@ logger = logging.getLogger(__name__)
 
 def error_handler_node(state: TextToSQLState) -> dict:
     """Handle pipeline errors with user-friendly messages."""
-    # Check if this is a triage rejection - if so, return as-is (no duplication)
-    if state.get("triage_passed") is False:
-        # Triage already set final_response, schema_overview, and execution_error
-        return {
-            "final_response": state.get("final_response"),
-            "execution_error": state.get("execution_error"),
-            "schema_overview": state.get("schema_overview")
-        }
-
-    # Handle other error types
+    # Handle error types
     if state.get("schema_analysis_error"):
         error = state["schema_analysis_error"]
         msg = "I couldn't find relevant database tables for your query."
@@ -58,17 +52,29 @@ def error_handler_node(state: TextToSQLState) -> dict:
         "schema_overview": state.get("schema_overview")
     }
 
-def route_after_triage(state: TextToSQLState) -> str:
-    """Route after triage: to cache_lookup or error handler."""
-    return "cache_lookup" if state.get("triage_passed") else "error_handler"
+
+def route_after_intent(state: TextToSQLState) -> str:
+    """
+    Route after intent classification.
+
+    - general: Skip SQL pipeline entirely → end (answer already provided)
+    - sql/mixed: Continue to cache lookup
+    """
+    intent = state.get("intent")
+
+    if intent == "general":
+        return "end"
+    else:
+        # sql or mixed intent - continue to cache lookup
+        return "cache_lookup"
+
 
 def route_after_cache(state: TextToSQLState) -> str:
     """
-    Route after cache lookup based on cache hit type.
+    Route after cache lookup based on cache hit.
 
-    - full: Skip to validator (have SQL)
-    - partial: Go to schema_analyzer (have embedding, need SQL)
-    - None: Go to schema_analyzer (need everything)
+    - cache hit: Skip to validator (have SQL)
+    - cache miss: Go to schema_analyzer (need SQL)
     """
     cache_hit_type = state.get("cache_hit_type")
 
@@ -76,17 +82,19 @@ def route_after_cache(state: TextToSQLState) -> str:
         # We have cached SQL - skip schema analysis and SQL generation
         return "validator"
     else:
-        # Partial hit or miss - need to run schema analysis
-        # (schema analyzer will use cached embedding if available)
+        # Cache miss - need to run schema analysis
         return "schema_analyzer"
+
 
 def route_after_schema(state: TextToSQLState) -> str:
     """Route after schema analysis: directly to sql_generator or error handler."""
     return "error_handler" if state.get("schema_analysis_error") else "sql_generator"
 
+
 def route_after_generator(state: TextToSQLState) -> str:
     """Route after SQL generation: to validator or error handler."""
     return "error_handler" if state.get("generation_error") else "validator"
+
 
 def route_after_validator(state: TextToSQLState) -> str:
     """Route after validation: to executor, end (if execute=False), or error handler."""
@@ -97,17 +105,19 @@ def route_after_validator(state: TextToSQLState) -> str:
         return "end"
     return "executor"
 
+
 def route_after_executor(state: TextToSQLState) -> str:
     """Route after execution: to interpreter or error handler."""
     return "error_handler" if state.get("execution_error") else "interpreter"
+
 
 def create_text_to_sql_graph():
     """Create and compile the Text-to-SQL pipeline graph."""
     # Create the workflow
     workflow = StateGraph(TextToSQLState)
 
-    # Add all pipeline nodes
-    workflow.add_node("triage", triage_node)
+    # Add all pipeline nodes (clean separation of concerns)
+    workflow.add_node("intent_classifier", intent_classifier_node)
     workflow.add_node("cache_lookup", cache_lookup_node)
     workflow.add_node("schema_analyzer", schema_analyzer)
     workflow.add_node("sql_generator", sql_generator)
@@ -116,14 +126,18 @@ def create_text_to_sql_graph():
     workflow.add_node("interpreter", interpreter)
     workflow.add_node("error_handler", error_handler_node)
 
-    # Add edges - start with triage node
-    workflow.add_edge(START, "triage")
+    # Add edges - start with intent classification
+    workflow.add_edge(START, "intent_classifier")
 
-    # Route from triage to cache lookup or error handler
-    workflow.add_conditional_edges("triage", route_after_triage,
-                                  {"cache_lookup": "cache_lookup", "error_handler": "error_handler"})
+    # Route from intent classifier based on intent type
+    # - general intent → end (answer already provided)
+    # - sql/mixed intent → cache_lookup
+    workflow.add_conditional_edges("intent_classifier", route_after_intent,
+                                  {"end": END, "cache_lookup": "cache_lookup"})
 
-    # Route from cache lookup based on cache hit type
+    # Route from cache lookup based on cache hit
+    # - cache hit → validator (skip schema analysis + SQL generation)
+    # - cache miss → schema_analyzer
     workflow.add_conditional_edges("cache_lookup", route_after_cache,
                                   {"validator": "validator", "schema_analyzer": "schema_analyzer"})
 

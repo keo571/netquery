@@ -60,12 +60,6 @@ class SchemaAnalyzer:
         # (Critical for production DBs without FK constraints)
         self.db_toolkit.set_canonical_schema(self.canonical_schema)
 
-        logger.info(
-            "Initialized embedding-based schema analyzer (canonical_schema: %s, db_toolkit: %s)",
-            self.canonical_schema is not None,
-            type(self.db_toolkit).__name__
-        )
-
     def _load_canonical_schema(self, canonical_schema_path: str):
         """Load canonical schema for enhanced descriptions and namespace isolation."""
         try:
@@ -74,11 +68,6 @@ class SchemaAnalyzer:
                 return
 
             self.canonical_schema = CanonicalSchema.load(canonical_schema_path)
-            logger.info(
-                "Loaded canonical schema '%s' with %s tables",
-                self.canonical_schema.schema_id,
-                self.canonical_schema.total_tables
-            )
         except Exception as exc:
             logger.error(f"Failed to load canonical schema: {exc}")
             self.canonical_schema = None
@@ -93,7 +82,7 @@ class SchemaAnalyzer:
         Returns:
             Dictionary with analysis results
         """
-        logger.info(f"Analyzing schema for: {query[:100]}...")
+        logger.info(f"Analyzing schema for query: {query[:100]}...")
 
         # Find relevant tables using embeddings
         relevant_results = self._find_relevant_tables(query)
@@ -373,32 +362,13 @@ class SchemaAnalyzer:
         return final_schema, final_tokens
 
 
-def get_analyzer(
-    canonical_schema_path: Optional[str] = None,
-    db_toolkit: Optional[GenericDatabaseToolkit] = None,
-    embedding_store = None,
-    embedding_service = None
-) -> SchemaAnalyzer:
-    """
-    Get the analyzer instance from AppContext.
-
-    Note: Parameters are kept for backward compatibility but are ignored.
-    The analyzer is now managed by AppContext with resources initialized at startup.
-
-    Returns:
-        Cached SchemaAnalyzer instance from AppContext
-    """
-    from ....api.app_context import AppContext
-    return AppContext.get_instance().get_schema_analyzer()
-
-
 def schema_analyzer(state: TextToSQLState) -> Dict[str, Any]:
     """
     Schema analyzer that uses embeddings for semantic table selection.
 
-    For follow-up questions:
-    - Uses extracted_query for embedding (table selection)
-    - Original query with full history is passed to SQL generator for LLM context
+    Uses sql_query (set by intent classifier) which is the clean rewritten query:
+    - For standalone queries: sql_query = original question
+    - For follow-ups: sql_query = rewritten standalone query
     """
     def create_schema_reasoning_step(tables: list, scores: dict, excel_enhanced: bool = False) -> dict:
         """Create reasoning step for schema analysis."""
@@ -413,7 +383,8 @@ def schema_analyzer(state: TextToSQLState) -> Dict[str, Any]:
         else:
             return create_warning_step("Schema Analysis", "No relevant tables found for the query.")
 
-    query = state["original_query"]
+    # Use sql_query (set by intent classifier) instead of original_query to avoid conversation pollution
+    query = state.get("sql_query") or state.get("extracted_query") or state["original_query"]
 
     # Use query_for_embedding for table selection
     # This may be the extracted query or a rewritten version (for follow-ups)
@@ -430,9 +401,8 @@ def schema_analyzer(state: TextToSQLState) -> Dict[str, Any]:
 
         # Analyze schema using embeddings
         # Use extracted_query for embedding to ensure consistency
-        analyzer = get_analyzer(
-            canonical_schema_path=canonical_schema_path
-        )
+        from ....api.app_context import AppContext
+        analyzer = AppContext.get_instance().get_schema_analyzer()
         analysis_result = analyzer.analyze_schema(
             query=query_for_embedding  # Use extracted query for embedding/table selection
         )

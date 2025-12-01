@@ -32,7 +32,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from src.common.env import load_environment
 
-# Load environment variables based on NETQUERY_ENV or DOTENV_PATH
+# Load environment variables (automatically sets NETQUERY_ENV from SCHEMA_ID)
 load_environment()
 
 from src.text_to_sql.pipeline.graph import text_to_sql_graph
@@ -63,7 +63,11 @@ def load_query_sets(query_file: Path) -> Dict[str, List[str]]:
 
 
 def resolve_query_file(explicit_path: str | None = None) -> Path:
-    """Resolve which query set file to use based on CLI override or NETQUERY_ENV."""
+    """Resolve which query set file to use based on CLI override or environment.
+
+    Uses NETQUERY_ENV (auto-set by load_environment() from SCHEMA_ID) to determine
+    which query set to load. Defaults to 'dev' (sample database).
+    """
     if explicit_path:
         candidate = Path(explicit_path).expanduser()
     else:
@@ -77,7 +81,7 @@ def resolve_query_file(explicit_path: str | None = None) -> Path:
         raise FileNotFoundError(f"Query set override not found: {candidate}")
 
     raise FileNotFoundError(
-        f"Query set for NETQUERY_ENV='{os.getenv('NETQUERY_ENV', 'dev')}' not found at {candidate}."
+        f"Query set for environment '{os.getenv('NETQUERY_ENV', 'dev')}' not found at {candidate}."
     )
 
 

@@ -72,9 +72,20 @@ def classify_intent(query: str, full_query: str = None, schema_summary: str = ""
     Returns:
         IntentClassification with intent type and appropriate responses
     """
+    # Build dynamic domain scope from schema
     schema_context = ""
+    domain_scope_section = ""
     if schema_summary:
-        schema_context = f"\nAvailable database tables: {schema_summary}"
+        schema_context = f"\n\nAVAILABLE DATABASE TABLES:\n{schema_summary}"
+        # Dynamic domain scope based on actual schema
+        domain_scope_section = """
+DOMAIN SCOPE: This system answers questions about NETWORK INFRASTRUCTURE data in the database.
+Questions must be about the tables and data shown above."""
+    else:
+        # Fallback to generic network infrastructure scope if no schema available
+        domain_scope_section = """
+DOMAIN SCOPE: This system answers questions about NETWORK INFRASTRUCTURE ONLY.
+Topics include: network devices, traffic, performance, health monitoring, and configuration."""
 
     # Extract conversation history if available
     conversation_context = ""
@@ -88,35 +99,56 @@ def classify_intent(query: str, full_query: str = None, schema_summary: str = ""
         if history_lines:
             conversation_context = f"\n\nPrevious questions in this conversation:\n" + "\n".join(history_lines)
 
-    prompt = f"""You are a network engineer AI assistant analyzing user queries.{schema_context}{conversation_context}
+    prompt = f"""You are a network infrastructure AI assistant analyzing user queries.{schema_context}{conversation_context}
 
 Current query: "{query}"
+
+{domain_scope_section}
+
+OUT-OF-SCOPE TOPICS (must reject):
+- Gardening, cooking, sports, entertainment, travel, shopping
+- General life advice, weather, news, finance, medical topics
+- Programming languages, non-network software, mobile apps
+- Any topic unrelated to network infrastructure
 
 CRITICAL: Your response must be ONLY valid JSON. No markdown, no explanations, no code blocks.
 
 Classification rules:
-- "sql": Query asks for data from database (list, count, show, find, get records)
-- "general": Query asks for explanation or knowledge (what is X, how does Y work, explain Z)
-- "mixed": Query contains BOTH a general question AND a database query
+- "sql": Query asks for data from database (list, count, show, find, get records) AND is about network infrastructure
+- "general": Query asks for networking/infrastructure explanation (what is load balancer, how does BGP work)
+- "mixed": Query contains BOTH a general networking question AND a database query
+- "out_of_scope": Query is NOT about network infrastructure (gardening, cooking, etc.) - REJECT these
 
-IMPORTANT: For sql_query field, you MUST:
+IMPORTANT: For out-of-scope queries:
+- Set intent to "general"
+- Provide a polite rejection in general_answer explaining this is a network infrastructure assistant
+- Set sql_query to null
+
+For sql_query field, you MUST:
 1. For standalone queries: Use the query as-is
 2. For follow-up queries: Rewrite into a complete standalone query using conversation context
 3. ALWAYS provide sql_query for "sql" and "mixed" intents (never null)
+4. For out-of-scope queries: Set to null
 
 Your response must be a single JSON object:
 {{"intent": "sql", "sql_query": "...", "general_answer": null}}
 
 Examples:
+IN-SCOPE (accept):
 - "Show all servers" → {{"intent": "sql", "sql_query": "Show all servers", "general_answer": null}}
 - "which are unhealthy?" (follow-up) → {{"intent": "sql", "sql_query": "Show all unhealthy servers", "general_answer": null}}
-- "remove column x" (follow-up) → {{"intent": "sql", "sql_query": "Show all servers excluding column x", "general_answer": null}}
-- "What is DNS?" → {{"intent": "general", "sql_query": null, "general_answer": "DNS (Domain Name System) is..."}}
-- "What is DNS? Show all DNS records" → {{"intent": "mixed", "sql_query": "Show all DNS records", "general_answer": "DNS is..."}}
+- "What is a load balancer?" → {{"intent": "general", "sql_query": null, "general_answer": "A load balancer distributes network traffic..."}}
+- "What is BGP? Show BGP routes" → {{"intent": "mixed", "sql_query": "Show BGP routes", "general_answer": "BGP is..."}}
+
+OUT-OF-SCOPE (reject):
+- "I need help with gardening" → {{"intent": "general", "sql_query": null, "general_answer": "I'm a network infrastructure assistant and can only help with questions about the network infrastructure data in the database. I cannot help with gardening topics."}}
+- "deal with pests" (after gardening question) → {{"intent": "general", "sql_query": null, "general_answer": "I can only assist with network infrastructure topics related to the database. For gardening help, please consult a gardening expert or resource."}}
+- "What's the weather?" → {{"intent": "general", "sql_query": null, "general_answer": "I'm a network infrastructure assistant. I can help you query the network infrastructure data in the database."}}
 
 For mixed queries: extract the data request into sql_query, answer the knowledge part in general_answer.
 For sql queries: ALWAYS rewrite follow-ups into standalone queries, set general_answer to null.
-For general queries: provide helpful answer, set sql_query to null.
+For general IN-SCOPE queries: provide helpful networking answer, set sql_query to null.
+For OUT-OF-SCOPE queries: politely reject and explain scope, set sql_query to null.
 
 JSON response:"""
 

@@ -1,10 +1,13 @@
 """
 Embedding storage backends for semantic table finding.
-Supports both local file cache and PostgreSQL pgvector.
+Supports SQLite (default) and PostgreSQL pgvector.
 """
 import os
 import json
+import sqlite3
+import pickle
 import logging
+from pathlib import Path
 from typing import List, Tuple, Optional
 from abc import ABC, abstractmethod
 import numpy as np
@@ -80,64 +83,68 @@ class EmbeddingStore(ABC):
         pass
 
 
-class LocalFileEmbeddingStore(EmbeddingStore):
-    """File-based embedding storage (legacy, for development)."""
+class SQLiteEmbeddingStore(EmbeddingStore):
+    """SQLite-based embedding storage (default, recommended)."""
 
-    def __init__(self, cache_dir: str = ".embeddings_cache"):
-        """Initialize local file embedding store.
+    def __init__(self, db_path: str = "data/embeddings_cache.db"):
+        """Initialize SQLite embedding store.
 
         Args:
-            cache_dir: Base directory for cache files
+            db_path: Path to SQLite database file
         """
-        self.cache_dir = cache_dir
-        os.makedirs(cache_dir, exist_ok=True)
+        # Create directory if needed
+        db_dir = Path(db_path).parent
+        db_dir.mkdir(parents=True, exist_ok=True)
 
-    def _get_namespace_dir(self, namespace: str) -> str:
-        """Get directory for a specific namespace."""
-        path = os.path.join(self.cache_dir, namespace)
-        os.makedirs(path, exist_ok=True)
-        return path
+        self.db_path = db_path
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._create_tables()
+        logger.debug(f"Initialized SQLite embedding store at {db_path}")
 
-    def _get_cache_path(self, namespace: str) -> str:
-        """Get cache file path for namespace."""
-        return os.path.join(self._get_namespace_dir(namespace), "embeddings.json")
+    def _create_tables(self):
+        """Create embedding tables if they don't exist."""
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS schema_embeddings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                namespace TEXT NOT NULL,
+                table_name TEXT NOT NULL,
+                description TEXT NOT NULL,
+                embedding BLOB NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(namespace, table_name)
+            )
+        """)
 
-    def _load_cache(self, namespace: str) -> dict:
-        """Load embedding cache from file."""
-        cache_path = self._get_cache_path(namespace)
-        if os.path.exists(cache_path):
-            try:
-                with open(cache_path, 'r') as f:
-                    data = json.load(f)
-                    # Convert lists back to numpy arrays
-                    for table_name in data:
-                        data[table_name]['embedding'] = np.array(data[table_name]['embedding'])
-                    return data
-            except Exception as e:
-                logger.warning(f"Failed to load cache from {cache_path}: {e}")
-        return {}
+        # Index for fast lookups by namespace
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_namespace
+            ON schema_embeddings(namespace)
+        """)
 
-    def _save_cache(self, cache: dict, namespace: str):
-        """Save embedding cache to file."""
-        cache_path = self._get_cache_path(namespace)
-        # Convert numpy arrays to lists for JSON serialization
-        serializable_cache = {}
-        for table_name, data in cache.items():
-            serializable_cache[table_name] = {
-                'description': data['description'],
-                'embedding': data['embedding'].tolist()
-            }
-        with open(cache_path, 'w') as f:
-            json.dump(serializable_cache, f)
+        # Index for fast lookups by namespace + table_name
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_namespace_table
+            ON schema_embeddings(namespace, table_name)
+        """)
+
+        self.conn.commit()
 
     def store(self, table_name: str, description: str, embedding: np.ndarray, namespace: str = "default"):
         """Store a table embedding."""
-        cache = self._load_cache(namespace)
-        cache[table_name] = {
-            'description': description,
-            'embedding': embedding
-        }
-        self._save_cache(cache, namespace)
+        # Serialize embedding as pickle blob
+        embedding_blob = pickle.dumps(embedding)
+
+        # Insert or replace
+        self.conn.execute(
+            """
+            INSERT OR REPLACE INTO schema_embeddings
+            (namespace, table_name, description, embedding, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            (namespace, table_name, description, embedding_blob)
+        )
+        self.conn.commit()
         logger.debug(f"Stored embedding for {table_name} in namespace {namespace}")
 
     def search_similar(
@@ -148,18 +155,26 @@ class LocalFileEmbeddingStore(EmbeddingStore):
         min_similarity: float = 0.0
     ) -> List[Tuple[str, float]]:
         """Search for similar tables using cosine similarity."""
-        cache = self._load_cache(namespace)
-        if not cache:
+        # Fetch all embeddings for this namespace
+        cursor = self.conn.execute(
+            "SELECT table_name, embedding FROM schema_embeddings WHERE namespace = ?",
+            (namespace,)
+        )
+
+        results = cursor.fetchall()
+        if not results:
             return []
 
         # Calculate cosine similarity for all tables
         similarities = []
-        for table_name, data in cache.items():
-            table_embedding = data['embedding']
+        for table_name, embedding_blob in results:
+            table_embedding = pickle.loads(embedding_blob)
+
             # Cosine similarity
             similarity = np.dot(query_embedding, table_embedding) / (
                 np.linalg.norm(query_embedding) * np.linalg.norm(table_embedding)
             )
+
             if similarity >= min_similarity:
                 similarities.append((table_name, float(similarity)))
 
@@ -169,18 +184,66 @@ class LocalFileEmbeddingStore(EmbeddingStore):
 
     def get_embedding(self, table_name: str, namespace: str = "default") -> Optional[np.ndarray]:
         """Retrieve embedding for a specific table."""
-        cache = self._load_cache(namespace)
-        if table_name in cache:
-            return cache[table_name]['embedding']
+        cursor = self.conn.execute(
+            "SELECT embedding FROM schema_embeddings WHERE namespace = ? AND table_name = ?",
+            (namespace, table_name)
+        )
+
+        result = cursor.fetchone()
+        if result:
+            return pickle.loads(result[0])
         return None
 
     def clear_namespace(self, namespace: str):
         """Clear all embeddings for a specific namespace."""
-        namespace_dir = self._get_namespace_dir(namespace)
-        cache_path = self._get_cache_path(namespace)
-        if os.path.exists(cache_path):
-            os.remove(cache_path)
-            logger.info(f"Cleared namespace {namespace}")
+        cursor = self.conn.execute(
+            "DELETE FROM schema_embeddings WHERE namespace = ?",
+            (namespace,)
+        )
+        deleted = cursor.rowcount
+        self.conn.commit()
+        logger.info(f"Cleared namespace {namespace} ({deleted} embeddings deleted)")
+
+    def get_stats(self, namespace: str = None) -> dict:
+        """Get statistics about stored embeddings.
+
+        Args:
+            namespace: Optional namespace to filter stats
+
+        Returns:
+            Dictionary with statistics
+        """
+        stats = {}
+
+        if namespace:
+            cursor = self.conn.execute(
+                "SELECT COUNT(*) FROM schema_embeddings WHERE namespace = ?",
+                (namespace,)
+            )
+            stats['total_embeddings'] = cursor.fetchone()[0]
+            stats['namespace'] = namespace
+        else:
+            cursor = self.conn.execute("SELECT COUNT(*) FROM schema_embeddings")
+            stats['total_embeddings'] = cursor.fetchone()[0]
+
+            cursor = self.conn.execute(
+                "SELECT namespace, COUNT(*) FROM schema_embeddings GROUP BY namespace"
+            )
+            stats['by_namespace'] = {row[0]: row[1] for row in cursor.fetchall()}
+
+        return stats
+
+    def close(self):
+        """Close database connection."""
+        if self.conn:
+            self.conn.close()
+            logger.debug("Closed SQLite embedding store")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
 
 class PgVectorEmbeddingStore(EmbeddingStore):
@@ -339,20 +402,28 @@ class PgVectorEmbeddingStore(EmbeddingStore):
             conn.close()
 
 
-def create_embedding_store(database_url: Optional[str] = None, cache_dir: str = ".embeddings_cache") -> EmbeddingStore:
+def create_embedding_store(
+    database_url: Optional[str] = None,
+    db_path: str = "data/embeddings_cache.db"
+) -> EmbeddingStore:
     """Factory function to create appropriate embedding store.
+
+    Priority order:
+    1. PostgreSQL pgvector (if EMBEDDING_DATABASE_URL is postgresql://)
+    2. SQLite (default, recommended)
 
     Args:
         database_url: Database URL. If starts with 'postgresql://', uses PgVectorEmbeddingStore.
-                     Otherwise uses LocalFileEmbeddingStore.
-        cache_dir: Cache directory for local file store (ignored for pgvector)
+        db_path: Path to SQLite database (default: data/embeddings_cache.db)
 
     Returns:
         EmbeddingStore instance
     """
+    # Option 1: PostgreSQL pgvector (production with vector similarity indexing)
     if database_url and database_url.startswith('postgresql'):
-        logger.info(f"Using PgVectorEmbeddingStore with {database_url}")
+        logger.debug(f"Using PgVectorEmbeddingStore with {database_url}")
         return PgVectorEmbeddingStore(database_url)
-    else:
-        logger.info(f"Using LocalFileEmbeddingStore with cache_dir={cache_dir}")
-        return LocalFileEmbeddingStore(cache_dir)
+
+    # Option 2: Default to SQLite (recommended for most cases)
+    logger.debug(f"Using SQLiteEmbeddingStore (default) with db_path={db_path}")
+    return SQLiteEmbeddingStore(db_path)

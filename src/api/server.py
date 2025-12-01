@@ -14,7 +14,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 
-import pandas as pd  # Only used for CSV download
+import pandas as pd
 from io import StringIO
 from sqlalchemy import text
 from src.common.env import load_environment
@@ -64,19 +64,33 @@ def get_cache_entry(query_id: str) -> Dict[str, Any]:
 
 # Cleanup task for expired cache entries
 async def cleanup_expired_cache():
-    """Background task to clean up expired cache entries."""
+    """Background task to clean up expired cache entries (both query results and SQL cache)."""
+    # Track iterations for less frequent SQL cache pruning
+    iteration = 0
+    SQL_CACHE_PRUNE_INTERVAL = 288  # Prune SQL cache every 288 iterations (24 hours at 5-min intervals)
+
     while True:
         try:
             current_time = datetime.now()
-            expired_keys = []
 
+            # Clean up in-memory query results cache (every 5 minutes)
+            expired_keys = []
             for query_id, cache_entry in query_cache.items():
                 if current_time - cache_entry["timestamp"] > timedelta(seconds=CACHE_TTL_SECONDS):
                     expired_keys.append(query_id)
 
             for key in expired_keys:
                 del query_cache[key]
-                logger.info(f"Cleaned up expired cache entry: {key}")
+                logger.info(f"Cleaned up expired query result: {key}")
+
+            # Prune SQL cache periodically (every 24 hours)
+            iteration += 1
+            if iteration % SQL_CACHE_PRUNE_INTERVAL == 0:
+                from src.api.app_context import AppContext
+                sql_cache = AppContext.get_instance().get_sql_cache()
+                deleted = sql_cache.prune_old_entries(days=30)
+                if deleted > 0:
+                    logger.info(f"Pruned {deleted} old SQL cache entries (runs daily)")
 
             await asyncio.sleep(CACHE_CLEANUP_INTERVAL_SECONDS)
         except Exception as e:
@@ -87,7 +101,7 @@ async def cleanup_expired_cache():
 async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
     # Startup
-    logger.info("Starting up application...")
+    logger.info("Initializing resources...")
 
     # Initialize all AppContext resources eagerly
     initialize_app_context()
@@ -95,13 +109,11 @@ async def lifespan(app: FastAPI):
     # Start cache cleanup task
     cleanup_task = asyncio.create_task(cleanup_expired_cache())
 
-    logger.info("Application startup complete")
+    logger.info("Application ready!")
 
     yield
 
     # Shutdown
-    logger.info("Shutting down application...")
-
     cleanup_task.cancel()
     try:
         await cleanup_task
@@ -159,8 +171,14 @@ class PreviewResponse(BaseModel):
     intent: Optional[str] = Field(None, description="Query intent: sql, general, or mixed")
     general_answer: Optional[str] = Field(None, description="Direct answer for general/mixed questions")
 
+class InterpretationData(BaseModel):
+    """Structured interpretation with plain text (no markdown) for frontend formatting."""
+    summary: str = Field(..., description="Brief summary in plain text")
+    key_findings: List[str] = Field(default_factory=list, description="List of key findings in plain text")
+    recommendations: List[str] = Field(default_factory=list, description="Actionable recommendations in plain text")
+
 class InterpretationResponse(BaseModel):
-    interpretation: str = Field(..., description="Markdown-formatted interpretation")
+    interpretation: InterpretationData = Field(..., description="Structured interpretation data")
     visualization: Optional[Dict[str, Any]] = Field(None, description="Single best chart specification")
     data_truncated: bool = Field(..., description="Whether data was truncated for interpretation")
 
@@ -184,13 +202,16 @@ class SchemaOverviewResponse(BaseModel):
 
 
 @app.get("/api/schema/overview", response_model=SchemaOverviewResponse)
-async def schema_overview(database: str = "sample") -> SchemaOverviewResponse:
+async def schema_overview(database: Optional[str] = None) -> SchemaOverviewResponse:
     """
     Return a high-level overview of available tables and sample prompts.
 
     Args:
-        database: Database name (e.g., 'sample', 'neila') - defaults to 'sample'
+        database: Database name (e.g., 'sample', 'neila') - defaults to current backend's schema
     """
+    # If no database specified, use the current backend's schema ID
+    if database is None:
+        database = os.getenv("SCHEMA_ID")
     overview = get_schema_overview(database=database)
     tables = overview.get("tables", [])
     if not tables:
@@ -385,11 +406,14 @@ async def interpret_results(query_id: str) -> InterpretationResponse:
         general_answer = cache_entry.get("general_answer")
 
         # STEP 1: INSTANT visualization selection (no LLM, 0ms)
-        from src.api.services.interpretation_service import select_visualization_fast
+        from src.api.services.interpretation_service import select_visualization_fast, process_visualization_data
         from src.api.services.data_utils import analyze_data_patterns
 
         patterns = analyze_data_patterns(data) if data else {}
         visualization = select_visualization_fast(query, data, patterns)
+
+        # Process visualization data (e.g., perform grouping/aggregation if needed)
+        visualization = process_visualization_data(visualization, data)
 
         # STEP 2: LLM interpretation (runs async, slower but higher quality)
         # For mixed queries, this will prepend the general answer
@@ -427,6 +451,8 @@ async def download_csv(query_id: str):
 
         # Stream the results as CSV
         def generate_csv():
+            import pandas as pd  # Lazy import - only needed for CSV export
+
             engine = get_engine()
             with engine.connect() as conn:
                 # Use pandas to read SQL in chunks and write to CSV
@@ -461,5 +487,24 @@ async def health_check():
     return {"status": "healthy", "cache_size": len(query_cache)}
 
 if __name__ == "__main__":
+    import argparse
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+
+    parser = argparse.ArgumentParser(description="NetQuery API Server")
+    parser.add_argument("--port", type=int, default=8000, help="Port to run the server on (default: 8000)")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind to (default: 0.0.0.0)")
+    parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
+    args = parser.parse_args()
+
+    schema_id = os.getenv('SCHEMA_ID', 'not set')
+    database_url = os.getenv('DATABASE_URL', 'not set')
+    logger.info(f"Starting NetQuery API server on {args.host}:{args.port}")
+    logger.info(f"Environment: {schema_id} database ({database_url})")
+
+    # Use import string for reload support
+    uvicorn.run(
+        "src.api.server:app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload
+    )

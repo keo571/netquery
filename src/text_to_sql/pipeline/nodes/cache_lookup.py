@@ -71,7 +71,7 @@ def _handle_cache_hit(cached_sql: str, query_to_cache: str) -> Dict[str, Any]:
     Returns:
         State updates for cache hit
     """
-    logger.info("🚀 Cache HIT - returning cached SQL (~2-3s saved)")
+    logger.info("Cache HIT - returning cached SQL (~2-3s saved)")
 
     return {
         "generated_sql": cached_sql,

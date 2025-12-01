@@ -26,9 +26,12 @@ def sql_generator(state: TextToSQLState) -> Dict[str, Any]:
     4. Caches the generated SQL for future use
     5. Returns the generated SQL or error state
     """
-    query = state["original_query"]
+    # Use sql_query (set by intent classifier) which is the clean rewritten query
+    # For standalone queries: sql_query = original question
+    # For follow-ups: sql_query = rewritten standalone query (e.g., "which are unhealthy?" -> "Show all unhealthy servers")
+    query = state.get("sql_query") or state.get("extracted_query") or state["original_query"]
     schema_context = state["schema_context"]
-    query_cache = state.get("query_cache")
+    sql_cache = state.get("sql_cache")
 
     # Use extracted_query for caching (from cache_lookup_node)
     # This is the clean query without conversation context
@@ -78,12 +81,9 @@ def sql_generator(state: TextToSQLState) -> Dict[str, Any]:
 
             # Cache the generated SQL for future use
             # Use extracted_query (without conversation context) for caching
-            if query_cache:
-                # Update only the SQL (embedding already cached by schema analyzer)
-                if query_cache.update_sql(extracted_query, generated_sql):
-                    logger.info(f"Cached generated SQL for query: '{extracted_query[:60]}...'")
-                else:
-                    logger.warning(f"Could not cache SQL - no entry found in cache for query: '{extracted_query[:60]}...'")
+            if sql_cache:
+                sql_cache.set(extracted_query, generated_sql)
+                logger.info(f"Cached generated SQL for query: '{extracted_query[:60]}...'")
 
             return {
                 "generated_sql": generated_sql,

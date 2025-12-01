@@ -57,7 +57,7 @@ User Query → Triage → Schema Analysis → SQL Generation → Validation → 
    - `mcp_server.py` - Standard MCP implementation
 
 8. **Scripts & CLI**
-   - `setup/create_data_sqlite.py` - Pure SQL sample data generator
+   - `scripts/create_data_sqlite.py` - Pure SQL sample data generator
    - `testing/evaluate_queries.py` - Comprehensive query evaluation framework
 
 9. **API Layer** (`src/api/`)
@@ -148,7 +148,7 @@ The system now includes a FastAPI server providing a clean separation between SQ
 - ✅ Improved project structure clarity with proper directory hierarchy
 
 ### 2. Database & Code Simplification
-- ✅ Refactored setup/create_data_sqlite.py to use pure raw SQL (eliminated SQLAlchemy complexity)
+- ✅ Refactored scripts/create_data_sqlite.py to use pure raw SQL (eliminated SQLAlchemy complexity)
 - ✅ Fixed SQLite path resolution to use data/ folder consistently
 - ✅ Fixed datetime/float type conversion errors in sample data generation
 - ✅ Reorganized SAMPLE_QUERIES.md for better clarity and removed redundancies
@@ -362,7 +362,7 @@ EMBEDDING_CACHE_DIR=.embeddings_cache        # Local cache directory (default)
 # See SIMPLE_GUIDE.md for complete usage
 
 # Development (Alternative - Advanced)
-python setup/create_data_sqlite.py          # Create sample data (REQUIRED for CLI/API)
+python scripts/create_data_sqlite.py          # Create sample data (REQUIRED for CLI/API)
 python gemini_cli.py "your query"             # Test queries via CLI
 python -m src.text_to_sql.mcp_server          # Start MCP server (auto-creates data if missing)
 
@@ -473,7 +473,7 @@ python gemini_cli.py "your query" --schema schema_files/my_schema.json
 6. **CLI & Testing**
    - `gemini_cli.py` - Command-line interface with export options
    - `testing/evaluate_queries.py` - Comprehensive evaluation framework
-   - `setup/create_data_sqlite.py` - Sample data generation
+   - `scripts/create_data_sqlite.py` - Sample data generation
    - `testing/export_database_tables.py` - Database export utilities
 
 7. **MCP Integration**

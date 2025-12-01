@@ -42,7 +42,7 @@ def invalidate_query_cache(user_question: str) -> bool:
         result = cache.invalidate(user_question)
 
         if result:
-            logger.info(f"✅ Cache invalidated for user feedback: '{user_question[:60]}...'")
+            logger.info(f"Cache invalidated for user feedback: '{user_question[:60]}...'")
         else:
             logger.debug(f"No cache entry to invalidate: '{user_question[:60]}...'")
 
@@ -65,7 +65,7 @@ def clear_all_cache() -> int:
     try:
         cache = _get_sql_cache()
         count = cache.clear()
-        logger.info(f"✅ Cleared entire cache: {count} entries deleted")
+        logger.info(f"Cleared entire cache: {count} entries deleted")
         return count
 
     except Exception as e:

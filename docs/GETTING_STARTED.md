@@ -1,19 +1,19 @@
-# Netquery Startup & Profiles Guide
+# Netquery Startup Guide
 
-Quick reference for starting Netquery and managing dev/prod environments.
+Quick reference for starting Netquery with different databases and modes.
 
 ## Quick Start
 
 **New to Netquery?** Use these scripts:
 
 ```bash
-# Dev mode (SQLite - fast, simple)
-./start-dev.sh
+# Setup CLI environment (if using CLI)
+./setup-cli.sh
 python gemini_cli.py "Show me all load balancers"
 
-# Prod mode (PostgreSQL - production-like)
-./start-prod.sh
-python gemini_cli.py "Show me all load balancers"
+# Or start dual API backends for frontend (recommended)
+./start_dual_backends.sh
+# Then access: http://localhost:8000 (sample), http://localhost:8001 (neila)
 ```
 
 That's it! Everything else is automatic.
@@ -24,160 +24,142 @@ That's it! Everything else is automatic.
 
 | Script | Purpose | When to Use |
 |--------|---------|-------------|
-| `./start-dev.sh` | **Start DEV mode** | First time, quick testing, local development |
-| `./start-prod.sh` | **Start PROD mode** | Production testing, PostgreSQL, Docker |
-| `./api-server.sh` | Start API server | When frontend needs REST API |
-| `./profile.sh status` | Check current mode | To see if you're in dev or prod |
-| `./profile.sh [dev\|prod]` | Switch modes manually | Advanced users |
+| `./setup-cli.sh` | **Setup CLI environment** | CLI testing with gemini_cli.py |
+| `./start_dual_backends.sh` | **Start dual API backends** | Frontend with database switching (recommended) |
+| `./start_dual_backends.sh --dev` | **Dual backends (dev mode)** | Development: auto-reload + visible logs |
+
+**Development vs Production Mode:**
+- **Production** (`./start_dual_backends.sh`): Runs in background, logs to `/tmp/netquery_*.log`
+- **Development** (`./start_dual_backends.sh --dev`): Auto-reload on code changes, logs visible in terminal
+
+**Note:** `.env.sample` and `.env.neila` are the main database configurations.
 
 ---
 
-## Two Profiles
+## Database Configurations
 
-| Profile | Database | Data Script | Use Case |
-|---------|----------|-------------|----------|
-| **dev** | SQLite (file) | `setup/create_data_sqlite.py` | Quick testing, local development |
-| **prod** | PostgreSQL (Docker) | `setup/create_data_postgres.py` | Production-like testing |
+| Config File | Database | Purpose | Use Case |
+|-------------|----------|---------|----------|
+| `.env.sample` | Sample (SQLite) | Demo/testing database | CLI queries, quick testing |
+| `.env.neila` | Neila (SQLite) | Customer database | Production queries |
 
 ---
 
-## Manual Profile Management
-
-### Check Current Profile
-```bash
-./profile.sh status
-```
-
-### Switch Profiles
-```bash
-# Switch to dev (SQLite)
-./profile.sh dev
-
-# Switch to prod (PostgreSQL)
-./profile.sh prod
-```
-
-### Initialize Profile (Create Data + Build Schema)
-```bash
-# Initialize current profile
-./profile.sh init
-
-# Or switch and initialize in one command
-./profile.sh dev init
-./profile.sh prod init
-```
-
-## Typical Workflows
-
-### Option 1: Use Start Scripts (Easiest)
-```bash
-# Dev mode
-./start-dev.sh
-python gemini_cli.py "your question"
-
-# Prod mode
-./start-prod.sh
-python gemini_cli.py "your question"
-```
-
-### Option 2: Manual Control
-```bash
-# Check what you're using
-./profile.sh status
-
-# Switch modes
-./profile.sh dev    # or: ./profile.sh prod
-
-# Initialize
-./profile.sh init
-
-# Query
-python gemini_cli.py "your question"
-```
-
-## What profile.sh Does
-
-1. **Switches `.env` file** - Copies `.env.dev` or `.env.prod` to `.env`
-2. **Preserves your API key** - Your `GEMINI_API_KEY` is kept when switching
-3. **Initializes data** - Creates sample data in the right database
-4. **Builds schema** - Runs schema ingestion for embeddings
-
-## Config Files
-
-- `.env.dev` - Template for dev (SQLite)
-- `.env.prod` - Template for prod (PostgreSQL)
-- `.env` - Active config (gitignored, created by profile.sh)
-
-## Advanced: Manual Commands
+## Manual Setup (Alternative to Scripts)
 
 If you need fine-grained control:
 
 ```bash
-# Manual database switching (without data creation)
-./setup/switch_database.sh sqlite
-./setup/switch_database.sh postgres
+# Manual database switching
+cp .env.sample .env   # Use sample database
+cp .env.neila .env    # Use neila database
 
 # Manual data creation
-python setup/create_data_sqlite.py
-python setup/create_data_postgres.py
+python scripts/create_sample_data.py
 
 # Manual schema building
-python -m src.schema_ingestion build --output schema_files/dev_schema.json
-
-# Build with Excel descriptions
 python -m src.schema_ingestion build \
-  --excel schema_files/load_balancer_schema.xlsx \
-  --output schema_files/prod_schema.json
+  --schema-id sample \
+  --excel-path schema_files/sample_schema.xlsx \
+  --output-path schema_files/sample_schema.json
 ```
+
+## Config Files
+
+- `.env.sample` - Sample database configuration (SQLite)
+- `.env.neila` - Neila database configuration (SQLite)
+- `.env` - Active config (gitignored, created by setup scripts)
 
 ## Common Commands
 
 ### Starting Netquery
 ```bash
-./start-dev.sh                    # Dev mode
-./start-prod.sh                   # Prod mode
-./api-server.sh                   # API server (after starting a mode)
+./setup-cli.sh                    # Setup CLI environment
+./start_dual_backends.sh          # Start dual backends (sample on :8000, neila on :8001)
+SCHEMA_ID=sample python -m src.api.server --port 8000  # Manual: single API backend
 ```
 
 ### Checking Status
 ```bash
-./profile.sh status               # What mode am I in?
-docker compose ps                 # Is PostgreSQL running?
+grep "^SCHEMA_ID=" .env           # What database am I using?
+grep "^DATABASE_URL=" .env        # Database connection
 ```
 
-### Switching Modes
+### Switching Databases
 ```bash
-./start-dev.sh                    # Switch to dev
-./start-prod.sh                   # Switch to prod
-```
+# For CLI usage
+cp .env.sample .env               # Use sample database
+cp .env.neila .env                # Use neila database
 
-### PostgreSQL Management (Prod Mode)
-```bash
-docker compose up -d postgres     # Start PostgreSQL
-docker compose logs -f postgres   # View logs
-docker compose down               # Stop PostgreSQL
-docker compose down -v            # Reset database (deletes data!)
-docker compose exec postgres psql -U netquery -d netquery  # psql shell
+# For API backends - run separate instances
+SCHEMA_ID=sample python -m src.api.server --port 8000
+SCHEMA_ID=neila python -m src.api.server --port 8001
 ```
 
 ### Resetting Everything
 ```bash
-# Dev mode
-rm -rf .embeddings_cache/ data/*.db
-./start-dev.sh
+# Remove all databases and caches
+rm -rf data/*.db
 
-# Prod mode
-docker compose down -v
-./start-prod.sh
+# Re-setup CLI environment
+./setup-cli.sh
 ```
+
+---
+
+## Multi-Database Setup (Advanced)
+
+NetQuery supports running multiple databases simultaneously with separate backend instances. This is useful when you have multiple database schemas (e.g., Sample and Neila) and want users to switch between them.
+
+### Quick Start: Dual Backends
+
+```bash
+# Start both backends at once
+./start_dual_backends.sh
+```
+
+This starts:
+- **Sample database** on `http://localhost:8000`
+- **Neila database** on `http://localhost:8001`
+
+### Manual Setup
+
+```bash
+# Terminal 1: Sample database
+source .venv/bin/activate
+SCHEMA_ID=sample python -m src.api.server --port 8000
+
+# Terminal 2: Neila database
+source .venv/bin/activate
+SCHEMA_ID=neila python -m src.api.server --port 8001
+```
+
+### Frontend Integration
+
+Your frontend can switch databases by changing the backend URL:
+
+```javascript
+const selectedDatabase = "sample"; // or "neila"
+const backendUrl = selectedDatabase === "sample"
+  ? "http://localhost:8000"
+  : "http://localhost:8001";
+
+fetch(`${backendUrl}/api/generate-sql`, {
+  method: "POST",
+  body: JSON.stringify({ query: "How many users?" })
+});
+```
+
+### Adding New Databases
+
+See [docs/ADDING_NEW_DATABASE.md](ADDING_NEW_DATABASE.md) for complete instructions on adding additional databases.
 
 ---
 
 ## Tips
 
-- Use `./start-dev.sh` for quick iterations and testing queries
-- Use `./start-prod.sh` when testing performance or production scenarios
-- Your embeddings are stored locally in `.embeddings_cache/` directory
-- Check current mode anytime: `./profile.sh status`
-- PostgreSQL pgAdmin UI: `docker compose up -d pgadmin` → http://localhost:5050
-  - Login: admin@netquery.local / admin
+- Use `./setup-cli.sh` for CLI testing and quick iterations with `gemini_cli.py`
+- Use `./start_dual_backends.sh` for frontend integration with database switching (recommended)
+- Your embeddings are stored per-database in `data/{schema_id}_embeddings_cache.db`
+- Each database has isolated caches - no cross-contamination
+- `.env.sample` and `.env.neila` are your main configs - `.env` is auto-generated

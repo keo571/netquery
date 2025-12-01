@@ -6,13 +6,52 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 
+def get_database_url(database_name: str = None) -> str:
+    """
+    Get database URL for a specific database and environment.
+
+    Priority:
+    1. DATABASE_URL_{ENV}_{DATABASE} (e.g., DATABASE_URL_DEV_SAMPLE)
+    2. DATABASE_URL (default/fallback)
+
+    Args:
+        database_name: Name of the database (e.g., 'sample', 'neila')
+
+    Returns:
+        Database URL string
+
+    Example:
+        # Dev environment with sample database
+        NETQUERY_ENV=dev
+        DATABASE_URL_DEV_SAMPLE=sqlite:///data/sample.db
+        get_database_url('sample') -> 'sqlite:///data/sample.db'
+
+        # Prod environment with neila database
+        NETQUERY_ENV=prod
+        DATABASE_URL_PROD_NEILA=postgresql://user:pass@host:5432/neila_db
+        get_database_url('neila') -> 'postgresql://user:pass@host:5432/neila_db'
+    """
+    env = os.getenv("NETQUERY_ENV", "dev").upper()
+
+    if database_name:
+        # Try environment-specific database URL
+        env_key = f"DATABASE_URL_{env}_{database_name.upper()}"
+        db_url = os.getenv(env_key)
+        if db_url:
+            return db_url
+
+    # Fallback to default DATABASE_URL (sample database)
+    return os.getenv("DATABASE_URL", "sqlite:///data/sample.db")
+
+
 class DatabaseConfig(BaseModel):
     """Database configuration."""
     database_url: str = Field(
-        default_factory=lambda: os.getenv("DATABASE_URL", "sqlite:///data/infrastructure.db"),
+        default_factory=lambda: get_database_url("sample"),  # Default to sample database
         description="Database connection URL (relative to project root)"
     )
     connection_timeout: int = Field(default=30, description="Connection timeout in seconds")
+    current_database: str = Field(default="sample", description="Currently selected database name")
     
     def __init__(self, **data):
         super().__init__(**data)
@@ -48,8 +87,6 @@ class PipelineConfig(BaseModel):
     max_expanded_tables: int = Field(default=15, description="Maximum tables after FK expansion (includes semantic + expanded)")
     max_schema_tokens: int = Field(default=8000, description="Maximum tokens for schema context (~25% of LLM context window)")
     relevance_threshold: float = Field(default=0.15, description="Minimum similarity threshold for table relevance (0-1). Uses two-stage filtering: gets 2x candidates, then filters by this threshold.")
-    include_sample_data: bool = Field(default=True, description="Include sample data for semantically matched tables only")
-    include_row_counts: bool = Field(default=False, description="Include row counts in schema context (requires COUNT(*) queries)")
     max_execution_time: int = Field(default=30, description="Maximum execution time in seconds")
 
     # Query embedding cache settings

@@ -249,6 +249,8 @@ backend/logs/
 # BUT keep the profile config templates (these don't have real API keys)
 !.env.dev
 !.env.prod
+!.env.sample
+!.env.neila
 
 # API keys and secrets
 secrets.json
@@ -306,6 +308,17 @@ data/*.db
 data/*.sqlite
 data/*.sqlite3
 
+# Temporary CSV and markdown files in schema_files
+schema_files/*.csv
+schema_files/NEILA_*.md
+
 # Local development
 .local/
 local/ 
+# macOS
+.DS_Store
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo

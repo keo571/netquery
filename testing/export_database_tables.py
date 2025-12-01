@@ -3,8 +3,7 @@
 Export all database tables to CSV files.
 Useful for data analysis, backup, or sharing sample data.
 
-NOTE: This script only works with SQLite databases (dev mode).
-For PostgreSQL, use standard pg_dump or pgAdmin export tools.
+NOTE: This script only works with SQLite databases.
 """
 import os
 import sys
@@ -25,20 +24,18 @@ def export_all_tables():
     # Check if using SQLite
     database_url = os.getenv("DATABASE_URL", "")
     if not database_url.startswith("sqlite"):
-        print("❌ Error: This script only works with SQLite databases (dev mode)")
+        print("❌ Error: This script only works with SQLite databases")
         print(f"   Current DATABASE_URL: {database_url}")
-        print("\n💡 Solutions:")
-        print("   1. Switch to dev mode: ./start-dev.sh")
-        print("   2. For PostgreSQL, use: docker compose exec postgres pg_dump ...")
-        print("   3. Or use pgAdmin web interface: http://localhost:5050")
+        print("\n💡 Solution:")
+        print("   Ensure you're using a SQLite database (sample or neila)")
         return False
 
     # Create testing/table_exports directory for database table exports
     export_dir = Path(__file__).parent.parent / "testing" / "table_exports"
     export_dir.mkdir(parents=True, exist_ok=True)
 
-    env_mode = os.getenv("NETQUERY_ENV", "dev")
-    print(f"🚀 Starting database table export (SQLite - {env_mode} mode)...")
+    schema_id = os.getenv("SCHEMA_ID", "sample")
+    print(f"🚀 Starting database table export (SQLite - {schema_id} database)...")
     print(f"📁 Export directory: {export_dir.absolute()}")
     
     # Get all table names

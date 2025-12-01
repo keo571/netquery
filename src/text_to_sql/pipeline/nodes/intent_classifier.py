@@ -28,8 +28,9 @@ def intent_classifier_node(state: TextToSQLState) -> Dict[str, Any]:
 
     Flow:
     1. Extract query from conversation context
-    2. Classify intent (sql/general/mixed) using LLM
-    3. Route based on intent:
+    2. Get schema summary for domain-aware classification
+    3. Classify intent (sql/general/mixed) using LLM with schema context
+    4. Route based on intent:
        - general → Return direct answer (skip SQL pipeline)
        - sql/mixed → Continue to cache lookup
 
@@ -47,17 +48,33 @@ def intent_classifier_node(state: TextToSQLState) -> Dict[str, Any]:
     logger.debug(f"Extracted query: '{extracted_query[:50]}...'")
 
     # ================================================================
-    # Step 2: Classify intent using LLM (with conversation context)
+    # Step 2: Get cached schema summary for domain-aware classification
+    # ================================================================
+    from src.api.app_context import AppContext
+    schema_summary = ""
+    try:
+        app_context = AppContext.get_instance()
+        # Use pre-built cached string (built once at startup, zero overhead)
+        schema_summary = app_context.get_schema_summary_string()
+    except Exception as e:
+        logger.warning(f"Could not load schema summary for intent classification: {e}")
+
+    # ================================================================
+    # Step 3: Classify intent using LLM (with conversation context + schema)
     # ================================================================
     llm_start = time.time()
-    intent_result = classify_intent(extracted_query, full_query=full_query)
+    intent_result = classify_intent(
+        extracted_query,
+        full_query=full_query,
+        schema_summary=schema_summary
+    )
     intent = intent_result.intent
     llm_time_ms = (time.time() - llm_start) * 1000
 
     logger.info(f"⏱️  Intent classification took {llm_time_ms:.0f}ms → result: {intent}")
 
     # ================================================================
-    # Step 3: Handle based on intent
+    # Step 4: Handle based on intent
     # ================================================================
 
     # Base state (always include these)

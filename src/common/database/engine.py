@@ -42,7 +42,7 @@ def get_engine(echo: bool = False) -> Engine:
                 pool_recycle=300
             )
         
-        logger.info(f"Created SQLAlchemy engine for {database_url}")
+        logger.debug(f"Created SQLAlchemy engine for {database_url}")
     
     return _engine
 

@@ -39,17 +39,17 @@ def validator(state: TextToSQLState) -> Dict[str, Any]:
 
     # Log validation results
     if validation_result["is_valid"]:
-        logger.info("✅ SQL validation passed")
+        logger.info("SQL validation passed")
     else:
-        logger.warning(f"❌ SQL validation failed: {validation_result['errors']}")
+        logger.warning(f"SQL validation failed: {validation_result['errors']}")
     
     # Log the reasoning step
     if validation_result["errors"]:
         details = f"Validation found {len(validation_result['errors'])} issues. First issue: {validation_result['errors'][0]}"
-        status = "⚠️"
+        status = "WARNING"
     else:
         details = "The generated SQL passed all safety and security checks."
-        status = "✅"
+        status = "OK"
     
     reasoning_step = {
         "step_name": "Validation",

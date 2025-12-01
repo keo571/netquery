@@ -10,11 +10,11 @@ LOGGER = logging.getLogger(__name__)
 
 
 def load_environment() -> Optional[Path]:
-    """Load environment variables based on NETQUERY_ENV or DOTENV_PATH.
+    """Load environment variables based on SCHEMA_ID, NETQUERY_ENV, or DOTENV_PATH.
 
     Precedence:
     1. DOTENV_PATH environment variable (explicit override)
-    2. NETQUERY_ENV environment variable (loads .env.<name>)
+    2. NETQUERY_ENV or SCHEMA_ID environment variable (loads .env.<name>)
     3. Fallback to .env if present, otherwise .env.dev, then default load.
 
     Returns:
@@ -26,7 +26,8 @@ def load_environment() -> Optional[Path]:
     if explicit_path:
         search_paths.append(Path(explicit_path))
 
-    configured_env = os.getenv("NETQUERY_ENV")
+    # Check both NETQUERY_ENV and SCHEMA_ID for environment name
+    configured_env = os.getenv("NETQUERY_ENV") or os.getenv("SCHEMA_ID")
     if configured_env:
         search_paths.append(Path(f".env.{configured_env}"))
 

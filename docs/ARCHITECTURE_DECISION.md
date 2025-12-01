@@ -501,19 +501,18 @@ RESTful API server (`api_server.py`):
 - Manages query sessions and caching
 - Handles all LLM interactions
 - Streaming support for large downloads
-- Environment-aware (dev/prod modes)
+- Multi-database support via `SCHEMA_ID` configuration
 
 ### 3. Database Layer
 
-- **Dev Mode**: SQLite (`data/infrastructure.db`)
-  - SSL certificates, network monitoring
-  - Detailed health tracking
-  - 9 tables with comprehensive metrics
+- **Sample Database**: SQLite (`data/sample.db`)
+  - Load balancers, backends, virtual IPs
+  - Network performance metrics
+  - Sample data for demonstration
 
-- **Prod Mode**: PostgreSQL (Docker)
-  - Wide IP global load balancing
-  - Traffic statistics
-  - 6 tables with production-like schema
+- **Neila Database**: SQLite (`data/neila.db`)
+  - Customer-specific schema
+  - Production-like data structure
 
 ### 4. MCP Server (Optional)
 
@@ -837,14 +836,15 @@ def _save_results_to_csv(data: list, query: str) -> str:
 
 ```bash
 # Required
+SCHEMA_ID=sample  # Database identifier (e.g., 'sample', 'neila')
 GEMINI_API_KEY=your_key_here
-DATABASE_URL=sqlite:///data/infrastructure.db  # or postgresql://...
+DATABASE_URL=sqlite:///data/sample.db  # or postgresql://...
+CANONICAL_SCHEMA_PATH=schema_files/sample_schema.json
 
 # Optional - API Performance
 CACHE_TTL=600  # seconds (default: 10 minutes)
 MAX_CACHE_ROWS=30  # max rows to cache per query
 PREVIEW_ROWS=30  # rows returned in preview
-NETQUERY_ENV=dev  # dev or prod
 
 # Optional - Schema Analyzer Speed Optimization
 MAX_RELEVANT_TABLES=5   # Semantic search results (default: 5)
@@ -873,19 +873,25 @@ These parameters control the smart FK expansion behavior (see Stage 1 details ab
 
 ### Environment Profiles
 
-**Dev Mode** (`.env`):
+**Sample Database** (`.env.sample`):
 ```bash
-NETQUERY_ENV=dev
-DATABASE_URL=sqlite:///data/infrastructure.db
-CANONICAL_SCHEMA_PATH=schema_files/dev_schema.json
+SCHEMA_ID=sample
+DATABASE_URL=sqlite:///data/sample.db
+CANONICAL_SCHEMA_PATH=schema_files/sample_schema.json
+GEMINI_API_KEY=your_key_here
 ```
 
-**Prod Mode** (`.env.prod`):
+**Neila Database** (`.env.neila`):
 ```bash
-NETQUERY_ENV=prod
-DATABASE_URL=postgresql://netquery:password@localhost:5432/netquery
-CANONICAL_SCHEMA_PATH=schema_files/prod_schema.json
+SCHEMA_ID=neila
+DATABASE_URL=sqlite:///data/neila.db
+CANONICAL_SCHEMA_PATH=schema_files/neila_schema.json
+GEMINI_API_KEY=your_key_here
 ```
+
+**Note**: Cache files are automatically derived from `SCHEMA_ID`:
+- Embeddings: `data/{SCHEMA_ID}_embeddings_cache.db`
+- SQL Cache: `data/{SCHEMA_ID}_sql_cache.db`
 
 ## Error Handling
 
@@ -1128,7 +1134,7 @@ Scope clarity to avoid over-engineering:
 - ✅ No duplicate SQL execution
 - ✅ Clear feedback on data limits
 - ✅ Comprehensive test coverage
-- ✅ Works in both dev and prod modes
+- ✅ Works with multiple databases (via SCHEMA_ID configuration)
 
 ## Related Documentation
 
@@ -1174,4 +1180,17 @@ Scope clarity to avoid over-engineering:
 
 ---
 
-**Last Updated**: 2025-01-17
+**Last Updated**: 2025-11-28
+
+## Architecture Decision Records
+
+For detailed historical decisions and rationale behind architectural choices, see:
+- **[Architecture Decision Records (ADRs)](ARCHITECTURE_DECISION_RECORDS.md)** - Chronological record of all 22 major architectural decisions
+
+Key decisions include:
+- **ADR-009**: SQL-Only Cache (simplified from two-tier)
+- **ADR-010**: SQLite Schema Embeddings (100x faster than JSON)
+- **ADR-011**: Eager Initialization via AppContext (consistent performance)
+- **ADR-015**: Dual Backend Implementation (multi-database support)
+- **ADR-020**: Conversational Follow-Up Question Handling
+- **ADR-022**: Schema Drift Validation on Startup

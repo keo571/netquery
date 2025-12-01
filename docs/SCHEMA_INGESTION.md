@@ -121,9 +121,9 @@ python -m src.schema_ingestion summary schema_files/dev_schema.json -v
 **Solution**: Create Excel schema file with relationships AND human-readable descriptions.
 
 ```bash
-# Step 1: Create Excel schema file with 2 tabs:
+# Step 1: Create Excel schema file with tabs:
 #
-# Tab 1: 'table_schema' (required columns):
+# Tab 1: 'table_schema' (REQUIRED):
 #   - table_name: Name of the table
 #   - column_name: Name of the column
 #   - data_type: Data type (INTEGER, VARCHAR, TIMESTAMP, etc.)
@@ -131,11 +131,19 @@ python -m src.schema_ingestion summary schema_files/dev_schema.json -v
 #   - table_description: Human-readable table purpose
 #   - column_description: Human-readable column purpose
 #
-# Tab 2: 'mapping' (required columns):
+# Tab 2: 'mapping' (REQUIRED):
 #   - table_a: Source table with foreign key
 #   - column_a: Foreign key column
 #   - table_b: Referenced table
 #   - column_b: Referenced column (usually 'id')
+#
+# Tab 3: 'suggested_queries' (REQUIRED):
+#   - query: Natural language query suggestions
+#   Include queries for different visualization types:
+#     - Bar charts: "Show count of X by Y"
+#     - Pie charts: "Show distribution of X by Y"
+#     - Line charts: "Show X over the last 30 days"
+#     - Tables: "Show all active X"
 
 # Step 2: Build from Excel with prod namespace
 python -m src.schema_ingestion build \
@@ -241,7 +249,10 @@ relevant_tables = finder.find_relevant_tables("show me all servers")
 
 ## Excel Schema Format
 
-For production PostgreSQL databases without foreign keys, create an Excel file with 2 tabs:
+For production PostgreSQL databases without foreign keys, create an Excel file with these tabs:
+- **Required**: `table_schema` (table and column definitions)
+- **Required**: `mapping` (foreign key relationships)
+- **Required**: `suggested_queries` (custom query suggestions for users)
 
 ### Tab 1: `table_schema`
 
@@ -285,6 +296,41 @@ Defines foreign key relationships (4 columns):
 | orders | customer_id | customers | id |
 | order_items | order_id | orders | id |
 | order_items | product_id | products | id |
+
+### Tab 3: `suggested_queries` (Required)
+
+Provides custom query suggestions that users will see in the frontend. **This sheet is required** - at least one query must be provided.
+
+| Column | Description | Example |
+|--------|-------------|---------|
+| `query` | Natural language query suggestion | `Show count of load balancers by datacenter` |
+
+**Best Practices:**
+
+Include queries that support different visualization types:
+- **Bar charts**: Count/aggregation queries (e.g., "Show count of X by Y")
+- **Pie charts**: Distribution queries (e.g., "Show distribution of X by Y")
+- **Line charts**: Time series queries with specific date ranges (e.g., "Show X over the last 30 days")
+- **Tables**: List/detail queries (e.g., "Show all active X")
+
+**Time Series Queries:**
+For line chart queries, specify explicit date ranges within the last 30 days from today's date.
+
+**Example:**
+
+| query |
+|-------|
+| Show count of load balancers by datacenter |
+| Show count of load balancers by status |
+| Show distribution of backend servers by health status |
+| Show requests per second trend for the last 30 days |
+| Show all active load balancers |
+
+**Benefits:**
+- **Better UX**: Hand-crafted questions are natural and domain-specific
+- **Visualization-ready**: Queries designed for specific chart types
+- **Uses domain knowledge**: Leverages sample values and real use cases
+- **Onboarding**: Helps new users understand what questions to ask
 
 ## Output Files
 

@@ -33,12 +33,8 @@ class AppContext:
         if AppContext._instance is not None:
             raise RuntimeError("AppContext is a singleton. Use AppContext.get_instance()")
 
-        logger.info("Initializing AppContext singleton with all resources...")
-
         # Eagerly initialize all resources immediately
         self._initialize_resources()
-
-        logger.info("AppContext singleton initialized successfully")
 
     def _initialize_resources(self):
         """Initialize all resources immediately."""
@@ -46,19 +42,19 @@ class AppContext:
         from src.text_to_sql.tools.sql_cache import SQLCache
         from src.common.stores.embedding_store import create_embedding_store
         from src.common.database.engine import get_engine
-        from src.text_to_sql.utils.llm_utils import get_llm as get_llm_util
         from src.common.embeddings import EmbeddingService
-        from src.text_to_sql.pipeline.nodes.schema_analyzer import get_analyzer
         from src.common.schema_summary import _resolve_schema_path
+        from src.common.config import config
+        from langchain_google_genai import ChatGoogleGenerativeAI
 
         # Initialize database engine first
         self._db_engine = get_engine()
-        logger.info("Initialized database engine")
+        logger.info("  Database engine initialized")
 
         # Initialize embedding service
         model_name = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
         self._embedding_service = EmbeddingService(model_name=model_name)
-        logger.info(f"Initialized embedding service with model {model_name}")
+        logger.info(f"  Embedding service initialized ({model_name})")
 
         # Get schema ID (required for cache isolation)
         schema_id = os.getenv('SCHEMA_ID')
@@ -76,11 +72,16 @@ class AppContext:
             database_url=database_url,
             db_path=embedding_cache_path
         )
-        logger.info(f"Initialized embedding store: {embedding_cache_path}")
 
-        # Initialize LLM client
-        self._llm = get_llm_util()
-        logger.info("Initialized LLM client")
+        # Initialize LLM client directly (avoid circular dependency with get_llm_util)
+        self._llm = ChatGoogleGenerativeAI(
+            model=config.llm.model_name,
+            temperature=config.llm.temperature,
+            max_tokens=config.llm.max_tokens,
+            max_retries=config.llm.max_retries,
+            google_api_key=config.llm.effective_api_key
+        )
+        logger.info(f"  LLM client initialized ({config.llm.model_name})")
 
         # Initialize SQL cache
         # Derive cache path from schema ID for automatic namespace isolation
@@ -90,24 +91,49 @@ class AppContext:
             enable_fuzzy_fallback=True,
             fuzzy_threshold=0.85
         )
-        logger.info(f"Initialized SQL cache: {sql_cache_path}")
+        logger.info("  SQL cache initialized")
 
         # Initialize schema analyzer
         # Pass embedding store and service to avoid creating duplicates
+        from ..text_to_sql.pipeline.nodes.schema_analyzer import SchemaAnalyzer
+
         canonical_schema_path = _resolve_schema_path()
         if canonical_schema_path:
-            self._schema_analyzer = get_analyzer(
+            self._schema_analyzer = SchemaAnalyzer(
                 canonical_schema_path=canonical_schema_path,
                 embedding_store=self._embedding_store,
                 embedding_service=self._embedding_service
             )
-            logger.info(f"Initialized schema analyzer (using shared embedding store and service)")
 
             # Validate schema drift: ensure canonical schema matches actual database
             self._validate_schema_drift()
+
+            # Pre-build schema summary string for intent classification (cached once)
+            self._schema_summary_string = self._build_schema_summary_string()
         else:
             self._schema_analyzer = None
+            self._schema_summary_string = ""
             logger.warning("No canonical schema path configured - schema analyzer not initialized")
+
+    def _build_schema_summary_string(self) -> str:
+        """
+        Build schema summary string for intent classification.
+
+        This is called ONCE at initialization and cached for all queries.
+        Format: "- table_name: description"
+
+        Returns:
+            Newline-separated list of tables with descriptions
+        """
+        if not self._schema_analyzer or not self._schema_analyzer.canonical_schema:
+            return ""
+
+        table_lines = []
+        for table_name, table_schema in self._schema_analyzer.canonical_schema.tables.items():
+            desc = table_schema.description or "No description"
+            table_lines.append(f"- {table_name}: {desc}")
+
+        return "\n".join(table_lines)
 
     def _validate_schema_drift(self):
         """
@@ -121,8 +147,6 @@ class AppContext:
             ValueError: If any table or column from canonical schema is missing in database
         """
         from src.text_to_sql.tools.database_toolkit import get_db_toolkit
-
-        logger.info("Validating canonical schema against database schema...")
 
         toolkit = get_db_toolkit()
         canonical_schema = self._schema_analyzer.canonical_schema
@@ -165,7 +189,7 @@ class AppContext:
         total_columns = sum(len(t.columns) for t in canonical_schema.tables.values())
 
         if errors:
-            error_summary = "\n".join([f"  ❌ {err}" for err in errors])
+            error_summary = "\n".join([f"  [ERROR] {err}" for err in errors])
             logger.error(
                 f"Schema drift detected ({len(errors)} mismatches):\n{error_summary}\n\n"
                 f"Your canonical schema defines tables/columns that don't exist in the database.\n"
@@ -177,13 +201,10 @@ class AppContext:
             )
 
         if warnings:
-            warning_summary = "\n".join([f"  ⚠️  {warn}" for warn in warnings])
+            warning_summary = "\n".join([f"  [WARN] {warn}" for warn in warnings])
             logger.warning(f"Schema validation warnings:\n{warning_summary}")
 
-        logger.info(
-            f"✅ Schema validation passed: {total_tables} tables, "
-            f"{total_columns} columns validated successfully"
-        )
+        logger.info(f"  Schema analyzer initialized ({total_tables} tables, {total_columns} columns)")
 
     @classmethod
     def get_instance(cls) -> 'AppContext':
@@ -224,16 +245,28 @@ class AppContext:
         """Get the schema analyzer instance (already initialized)."""
         return self._schema_analyzer
 
+    def get_schema_summary_string(self) -> str:
+        """
+        Get pre-built schema summary string for intent classification.
+
+        This is built ONCE at startup and cached - zero overhead per query.
+
+        Returns:
+            Newline-separated list of tables: "- table_name: description"
+        """
+        return self._schema_summary_string
+
     def cleanup(self):
         """
         Cleanup resources (close connections, etc.).
 
         Call this on application shutdown.
         """
+        logger.info("Shutting down resources...")
+
         if self._sql_cache:
             try:
                 self._sql_cache.close()
-                logger.info("Closed SQL cache")
             except Exception as e:
                 logger.error(f"Error closing SQL cache: {e}")
 
@@ -241,16 +274,16 @@ class AppContext:
             try:
                 if hasattr(self._embedding_store, 'close'):
                     self._embedding_store.close()
-                logger.info("Closed embedding store")
             except Exception as e:
                 logger.error(f"Error closing embedding store: {e}")
 
         if self._db_engine:
             try:
                 self._db_engine.dispose()
-                logger.info("Disposed database engine")
             except Exception as e:
                 logger.error(f"Error disposing database engine: {e}")
+
+        logger.info("Resources cleaned up")
 
         # Reset references
         self._sql_cache = None
@@ -259,6 +292,7 @@ class AppContext:
         self._db_engine = None
         self._llm = None
         self._schema_analyzer = None
+        self._schema_summary_string = ""
 
 
 # Convenience functions for direct access

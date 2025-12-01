@@ -13,14 +13,24 @@ def get_database_instructions(database_url: str = "") -> str:
 5. For case-insensitive matching use UPPER() or LOWER()
 6. Column optimization: select only the minimum columns needed to answer the query
 7. Prefer essential data columns over metadata/system columns unless specifically requested
-8. **Never include UUID columns in SELECT clause** - UUID columns can be used in JOINs and WHERE clauses, but should never appear in the SELECT list as they are not human-readable
 
-**CRITICAL ID/Name Rule:**
-- When returning an entity's ID, ALWAYS include its human-readable identifier (name, address, title, etc.)
-- Example: SELECT id, name FROM load_balancers (NOT just SELECT id)
-- Example: SELECT vip_id, vip_address FROM virtual_ips (NOT just SELECT vip_id)
-- If ONLY returning the name/address (no id), then id is not needed
-- This ensures results are meaningful and understandable to users
+**CRITICAL: ID Column Exclusion Rule**
+- **NEVER include ID columns in SELECT clause** unless the user explicitly asks for IDs
+- ID columns include: columns ending in '_id', columns named 'id', UUID data types
+- IDs can be used in JOINs and WHERE clauses, but should NOT appear in SELECT results
+- IDs are technical implementation details, not meaningful to end users
+
+Examples:
+❌ BAD: SELECT lb.id, lb.name FROM load_balancers lb
+✅ GOOD: SELECT lb.name FROM load_balancers lb
+
+❌ BAD: SELECT bs.id, bs.hostname, bs.load_balancer_id FROM backend_servers bs
+✅ GOOD: SELECT bs.hostname FROM backend_servers bs
+
+❌ BAD: SELECT vip.virtual_ip_id, vip.vip_address FROM virtual_ips vip
+✅ GOOD: SELECT vip.vip_address FROM virtual_ips vip
+
+Exception: If user explicitly asks "show me server IDs" or "list all IDs", then include them
 """
     elif 'postgresql' in database_url.lower():
         return """
@@ -32,14 +42,24 @@ def get_database_instructions(database_url: str = "") -> str:
 6. Column optimization: select only the minimum columns needed to answer the query
 7. Prefer essential data columns over metadata/system columns unless specifically requested
 8. Use double quotes for identifiers if needed: "column_name"
-9. **Never include UUID columns in SELECT clause** - UUID columns can be used in JOINs and WHERE clauses, but should never appear in the SELECT list as they are not human-readable
 
-**CRITICAL ID/Name Rule:**
-- When returning an entity's ID, ALWAYS include its human-readable identifier (name, address, title, etc.)
-- Example: SELECT id, name FROM load_balancers (NOT just SELECT id)
-- Example: SELECT vip_id, vip_address FROM virtual_ips (NOT just SELECT vip_id)
-- If ONLY returning the name/address (no id), then id is not needed
-- This ensures results are meaningful and understandable to users
+**CRITICAL: ID Column Exclusion Rule**
+- **NEVER include ID columns in SELECT clause** unless the user explicitly asks for IDs
+- ID columns include: columns ending in '_id', columns named 'id', UUID data types
+- IDs can be used in JOINs and WHERE clauses, but should NOT appear in SELECT results
+- IDs are technical implementation details, not meaningful to end users
+
+Examples:
+❌ BAD: SELECT lb.id, lb.name FROM load_balancers lb
+✅ GOOD: SELECT lb.name FROM load_balancers lb
+
+❌ BAD: SELECT bs.id, bs.hostname, bs.load_balancer_id FROM backend_servers bs
+✅ GOOD: SELECT bs.hostname FROM backend_servers bs
+
+❌ BAD: SELECT vip.virtual_ip_id, vip.vip_address FROM virtual_ips vip
+✅ GOOD: SELECT vip.vip_address FROM virtual_ips vip
+
+Exception: If user explicitly asks "show me server IDs" or "list all IDs", then include them
 """
     else:
         # Generic SQL instructions
@@ -51,14 +71,24 @@ def get_database_instructions(database_url: str = "") -> str:
 5. For case-insensitive matching use appropriate functions for your database
 6. Column optimization: select only the minimum columns needed to answer the query
 7. Prefer essential data columns over metadata/system columns unless specifically requested
-8. **Never include UUID columns in SELECT clause** - UUID columns can be used in JOINs and WHERE clauses, but should never appear in the SELECT list as they are not human-readable
 
-**CRITICAL ID/Name Rule:**
-- When returning an entity's ID, ALWAYS include its human-readable identifier (name, address, title, etc.)
-- Example: SELECT id, name FROM load_balancers (NOT just SELECT id)
-- Example: SELECT vip_id, vip_address FROM virtual_ips (NOT just SELECT vip_id)
-- If ONLY returning the name/address (no id), then id is not needed
-- This ensures results are meaningful and understandable to users
+**CRITICAL: ID Column Exclusion Rule**
+- **NEVER include ID columns in SELECT clause** unless the user explicitly asks for IDs
+- ID columns include: columns ending in '_id', columns named 'id', UUID data types
+- IDs can be used in JOINs and WHERE clauses, but should NOT appear in SELECT results
+- IDs are technical implementation details, not meaningful to end users
+
+Examples:
+❌ BAD: SELECT lb.id, lb.name FROM load_balancers lb
+✅ GOOD: SELECT lb.name FROM load_balancers lb
+
+❌ BAD: SELECT bs.id, bs.hostname, bs.load_balancer_id FROM backend_servers bs
+✅ GOOD: SELECT bs.hostname FROM backend_servers bs
+
+❌ BAD: SELECT vip.virtual_ip_id, vip.vip_address FROM virtual_ips vip
+✅ GOOD: SELECT vip.vip_address FROM virtual_ips vip
+
+Exception: If user explicitly asks "show me server IDs" or "list all IDs", then include them
 """
 
 # Network infrastructure context

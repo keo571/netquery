@@ -44,6 +44,7 @@ class TableSummary:
     name: str
     description: str
     key_columns: List[str]
+    columns: List[Dict[str, str]]
     related_tables: List[str]
 
 
@@ -100,23 +101,25 @@ def _resolve_schema_path(schema_path: Optional[str] = None) -> Optional[Path]:
 
 
 def _summarize_table(table) -> TableSummary:
-    columns = list(table.columns.values()) if table.columns else []
+    table_columns = list(table.columns.values()) if table.columns else []
     # Prefer descriptive columns first
     key_columns: List[str] = []
-    for col in columns:
+    for col in table_columns:
         if len(key_columns) >= 4:
             break
         key_columns.append(col.name)
 
     related = sorted({rel.referenced_table for rel in table.relationships}) if table.relationships else []
 
+    full_columns = [{"name": col.name, "type": str(col.data_type)} for col in table_columns]
+
     return TableSummary(
         name=table.name,
         description=table.description or f"Table: {table.name}",
         key_columns=key_columns,
+        columns=full_columns,
         related_tables=related,
     )
-
 
 def _generate_suggestions(tables: List[TableSummary], limit: int = 12) -> List[str]:
     """Generate lightweight example prompts for each table."""
@@ -136,8 +139,19 @@ def _generate_suggestions(tables: List[TableSummary], limit: int = 12) -> List[s
     return suggestions[:limit]
 
 
-def get_schema_overview(schema_path: Optional[str] = None) -> Dict[str, Any]:
-    """Return a cached schema overview with table summaries and suggestions."""
+def get_schema_overview(schema_path: Optional[str] = None, database: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Return a cached schema overview with table summaries and suggestions.
+
+    Args:
+        schema_path: Explicit path to schema file (overrides database parameter)
+        database: Database name (e.g., 'sample', 'neila') - will look for schema_files/{database}_schema.json
+    """
+    # Determine which schema to use
+    if database and not schema_path:
+        # Use database name to construct schema path
+        schema_path = str(Path("schema_files") / f"{database}_schema.json")
+
     env_name = os.getenv("NETQUERY_ENV", "dev")
     expected_default = str(Path("schema_files") / f"{env_name}_schema.json")
 
@@ -151,7 +165,7 @@ def get_schema_overview(schema_path: Optional[str] = None) -> Dict[str, Any]:
                 "message": "Canonical schema file not found",
                 "environment": env_name,
                 "expected_path": expected_default,
-                "hint": "Run setup/ingest_schema.py build or set CANONICAL_SCHEMA_PATH to an existing schema file."
+                "hint": "Run python -m src.schema_ingestion.py build or set CANONICAL_SCHEMA_PATH to an existing schema file."
             }
         }
 
@@ -180,15 +194,20 @@ def get_schema_overview(schema_path: Optional[str] = None) -> Dict[str, Any]:
             "name": summary.name,
             "description": summary.description,
             "key_columns": summary.key_columns,
+            "columns": summary.columns,
             "related_tables": summary.related_tables,
         }
         for summary in table_summaries
     ]
 
+    # Suggested queries are required in canonical schema
+    if not canonical.suggested_queries:
+        logger.warning(f"No suggested queries found in schema {canonical.schema_id}")
+
     overview = {
         "schema_id": canonical.schema_id,
         "tables": tables_payload,
-        "suggested_queries": _generate_suggestions(table_summaries),
+        "suggested_queries": canonical.suggested_queries,
         "source_path": str(resolved)
     }
     _SCHEMA_CACHE[resolved] = overview

@@ -13,32 +13,53 @@ from pathlib import Path
 
 @dataclass
 class ColumnSchema:
-    """Schema for a single column."""
+    """
+    Schema for a single column.
+
+    sample_values: Optional list of representative values for this column.
+    Used in LLM prompts instead of querying the database for sample data.
+    Particularly useful for enum-like columns (status, type, category).
+    Example: ["active", "inactive", "maintenance"] for a status column.
+
+    Note: Foreign keys are tracked via TableSchema.relationships array.
+    """
     name: str
     data_type: str
     description: str
-    is_primary_key: bool = False
-    is_foreign_key: bool = False
     is_nullable: bool = True
-    default_value: Optional[str] = None
+    sample_values: Optional[List[str]] = None
 
     def to_dict(self) -> Dict:
-        """Convert to dictionary."""
-        return asdict(self)
+        """Convert to dictionary, excluding the redundant 'name' field."""
+        d = asdict(self)
+        d.pop('name', None)  # Remove name since it's the dict key
+        return d
 
     @classmethod
-    def from_dict(cls, data: Dict) -> 'ColumnSchema':
-        """Create from dictionary."""
-        return cls(**data)
+    def from_dict(cls, name: str, data: Dict) -> 'ColumnSchema':
+        """Create from dictionary, restoring the 'name' field."""
+        return cls(name=name, **data)
 
 
 @dataclass
 class RelationshipSchema:
-    """Schema for a table relationship (foreign key)."""
-    foreign_key_column: str
-    referenced_table: str
-    referenced_column: str
-    relationship_type: Literal['one_to_one', 'one_to_many', 'many_to_many'] = 'one_to_many'
+    """
+    Schema for a table relationship.
+
+    Describes how to JOIN this table to another table.
+    Does NOT require actual FK constraints in the database.
+
+    Example:
+        Table: backend_mappings
+        Relationship: foreign_key_column='load_balancer_id'
+                     referenced_table='load_balancers'
+                     referenced_column='id'
+
+        JOIN: backend_mappings.load_balancer_id = load_balancers.id
+    """
+    foreign_key_column: str  # Column in this table (e.g., "load_balancer_id")
+    referenced_table: str    # Table to join to (e.g., "load_balancers")
+    referenced_column: str   # Column in referenced table (e.g., "id")
 
     def to_dict(self) -> Dict:
         """Convert to dictionary."""
@@ -57,65 +78,41 @@ class TableSchema:
     description: str
     columns: Dict[str, ColumnSchema] = field(default_factory=dict)
     relationships: List[RelationshipSchema] = field(default_factory=list)
-    primary_keys: List[str] = field(default_factory=list)
-
-    # Metadata
-    num_columns: int = 0
-    num_fk_columns: int = 0
 
     def add_column(self, column: ColumnSchema):
         """Add a column to the table."""
         self.columns[column.name] = column
-        self.num_columns = len(self.columns)
-        if column.is_foreign_key:
-            self.num_fk_columns = sum(1 for c in self.columns.values() if c.is_foreign_key)
-        if column.is_primary_key:
-            if column.name not in self.primary_keys:
-                self.primary_keys.append(column.name)
 
     def add_relationship(self, relationship: RelationshipSchema):
         """Add a relationship to the table."""
         self.relationships.append(relationship)
-        # Mark the FK column
-        if relationship.foreign_key_column in self.columns:
-            self.columns[relationship.foreign_key_column].is_foreign_key = True
-            self.num_fk_columns = sum(1 for c in self.columns.values() if c.is_foreign_key)
 
     def to_dict(self) -> Dict:
-        """Convert to dictionary."""
+        """Convert to dictionary, excluding the redundant 'name' field."""
         return {
-            'name': self.name,
+            # 'name' is excluded - it's already the dict key
             'description': self.description,
             'columns': {name: col.to_dict() for name, col in self.columns.items()},
-            'relationships': [rel.to_dict() for rel in self.relationships],
-            'primary_keys': self.primary_keys,
-            'metadata': {
-                'num_columns': self.num_columns,
-                'num_fk_columns': self.num_fk_columns
-            }
+            'relationships': [rel.to_dict() for rel in self.relationships]
         }
 
     @classmethod
-    def from_dict(cls, data: Dict) -> 'TableSchema':
-        """Create from dictionary."""
+    def from_dict(cls, name: str, data: Dict) -> 'TableSchema':
+        """Create from dictionary, restoring the 'name' field."""
         columns = {
-            name: ColumnSchema.from_dict(col_data)
-            for name, col_data in data.get('columns', {}).items()
+            col_name: ColumnSchema.from_dict(col_name, col_data)
+            for col_name, col_data in data.get('columns', {}).items()
         }
         relationships = [
             RelationshipSchema.from_dict(rel_data)
             for rel_data in data.get('relationships', [])
         ]
-        metadata = data.get('metadata', {})
 
         return cls(
-            name=data['name'],
+            name=name,  # Name comes from dict key
             description=data['description'],
             columns=columns,
-            relationships=relationships,
-            primary_keys=data.get('primary_keys', []),
-            num_columns=metadata.get('num_columns', len(columns)),
-            num_fk_columns=metadata.get('num_fk_columns', 0)
+            relationships=relationships
         )
 
 
@@ -138,6 +135,9 @@ class CanonicalSchema:
 
     tables: Dict[str, TableSchema] = field(default_factory=dict)
 
+    # Optional custom suggested queries from schema source (e.g., Excel)
+    suggested_queries: List[str] = field(default_factory=list)
+
     # Statistics
     total_tables: int = 0
 
@@ -156,7 +156,7 @@ class CanonicalSchema:
 
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization."""
-        return {
+        d = {
             'schema_id': self.schema_id,
             'version': self.version,
             'generated_at': self.generated_at,
@@ -171,14 +171,20 @@ class CanonicalSchema:
             'tables': {name: table.to_dict() for name, table in self.tables.items()}
         }
 
+        # Include suggested_queries if present
+        if self.suggested_queries:
+            d['suggested_queries'] = self.suggested_queries
+
+        return d
+
     @classmethod
     def from_dict(cls, data: Dict) -> 'CanonicalSchema':
         """Create from dictionary (for loading from JSON)."""
         source = data.get('source', {})
         statistics = data.get('statistics', {})
         tables = {
-            name: TableSchema.from_dict(table_data)
-            for name, table_data in data.get('tables', {}).items()
+            table_name: TableSchema.from_dict(table_name, table_data)
+            for table_name, table_data in data.get('tables', {}).items()
         }
 
         schema = cls(
@@ -189,6 +195,7 @@ class CanonicalSchema:
             source_location=source.get('location', ''),
             database_type=source.get('database_type', 'sqlite'),
             tables=tables,
+            suggested_queries=data.get('suggested_queries', []),
             total_tables=statistics.get('total_tables', len(tables))
         )
         schema._update_statistics()
@@ -245,13 +252,6 @@ class CanonicalSchema:
                     errors.append(
                         f"Table '{table_name}' relationship references non-existent column "
                         f"'{rel.foreign_key_column}'"
-                    )
-
-            # Check primary keys exist
-            for pk in table.primary_keys:
-                if pk not in table.columns:
-                    errors.append(
-                        f"Table '{table_name}' has primary key '{pk}' that doesn't exist in columns"
                     )
 
         return errors

@@ -13,7 +13,7 @@ class ReasoningStep(TypedDict):
     """A step in the pipeline's reasoning process."""
     step_name: str
     details: str
-    status: str  # "✅", "⚠️", "❌"
+    status: str  # "OK", "WARNING", "ERROR"
 
 
 class TextToSQLState(TypedDict):
@@ -86,14 +86,14 @@ class ValidationResult(TypedDict):
 
 # Helper functions for reasoning log creation
 
-def create_reasoning_step(step_name: str, details: str, status: str = "✅") -> ReasoningStep:
+def create_reasoning_step(step_name: str, details: str, status: str = "OK") -> ReasoningStep:
     """
     Create a standardized reasoning log entry.
 
     Args:
         step_name: Name of the pipeline step
         details: Description of what happened
-        status: Status emoji ("✅" success, "⚠️" warning, "❌" error)
+        status: Status text ("OK" success, "WARNING" warning, "ERROR" error)
 
     Returns:
         ReasoningStep dictionary
@@ -102,15 +102,15 @@ def create_reasoning_step(step_name: str, details: str, status: str = "✅") -> 
 
 
 def create_success_step(step_name: str, details: str) -> ReasoningStep:
-    """Create a successful reasoning step (✅)."""
-    return create_reasoning_step(step_name, details, "✅")
+    """Create a successful reasoning step (OK)."""
+    return create_reasoning_step(step_name, details, "OK")
 
 
 def create_warning_step(step_name: str, details: str) -> ReasoningStep:
-    """Create a warning reasoning step (⚠️)."""
-    return create_reasoning_step(step_name, details, "⚠️")
+    """Create a warning reasoning step (WARNING)."""
+    return create_reasoning_step(step_name, details, "WARNING")
 
 
 def create_error_step(step_name: str, details: str) -> ReasoningStep:
-    """Create an error reasoning step (❌)."""
-    return create_reasoning_step(step_name, details, "❌")
+    """Create an error reasoning step (ERROR)."""
+    return create_reasoning_step(step_name, details, "ERROR")

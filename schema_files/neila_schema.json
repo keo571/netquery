@@ -1,0 +1,397 @@
+{
+  "schema_id": "neila",
+  "version": "1.0.0",
+  "generated_at": "2025-11-30T19:14:46.854044",
+  "source": {
+    "type": "excel",
+    "location": "schema_files/sample_schema.xlsx",
+    "database_type": "unknown"
+  },
+  "statistics": {
+    "total_tables": 6
+  },
+  "tables": {
+    "load_balancers": {
+      "description": "Load balancer instances managing traffic distribution",
+      "columns": {
+        "id": {
+          "data_type": "integer",
+          "description": "Unique load balancer identifier",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "name": {
+          "data_type": "varchar",
+          "description": "Load balancer name",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "ip_address": {
+          "data_type": "varchar",
+          "description": "Management IP address of the load balancer",
+          "is_nullable": true,
+          "sample_values": null
+        },
+        "status": {
+          "data_type": "varchar",
+          "description": "Current operational status (active, inactive, maintenance)",
+          "is_nullable": false,
+          "sample_values": [
+            "active",
+            "inactive",
+            "maintenance"
+          ]
+        },
+        "datacenter": {
+          "data_type": "varchar",
+          "description": "Datacenter location where load balancer is deployed",
+          "is_nullable": false,
+          "sample_values": [
+            "us-west-2",
+            "us-east-1",
+            "eu-central-1"
+          ]
+        },
+        "created_at": {
+          "data_type": "timestamp",
+          "description": "When the load balancer was created",
+          "is_nullable": false,
+          "sample_values": null
+        }
+      },
+      "relationships": [
+        {
+          "foreign_key_column": "id",
+          "referenced_table": "virtual_ips",
+          "referenced_column": "load_balancer_id"
+        },
+        {
+          "foreign_key_column": "id",
+          "referenced_table": "backend_servers",
+          "referenced_column": "load_balancer_id"
+        }
+      ]
+    },
+    "virtual_ips": {
+      "description": "Virtual IP addresses for application access",
+      "columns": {
+        "id": {
+          "data_type": "integer",
+          "description": "Unique virtual IP identifier",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "vip_address": {
+          "data_type": "varchar",
+          "description": "Virtual IP address exposed to clients",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "port": {
+          "data_type": "integer",
+          "description": "Port number for the service",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "protocol": {
+          "data_type": "varchar",
+          "description": "Protocol used (HTTP, HTTPS, TCP, UDP)",
+          "is_nullable": false,
+          "sample_values": [
+            "HTTP",
+            "HTTPS",
+            "TCP"
+          ]
+        },
+        "load_balancer_id": {
+          "data_type": "integer",
+          "description": "Load balancer handling this VIP",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "pool_name": {
+          "data_type": "varchar",
+          "description": "Backend server pool name",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "health_check_url": {
+          "data_type": "varchar",
+          "description": "URL for health check monitoring",
+          "is_nullable": true,
+          "sample_values": null
+        },
+        "created_at": {
+          "data_type": "timestamp",
+          "description": "When the VIP was created",
+          "is_nullable": false,
+          "sample_values": null
+        }
+      },
+      "relationships": [
+        {
+          "foreign_key_column": "load_balancer_id",
+          "referenced_table": "load_balancers",
+          "referenced_column": "id"
+        },
+        {
+          "foreign_key_column": "id",
+          "referenced_table": "wide_ip_pools",
+          "referenced_column": "virtual_ip_id"
+        },
+        {
+          "foreign_key_column": "id",
+          "referenced_table": "traffic_stats",
+          "referenced_column": "virtual_ip_id"
+        }
+      ]
+    },
+    "wide_ips": {
+      "description": "Global server load balancing DNS entries",
+      "columns": {
+        "id": {
+          "data_type": "integer",
+          "description": "Unique wide IP identifier",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "domain_name": {
+          "data_type": "varchar",
+          "description": "DNS domain name for the wide IP",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "load_balancing_method": {
+          "data_type": "varchar",
+          "description": "Load balancing algorithm (round-robin, geo, ratio)",
+          "is_nullable": false,
+          "sample_values": [
+            "round_robin",
+            "weighted",
+            "geolocation"
+          ]
+        },
+        "ttl": {
+          "data_type": "integer",
+          "description": "DNS Time-to-Live in seconds",
+          "is_nullable": true,
+          "sample_values": null
+        },
+        "status": {
+          "data_type": "varchar",
+          "description": "Current operational status (enabled, disabled)",
+          "is_nullable": false,
+          "sample_values": [
+            "active",
+            "inactive"
+          ]
+        },
+        "created_at": {
+          "data_type": "timestamp",
+          "description": "When the wide IP was created",
+          "is_nullable": false,
+          "sample_values": null
+        }
+      },
+      "relationships": [
+        {
+          "foreign_key_column": "id",
+          "referenced_table": "wide_ip_pools",
+          "referenced_column": "wide_ip_id"
+        }
+      ]
+    },
+    "wide_ip_pools": {
+      "description": "Pools of virtual IPs assigned to wide IPs",
+      "columns": {
+        "id": {
+          "data_type": "integer",
+          "description": "Unique pool assignment identifier",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "wide_ip_id": {
+          "data_type": "integer",
+          "description": "Wide IP this pool belongs to",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "virtual_ip_id": {
+          "data_type": "integer",
+          "description": "Virtual IP in this pool",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "priority": {
+          "data_type": "integer",
+          "description": "Priority order for traffic distribution",
+          "is_nullable": true,
+          "sample_values": null
+        },
+        "ratio": {
+          "data_type": "integer",
+          "description": "Traffic ratio weight for this VIP",
+          "is_nullable": true,
+          "sample_values": null
+        },
+        "enabled": {
+          "data_type": "boolean",
+          "description": "Whether this pool member is active",
+          "is_nullable": false,
+          "sample_values": null
+        }
+      },
+      "relationships": [
+        {
+          "foreign_key_column": "wide_ip_id",
+          "referenced_table": "wide_ips",
+          "referenced_column": "id"
+        },
+        {
+          "foreign_key_column": "virtual_ip_id",
+          "referenced_table": "virtual_ips",
+          "referenced_column": "id"
+        }
+      ]
+    },
+    "backend_servers": {
+      "description": "Physical servers handling actual traffic",
+      "columns": {
+        "id": {
+          "data_type": "integer",
+          "description": "Unique backend server identifier",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "hostname": {
+          "data_type": "varchar",
+          "description": "Server hostname",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "ip_address": {
+          "data_type": "varchar",
+          "description": "Server IP address",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "port": {
+          "data_type": "integer",
+          "description": "Service port number",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "pool_name": {
+          "data_type": "varchar",
+          "description": "Pool this server belongs to",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "load_balancer_id": {
+          "data_type": "integer",
+          "description": "Load balancer managing this server",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "health_status": {
+          "data_type": "varchar",
+          "description": "Current health check status (up, down, unknown)",
+          "is_nullable": true,
+          "sample_values": [
+            "up",
+            "down",
+            "unknown"
+          ]
+        },
+        "datacenter": {
+          "data_type": "varchar",
+          "description": "Datacenter location",
+          "is_nullable": false,
+          "sample_values": [
+            "us-west-2",
+            "us-east-1",
+            "eu-central-1"
+          ]
+        }
+      },
+      "relationships": [
+        {
+          "foreign_key_column": "load_balancer_id",
+          "referenced_table": "load_balancers",
+          "referenced_column": "id"
+        }
+      ]
+    },
+    "traffic_stats": {
+      "description": "Traffic statistics and metrics",
+      "columns": {
+        "id": {
+          "data_type": "integer",
+          "description": "Unique stat record identifier",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "virtual_ip_id": {
+          "data_type": "integer",
+          "description": "Virtual IP these stats belong to",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "timestamp": {
+          "data_type": "timestamp",
+          "description": "When the stats were recorded",
+          "is_nullable": false,
+          "sample_values": null
+        },
+        "requests_per_second": {
+          "data_type": "decimal",
+          "description": "Number of requests per second",
+          "is_nullable": true,
+          "sample_values": null
+        },
+        "bytes_in": {
+          "data_type": "bigint",
+          "description": "Bytes received",
+          "is_nullable": true,
+          "sample_values": null
+        },
+        "bytes_out": {
+          "data_type": "bigint",
+          "description": "Bytes sent",
+          "is_nullable": true,
+          "sample_values": null
+        },
+        "active_connections": {
+          "data_type": "integer",
+          "description": "Number of active connections",
+          "is_nullable": true,
+          "sample_values": null
+        }
+      },
+      "relationships": [
+        {
+          "foreign_key_column": "virtual_ip_id",
+          "referenced_table": "virtual_ips",
+          "referenced_column": "id"
+        }
+      ]
+    }
+  },
+  "suggested_queries": [
+    "Show distribution of load balancers by datacenter",
+    "Show distribution of backend servers by datacenter",
+    "Show count of virtual IPs by protocol",
+    "Show distribution of load balancers by status",
+    "Show count of backend servers by health status",
+    "List all HTTPS virtual IPs",
+    "Show all load balancers in us-east-1",
+    "Show backend servers that are down",
+    "Show all active load balancers",
+    "List virtual IPs by datacenter",
+    "Show load balancers in maintenance mode",
+    "Show traffic statistics over the last 7 days",
+    "Show requests per second trend over the last 30 days",
+    "List all wide IPs with their virtual IP pools",
+    "Show backend servers grouped by pool name"
+  ]
+}

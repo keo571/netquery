@@ -133,6 +133,12 @@ class SchemaBuilder:
             )
             canonical.add_table(table_schema)
 
+        # Add suggested queries from Excel (if any)
+        suggested_queries = excel_parser.get_suggested_queries()
+        if suggested_queries:
+            canonical.suggested_queries = suggested_queries
+            logger.info(f"Added {len(suggested_queries)} suggested queries from Excel")
+
         logger.info(f"Built schema with {canonical.total_tables} tables")
         self.canonical_schema = canonical
         return canonical
@@ -146,10 +152,6 @@ class SchemaBuilder:
 
         # Get columns
         db_columns = inspector.get_columns(table_name)
-
-        # Get primary keys
-        pk_constraint = inspector.get_pk_constraint(table_name)
-        primary_keys = pk_constraint.get('constrained_columns', [])
 
         # Get foreign keys
         fks = inspector.get_foreign_keys(table_name)
@@ -166,9 +168,7 @@ class SchemaBuilder:
                 name=col['name'],
                 data_type=str(col['type']),
                 description=f"Column: {col['name']}",
-                is_primary_key=col['name'] in primary_keys,
-                is_nullable=col.get('nullable', True),
-                default_value=str(col.get('default')) if col.get('default') is not None else None
+                is_nullable=col.get('nullable', True)
             )
             table.add_column(column_schema)
 
@@ -202,14 +202,14 @@ class SchemaBuilder:
             description=table_info.get('description', f"Table: {table_name}")
         )
 
-        # Add columns with Excel descriptions
+        # Add columns with Excel descriptions and sample_values
         for col_info in table_info.get('columns', []):
             column_schema = ColumnSchema(
                 name=col_info['name'],
                 data_type=col_info.get('type', 'TEXT'),
                 description=col_info.get('description', f"Column: {col_info['name']}"),
-                is_primary_key=col_info.get('is_primary_key', col_info['name'] == 'id'),
-                is_nullable=col_info.get('nullable', True)  # Get from Excel, default to True if not specified
+                is_nullable=col_info.get('nullable', True),
+                sample_values=col_info.get('sample_values')
             )
             table.add_column(column_schema)
 

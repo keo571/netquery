@@ -25,8 +25,6 @@ class GenericDatabaseToolkit:
         self._relationship_cache: Optional[tuple[Dict[str, set], Dict[str, set]]] = None
         # Canonical schema for FK fallback (when DB has no FK constraints)
         self._canonical_schema = canonical_schema
-        # Cache for row counts (table scans are expensive)
-        self._row_count_cache: Dict[str, int] = {}
     
     @property
     def engine(self):
@@ -120,18 +118,18 @@ class GenericDatabaseToolkit:
         metadata = get_metadata()
         return list(metadata.tables.keys())
     
-    def get_table_info(self, table_name: str, include_row_count: bool = True,
-                       include_sample_data: bool = True) -> Dict[str, Any]:
+    def get_table_info(self, table_name: str) -> Dict[str, Any]:
         """
-        Get table information including columns, optional row count, and optional sample data.
+        Get table column names only (for drift detection).
+
+        Used ONLY at startup for validating canonical schema against database.
+        SQL generation uses canonical schema exclusively - no DB introspection.
 
         Args:
             table_name: Name of the table
-            include_row_count: Whether to fetch row count (requires COUNT(*) query)
-            include_sample_data: Whether to fetch sample data (requires SELECT query)
 
         Returns:
-            Dictionary with table information
+            Dictionary with table_name and columns (names only)
         """
         metadata = get_metadata()
         if table_name not in metadata.tables:
@@ -139,128 +137,27 @@ class GenericDatabaseToolkit:
 
         table = metadata.tables[table_name]
 
-        # Get column information (from cached metadata, no DB call)
-        columns = []
-        for column in table.columns:
-            col_info = {
-                'name': column.name,
-                'type': str(column.type),
-                'nullable': column.nullable,
-                'primary_key': column.primary_key,
-                'foreign_keys': []
-            }
+        # Get column names only (for drift detection)
+        columns = [{'name': column.name} for column in table.columns]
 
-            # Add foreign key info
-            for fk in column.foreign_keys:
-                col_info['foreign_keys'].append({
-                    'references_table': fk.column.table.name,
-                    'references_column': fk.column.name
-                })
-
-            columns.append(col_info)
-
-        result = {
+        return {
             "table_name": table_name,
             "columns": columns,
         }
-
-        # Optional: Add row count (DB call: SELECT COUNT(*))
-        if include_row_count:
-            result["row_count"] = self._get_row_count(table_name)
-        else:
-            result["row_count"] = None
-
-        # Optional: Add sample data (DB call: SELECT * LIMIT N)
-        if include_sample_data:
-            result["sample_data"] = self.get_sample_data(table_name, limit=3)
-        else:
-            result["sample_data"] = []
-
-        return result
     
-    def _get_row_count(self, table_name: str, use_cache: bool = True) -> Optional[int]:
+    def get_multiple_table_info(self, table_names: List[str]) -> Dict[str, Dict[str, Any]]:
         """
-        Get row count for table with caching.
+        DEPRECATED: Returns empty dict - not used for SQL generation.
 
-        Args:
-            table_name: Name of the table
-            use_cache: If True, use cached count if available (default)
+        SQL generation now uses canonical schema exclusively.
+        This method exists only to avoid breaking existing code.
+        Will be removed in future cleanup.
 
         Returns:
-            Row count or None if failed
-
-        Performance: Cached row counts avoid expensive COUNT(*) queries.
+            Empty dict (canonical schema is used instead)
         """
-        # Check cache first
-        if use_cache and table_name in self._row_count_cache:
-            return self._row_count_cache[table_name]
-
-        try:
-            with self.engine.connect() as conn:
-                result = conn.execute(text(f"SELECT COUNT(*) FROM {table_name}"))
-                count = result.scalar()
-
-                # Cache the result
-                self._row_count_cache[table_name] = count
-                return count
-        except Exception as e:
-            logger.warning(f"Failed to get row count for {table_name}: {e}")
-            return None
-    
-    def get_sample_data(self, table_name: str, limit: int = 5) -> List[Dict]:
-        """Get sample data from table."""
-        with self.engine.connect() as conn:
-            result = conn.execute(text(f"SELECT * FROM {table_name} LIMIT {limit}"))
-            return [dict(row._mapping) for row in result]
-
-    def get_multiple_table_info(self, table_names: List[str],
-                                include_row_counts: bool = None,
-                                include_sample_data: bool = None) -> Dict[str, Dict[str, Any]]:
-        """
-        Get table info for multiple tables in parallel.
-
-        Args:
-            table_names: List of table names to fetch
-            include_row_counts: Whether to fetch row counts (uses config default if None)
-            include_sample_data: Whether to fetch sample data (uses config default if None)
-
-        Returns:
-            Dict mapping table_name -> table_info
-
-        Performance: Parallelizes database queries across tables.
-        With row_counts=False, sample_data=False: ~5ms (no DB calls, metadata only)
-        With row_counts=True, sample_data=True: ~25ms parallel vs ~80ms sequential
-        """
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        # Use config defaults if not specified
-        if include_row_counts is None:
-            include_row_counts = config.pipeline.include_row_counts
-        if include_sample_data is None:
-            include_sample_data = config.pipeline.include_sample_data
-
-        results = {}
-
-        # Use thread pool for parallel database queries
-        with ThreadPoolExecutor(max_workers=min(len(table_names), config.pipeline.max_concurrent_table_queries)) as executor:
-            # Submit all table info fetches
-            future_to_table = {
-                executor.submit(self.get_table_info, table_name,
-                              include_row_count=include_row_counts,
-                              include_sample_data=include_sample_data): table_name
-                for table_name in table_names
-            }
-
-            # Collect results as they complete
-            for future in as_completed(future_to_table):
-                table_name = future_to_table[future]
-                try:
-                    results[table_name] = future.result()
-                except Exception as e:
-                    logger.error(f"Failed to get info for {table_name}: {e}")
-                    results[table_name] = {"error": str(e)}
-
-        return results
+        logger.warning("get_multiple_table_info is deprecated - SQL generation uses canonical schema")
+        return {}
     
     def get_table_relationships(self) -> Dict[str, List[str]]:
         """
@@ -292,7 +189,6 @@ class GenericDatabaseToolkit:
         self._canonical_schema = canonical_schema
         # Clear cache since FK source may change
         self._relationship_cache = None
-        logger.info("Set canonical schema for FK fallback")
 
     def get_bidirectional_relationships(self, use_cache: bool = True) -> tuple[Dict[str, set], Dict[str, set]]:
         """
@@ -413,21 +309,12 @@ class GenericDatabaseToolkit:
         self._relationship_cache = None
         logger.info("Cleared FK relationship cache")
 
-    def clear_row_count_cache(self) -> None:
-        """
-        Clear the cached row counts.
-        Call this after bulk inserts/deletes or when counts need to be refreshed.
-        """
-        self._row_count_cache.clear()
-        logger.info("Cleared row count cache")
-
     def clear_all_caches(self) -> None:
         """
-        Clear all caches (relationships and row counts).
-        Call this after schema migrations or major data changes.
+        Clear all caches (relationships only).
+        Call this after schema migrations or database structure changes.
         """
         self.clear_relationship_cache()
-        self.clear_row_count_cache()
         logger.info("Cleared all caches")
 
 
@@ -462,7 +349,6 @@ def get_db_toolkit(canonical_schema=None) -> GenericDatabaseToolkit:
 
     if _default_toolkit_instance is None:
         _default_toolkit_instance = GenericDatabaseToolkit(canonical_schema=canonical_schema)
-        logger.info("Created default database toolkit instance")
 
     # Update canonical schema if provided and different
     if canonical_schema is not None and _default_toolkit_instance._canonical_schema != canonical_schema:

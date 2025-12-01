@@ -1,14 +1,14 @@
 """Embedding storage backends."""
 from .embedding_store import (
     EmbeddingStore,
-    LocalFileEmbeddingStore,
+    SQLiteEmbeddingStore,
     PgVectorEmbeddingStore,
     create_embedding_store
 )
 
 __all__ = [
     'EmbeddingStore',
-    'LocalFileEmbeddingStore',
+    'SQLiteEmbeddingStore',
     'PgVectorEmbeddingStore',
     'create_embedding_store'
 ]
