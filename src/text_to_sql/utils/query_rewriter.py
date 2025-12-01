@@ -65,6 +65,13 @@ def _is_obvious_sql_query(query: str) -> bool:
     This saves ~200ms by skipping the LLM call for obvious cases.
     """
     query_lower = query.lower().strip()
+    words = query_lower.split()
+
+    if len(words) < 2:
+        return False
+
+    # Question words that indicate NOT a data request
+    question_words = {'how', 'why', 'what', 'when', 'where', 'who'}
 
     # Clear SQL action patterns with articles (unambiguous)
     sql_start_patterns = [
@@ -78,43 +85,30 @@ def _is_obvious_sql_query(query: str) -> bool:
         'fetch all ', 'fetch the ',
     ]
 
-    # Check if query starts with clear SQL patterns
     for pattern in sql_start_patterns:
         if query_lower.startswith(pattern):
             return True
 
-    # "show me X" needs special handling - check what X is
-    if query_lower.startswith('show me '):
-        words = query_lower.split()
-        if len(words) > 2:
-            third_word = words[2]
-            question_words = ['how', 'why', 'what', 'when', 'where', 'who']
-            if third_word not in question_words:
-                return True
+    # Check action verbs: show, list, get, find, display, count
+    action_verbs = {'show', 'list', 'get', 'find', 'display', 'count'}
+    first_word = words[0]
+
+    if first_word not in action_verbs:
+        # Special case: "how many X" is clearly asking for data count
+        if query_lower.startswith('how many '):
+            return True
         return False
 
-    # Also match "show X" without article (e.g., "show servers")
-    simple_show_match = re.match(r'^(show|list|get|find|display|count)\s+\w+', query_lower)
-    if simple_show_match:
-        # Question words that indicate NOT a data request
-        question_words = ['how', 'why', 'what', 'when', 'where', 'who']
-        words = query_lower.split()
-        second_word = words[1] if len(words) > 1 else ''
-
-        # "show me X" - check third word
-        if second_word == 'me' and len(words) > 2:
+    # Handle "verb me X" pattern (e.g., "show me servers")
+    second_word = words[1]
+    if second_word == 'me':
+        if len(words) > 2:
             third_word = words[2]
-            if third_word not in question_words:
-                return True
-        # "show X" (not "me") - check second word
-        elif second_word not in question_words and second_word != 'me':
-            return True
+            return third_word not in question_words
+        return False
 
-    # "How many X" is clearly asking for data count
-    if re.match(r'^how many\b', query_lower):
-        return True
-
-    return False
+    # Handle "verb X" pattern (e.g., "show servers")
+    return second_word not in question_words
 
 
 def classify_intent(query: str, full_query: str = None, schema_summary: str = "") -> IntentClassification:

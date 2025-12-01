@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from functools import lru_cache
 from typing import Optional
 
 import numpy as np
@@ -13,23 +12,13 @@ from ..config import config
 
 logger = logging.getLogger(__name__)
 
-# Module-level LRU cache for query embeddings (shared across instances)
-# Caches up to 128 query embeddings to avoid repeated API calls
-@lru_cache(maxsize=128)
-def _cached_embed_query(query: str, model_name: str, api_key: str) -> tuple:
-    """
-    Cached embedding generation for queries.
-
-    Returns tuple instead of np.ndarray because lru_cache requires hashable return values.
-    The tuple is converted back to np.ndarray by the caller.
-    """
-    client = GoogleGenerativeAIEmbeddings(model=model_name, google_api_key=api_key)
-    embedding = client.embed_query(query)
-    return tuple(embedding)
-
 
 class EmbeddingService:
     """Thin wrapper around Gemini embeddings for consistent usage with caching."""
+
+    # Class-level cache shared across all instances
+    _query_cache: dict[str, tuple] = {}
+    _cache_max_size: int = 128
 
     def __init__(self, model_name: str = "gemini-embedding-001", api_key: Optional[str] = None) -> None:
         self.model_name = model_name
@@ -49,28 +38,29 @@ class EmbeddingService:
         """
         Embed a user query for similarity search with caching.
 
-        Uses an LRU cache to avoid repeated API calls for the same query.
+        Uses a class-level cache to avoid repeated API calls for the same query.
         Cache hit saves ~100-150ms per query.
         """
         # Normalize query for better cache hits
-        normalized_query = query.lower().strip()
+        cache_key = query.lower().strip()
 
-        # Check if we got a cache hit (for logging)
-        cache_info_before = _cached_embed_query.cache_info()
-
-        # Get cached or compute new embedding
-        embedding_tuple = _cached_embed_query(
-            normalized_query,
-            self.model_name,
-            self._api_key
-        )
-
-        cache_info_after = _cached_embed_query.cache_info()
-        if cache_info_after.hits > cache_info_before.hits:
+        # Check cache first
+        if cache_key in self._query_cache:
             logger.debug(f"⚡ Embedding cache HIT for query: '{query[:40]}...'")
-        else:
-            logger.debug(f"📡 Embedding cache MISS - called API for: '{query[:40]}...'")
+            return np.array(self._query_cache[cache_key], dtype=np.float32)
 
+        # Cache miss - call API
+        logger.debug(f"📡 Embedding cache MISS - calling API for: '{query[:40]}...'")
+        embedding = self._embedding_client.embed_query(query)
+        embedding_tuple = tuple(embedding)
+
+        # Add to cache (simple FIFO eviction if full)
+        if len(self._query_cache) >= self._cache_max_size:
+            # Remove oldest entry
+            oldest_key = next(iter(self._query_cache))
+            del self._query_cache[oldest_key]
+
+        self._query_cache[cache_key] = embedding_tuple
         return np.array(embedding_tuple, dtype=np.float32)
 
     @staticmethod
