@@ -246,11 +246,8 @@ backend/logs/
 .env.local
 .env.staging
 
-# BUT keep the profile config templates (these don't have real API keys)
-!.env.dev
-!.env.prod
-!.env.sample
-!.env.neila
+# Environment files with API keys (not committed)
+# Use .env.example as template for new users
 
 # API keys and secrets
 secrets.json
