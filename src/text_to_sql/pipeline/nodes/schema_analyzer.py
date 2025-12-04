@@ -185,19 +185,18 @@ class SchemaAnalyzer:
         return col_line
     def _expand_tables_via_relationships(self, relevant_tables: list, relevance_scores: dict) -> set:
         """
-        OPTIMIZED: Fast FK expansion using pre-computed bidirectional graph.
+        Expand tables via outbound FK relationships.
 
         Strategy:
-        1. Get bidirectional FK graph in ONE pass (O(N) where N = total FKs)
+        1. Get outbound FK graph (O(N) where N = total FKs, cached after first call)
         2. Sort semantic tables by relevance score (expand best matches first)
-        3. Add related tables via outbound + inbound FKs using set lookups (O(1))
+        3. Add referenced tables via outbound FKs using set lookups (O(1))
         4. Hard cap at max_expanded_tables
 
-        Performance: O(K) where K = number of FKs for semantic tables (typically < 30)
-        vs. Old: O(S * T) where S = semantic tables, T = total tables
+        Only follows outbound FKs (tables that semantic matches reference).
         """
-        # Get bidirectional relationships in ONE efficient pass
-        outbound_fks, inbound_fks = self.db_toolkit.get_bidirectional_relationships()
+        # Get outbound relationships from canonical schema
+        outbound_fks = self.db_toolkit.get_outbound_relationships()
 
         expanded_tables = set(relevant_tables)
         max_tables = config.pipeline.max_expanded_tables
@@ -211,28 +210,17 @@ class SchemaAnalyzer:
 
         logger.info(f"Starting FK expansion from {len(relevant_tables)} tables (max: {max_tables})")
 
-        # Expand in BOTH directions for each semantic table
+        # Expand outbound only (tables that semantic matches reference)
         for table in sorted_tables:
             if len(expanded_tables) >= max_tables:
                 logger.warning(f"Reached max table limit ({max_tables}), stopping expansion")
                 break
 
             # Add outbound relationships (tables this table references)
-            # O(1) set lookup instead of O(N) list iteration
             outbound = outbound_fks.get(table, set())
             for related_table in outbound:
                 if len(expanded_tables) >= max_tables:
                     break
-                # Set.add() is idempotent - duplicates are automatically ignored
-                expanded_tables.add(related_table)
-
-            # Add inbound relationships (tables that reference this table)
-            # O(1) set lookup instead of O(T) where T = total tables
-            inbound = inbound_fks.get(table, set())
-            for related_table in inbound:
-                if len(expanded_tables) >= max_tables:
-                    break
-                # Set.add() is idempotent - duplicates are automatically ignored
                 expanded_tables.add(related_table)
 
         if len(expanded_tables) > len(relevant_tables):

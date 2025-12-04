@@ -21,8 +21,8 @@ class GenericDatabaseToolkit:
         """Initialize generic database toolkit."""
         self._engine = None
         self._initialized = False
-        # Cache for bidirectional FK graph (built once on first query)
-        self._relationship_cache: Optional[tuple[Dict[str, set], Dict[str, set]]] = None
+        # Cache for outbound FK graph (built once on first query)
+        self._relationship_cache: Optional[Dict[str, set]] = None
         # Canonical schema for FK fallback (when DB has no FK constraints)
         self._canonical_schema = canonical_schema
     
@@ -190,9 +190,9 @@ class GenericDatabaseToolkit:
         # Clear cache since FK source may change
         self._relationship_cache = None
 
-    def get_bidirectional_relationships(self, use_cache: bool = True) -> tuple[Dict[str, set], Dict[str, set]]:
+    def get_outbound_relationships(self, use_cache: bool = True) -> Dict[str, set]:
         """
-        Get FK relationships from canonical schema.
+        Get outbound FK relationships from canonical schema.
 
         Only uses relationships defined in canonical schema - does not query database.
         This is the single source of truth for table relationships.
@@ -202,9 +202,8 @@ class GenericDatabaseToolkit:
                       Set to False to force rebuild (e.g., after schema changes).
 
         Returns:
-            tuple: (outbound_fks, inbound_fks)
-            - outbound_fks[table] = set of tables this table references
-            - inbound_fks[table] = set of tables that reference this table
+            Dict[table_name, set of referenced tables]
+            - outbound[table] = set of tables this table references via FK
 
         Performance: O(N) where N = total FKs in canonical schema, computed once and cached.
         """
@@ -212,33 +211,32 @@ class GenericDatabaseToolkit:
         if use_cache and self._relationship_cache is not None:
             return self._relationship_cache
 
-        logger.info("Building bidirectional FK relationship graph from canonical schema...")
+        logger.info("Building outbound FK relationship graph from canonical schema...")
         start_time = time.time()
 
-        outbound, inbound = self._get_fks_from_canonical_schema()
+        outbound = self._get_fks_from_canonical_schema()
         fk_count = sum(len(refs) for refs in outbound.values())
 
         # Cache the result
-        self._relationship_cache = (outbound, inbound)
+        self._relationship_cache = outbound
 
         build_time_ms = (time.time() - start_time) * 1000
         logger.info(
             f"Built FK graph: {fk_count} relationships in {build_time_ms:.1f}ms (cached)"
         )
 
-        return outbound, inbound
+        return outbound
 
-    def _get_fks_from_canonical_schema(self) -> tuple[Dict[str, set], Dict[str, set]]:
+    def _get_fks_from_canonical_schema(self) -> Dict[str, set]:
         """
-        Get FK relationships from canonical schema (JSON file).
+        Get outbound FK relationships from canonical schema (JSON file).
         Used when database has no FK constraints (common in production).
         """
         outbound = {}  # table -> set of tables it references
-        inbound = {}   # table -> set of tables that reference it
 
         if not self._canonical_schema:
             logger.warning("No canonical schema available for FK fallback")
-            return outbound, inbound
+            return outbound
 
         # Iterate through all tables in canonical schema
         for table_name, table_schema in self._canonical_schema.tables.items():
@@ -251,12 +249,7 @@ class GenericDatabaseToolkit:
                     outbound[table_name] = set()
                 outbound[table_name].add(referenced_table)
 
-                # Add inbound relationship (reverse direction)
-                if referenced_table not in inbound:
-                    inbound[referenced_table] = set()
-                inbound[referenced_table].add(table_name)
-
-        return outbound, inbound
+        return outbound
 
     def clear_relationship_cache(self) -> None:
         """

@@ -108,12 +108,30 @@ class AppContext:
             # Validate schema drift: ensure canonical schema matches actual database
             self._validate_schema_drift()
 
+            # Pre-build FK relationship graph (cached for all queries)
+            self._prebuild_fk_graph()
+
             # Pre-build schema summary string for intent classification (cached once)
             self._schema_summary_string = self._build_schema_summary_string()
         else:
             self._schema_analyzer = None
             self._schema_summary_string = ""
             logger.warning("No canonical schema path configured - schema analyzer not initialized")
+
+    def _prebuild_fk_graph(self):
+        """
+        Pre-build FK relationship graph at startup.
+
+        This ensures the first query doesn't pay the cost of building the graph.
+        The graph is cached in db_toolkit for all subsequent queries.
+        """
+        if not self._schema_analyzer:
+            return
+
+        # Trigger FK graph build (result is cached in db_toolkit)
+        outbound_fks = self._schema_analyzer.db_toolkit.get_outbound_relationships()
+        fk_count = sum(len(refs) for refs in outbound_fks.values())
+        logger.info(f"  FK relationship graph pre-built ({fk_count} relationships)")
 
     def _build_schema_summary_string(self) -> str:
         """
