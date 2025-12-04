@@ -21,9 +21,9 @@ class GenericDatabaseToolkit:
         """Initialize generic database toolkit."""
         self._engine = None
         self._initialized = False
-        # Cache for outbound FK graph (built once on first query)
+        # Cache for outbound FK graph (pre-built at app startup via AppContext)
         self._relationship_cache: Optional[Dict[str, set]] = None
-        # Canonical schema for FK fallback (when DB has no FK constraints)
+        # Canonical schema - single source of truth for FK relationships
         self._canonical_schema = canonical_schema
     
     @property
