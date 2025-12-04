@@ -113,6 +113,9 @@ class AppContext:
 
             # Pre-build schema summary string for intent classification (cached once)
             self._schema_summary_string = self._build_schema_summary_string()
+
+            # Warmup LLM and embedding model connections
+            self._warmup_models()
         else:
             self._schema_analyzer = None
             self._schema_summary_string = ""
@@ -132,6 +135,33 @@ class AppContext:
         outbound_fks = self._schema_analyzer.db_toolkit.get_outbound_relationships()
         fk_count = sum(len(refs) for refs in outbound_fks.values())
         logger.info(f"  FK relationship graph pre-built ({fk_count} relationships)")
+
+    def _warmup_models(self):
+        """
+        Warmup LLM and embedding model with minimal requests.
+
+        First requests to these APIs have cold-start latency. Warming up at
+        startup ensures the first user query is fast.
+        """
+        import time
+
+        # Warmup embedding model
+        try:
+            start = time.time()
+            self._embedding_service.embed_query("warmup")
+            embed_ms = (time.time() - start) * 1000
+            logger.info(f"  Embedding model warmed up ({embed_ms:.0f}ms)")
+        except Exception as e:
+            logger.warning(f"  Embedding warmup failed: {e}")
+
+        # Warmup LLM
+        try:
+            start = time.time()
+            self._llm.invoke("Say 'ready' in one word.")
+            llm_ms = (time.time() - start) * 1000
+            logger.info(f"  LLM warmed up ({llm_ms:.0f}ms)")
+        except Exception as e:
+            logger.warning(f"  LLM warmup failed: {e}")
 
     def _build_schema_summary_string(self) -> str:
         """
