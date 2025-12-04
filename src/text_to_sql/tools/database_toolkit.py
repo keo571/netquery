@@ -192,11 +192,10 @@ class GenericDatabaseToolkit:
 
     def get_bidirectional_relationships(self, use_cache: bool = True) -> tuple[Dict[str, set], Dict[str, set]]:
         """
-        HYBRID: Get FK relationships from database OR canonical schema.
+        Get FK relationships from canonical schema.
 
-        Priority:
-        1. Database FK constraints (SQLAlchemy reflection) - if available
-        2. Canonical schema relationships - fallback for flexibility
+        Only uses relationships defined in canonical schema - does not query database.
+        This is the single source of truth for table relationships.
 
         Args:
             use_cache: If True (default), return cached graph if available.
@@ -207,79 +206,25 @@ class GenericDatabaseToolkit:
             - outbound_fks[table] = set of tables this table references
             - inbound_fks[table] = set of tables that reference this table
 
-        Performance: O(N) where N = total FKs, computed once and cached.
-        Cache is built on first query and reused for all subsequent queries.
+        Performance: O(N) where N = total FKs in canonical schema, computed once and cached.
         """
         # Return cached graph if available
         if use_cache and self._relationship_cache is not None:
             return self._relationship_cache
 
-        logger.info("Building bidirectional FK relationship graph...")
+        logger.info("Building bidirectional FK relationship graph from canonical schema...")
         start_time = time.time()
 
-        # Try database FKs first (always preferred when available)
-        outbound, inbound = self._get_fks_from_database()
+        outbound, inbound = self._get_fks_from_canonical_schema()
         fk_count = sum(len(refs) for refs in outbound.values())
-
-        # Fallback to canonical schema if no database FKs found
-        if fk_count == 0 and self._canonical_schema is not None:
-            logger.warning(
-                "No FK constraints found in database - falling back to canonical schema. "
-                "This is common for production databases that avoid FK constraints for flexibility."
-            )
-            outbound, inbound = self._get_fks_from_canonical_schema()
-            fk_count = sum(len(refs) for refs in outbound.values())
-            source = "canonical schema"
-        else:
-            source = "database constraints"
 
         # Cache the result
         self._relationship_cache = (outbound, inbound)
 
         build_time_ms = (time.time() - start_time) * 1000
         logger.info(
-            f"Built FK graph from {source}: {fk_count} FK relationships "
-            f"in {build_time_ms:.1f}ms (cached for reuse)"
+            f"Built FK graph: {fk_count} relationships in {build_time_ms:.1f}ms (cached)"
         )
-
-        return outbound, inbound
-
-    def _get_fks_from_database(self) -> tuple[Dict[str, set], Dict[str, set]]:
-        """
-        Get FK relationships from database using SQLAlchemy reflection.
-        Only considers tables defined in canonical schema (if available).
-        Returns empty dicts if no FKs found (common in production DBs).
-        """
-        metadata = get_metadata()
-        outbound = {}  # table -> set of tables it references
-        inbound = {}   # table -> set of tables that reference it
-
-        # Only consider tables in canonical schema (optimization for large databases)
-        canonical_tables = set(self._canonical_schema.tables.keys()) if self._canonical_schema else None
-
-        # Single pass through tables (filtered by canonical schema if available)
-        for table_name, table in metadata.tables.items():
-            # Skip tables not in canonical schema
-            if canonical_tables and table_name not in canonical_tables:
-                continue
-
-            for column in table.columns:
-                for fk in column.foreign_keys:
-                    referenced_table = fk.column.table.name
-
-                    # Skip relationships to tables not in canonical schema
-                    if canonical_tables and referenced_table not in canonical_tables:
-                        continue
-
-                    # Add outbound relationship
-                    if table_name not in outbound:
-                        outbound[table_name] = set()
-                    outbound[table_name].add(referenced_table)
-
-                    # Add inbound relationship (reverse direction)
-                    if referenced_table not in inbound:
-                        inbound[referenced_table] = set()
-                    inbound[referenced_table].add(table_name)
 
         return outbound, inbound
 
