@@ -247,17 +247,29 @@ class GenericDatabaseToolkit:
     def _get_fks_from_database(self) -> tuple[Dict[str, set], Dict[str, set]]:
         """
         Get FK relationships from database using SQLAlchemy reflection.
+        Only considers tables defined in canonical schema (if available).
         Returns empty dicts if no FKs found (common in production DBs).
         """
         metadata = get_metadata()
         outbound = {}  # table -> set of tables it references
         inbound = {}   # table -> set of tables that reference it
 
-        # Single pass through all tables and FKs
+        # Only consider tables in canonical schema (optimization for large databases)
+        canonical_tables = set(self._canonical_schema.tables.keys()) if self._canonical_schema else None
+
+        # Single pass through tables (filtered by canonical schema if available)
         for table_name, table in metadata.tables.items():
+            # Skip tables not in canonical schema
+            if canonical_tables and table_name not in canonical_tables:
+                continue
+
             for column in table.columns:
                 for fk in column.foreign_keys:
                     referenced_table = fk.column.table.name
+
+                    # Skip relationships to tables not in canonical schema
+                    if canonical_tables and referenced_table not in canonical_tables:
+                        continue
 
                     # Add outbound relationship
                     if table_name not in outbound:
