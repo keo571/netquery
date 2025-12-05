@@ -506,5 +506,6 @@ if __name__ == "__main__":
         "src.api.server:app",
         host=args.host,
         port=args.port,
-        reload=args.reload
+        reload=args.reload,
+        reload_excludes=["data/*", "*.db"] if args.reload else None
     )
