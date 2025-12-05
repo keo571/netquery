@@ -53,9 +53,9 @@ def get_metadata() -> MetaData:
     if _metadata is None:
         engine = get_engine()
         _metadata = MetaData()
-        # Reflect all existing tables automatically
+        # Reflect all existing tables (used only for schema drift validation at startup)
         _metadata.reflect(bind=engine)
-        logger.info(f"Reflected {len(_metadata.tables)} tables from database")
+        logger.debug(f"Reflected {len(_metadata.tables)} tables from database")
     return _metadata
 
 
