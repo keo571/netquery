@@ -189,6 +189,7 @@ class SchemaOverviewTable(BaseModel):
     key_columns: List[str] = Field(default_factory=list)
     columns: List[Dict[str, str]] = Field(default_factory=list)
     related_tables: List[str] = Field(default_factory=list)
+    relationships: List[Dict[str, str]] = Field(default_factory=list)
 
 
 class SchemaOverviewResponse(BaseModel):
