@@ -191,20 +191,24 @@ class AppContext:
         exist in the actual database. Does NOT require database to have ONLY
         those tables/columns - it's fine if the database has extras.
 
+        Uses direct SQL queries to check only canonical schema tables - does NOT
+        reflect the entire database schema.
+
         Raises:
             ValueError: If any table or column from canonical schema is missing in database
         """
-        from src.text_to_sql.tools.database_toolkit import get_db_toolkit
+        from sqlalchemy import text, inspect
 
-        toolkit = get_db_toolkit()
         canonical_schema = self._schema_analyzer.canonical_schema
+        engine = self._db_engine
 
         errors = []
         warnings = []
 
-        # Get all actual DB table names
+        # Use SQLAlchemy inspector to check specific tables (no full reflection)
         try:
-            db_tables = set(toolkit.get_table_names())
+            inspector = inspect(engine)
+            db_tables = set(inspector.get_table_names())
         except Exception as e:
             logger.error(f"Failed to list database tables: {e}")
             raise ValueError(f"Cannot validate schema drift: Failed to connect to database: {e}")
@@ -216,10 +220,9 @@ class AppContext:
                 errors.append(f"Table '{table_name}' defined in canonical schema but not found in database")
                 continue  # Skip column validation if table doesn't exist
 
-            # Get actual columns from database (column names only)
+            # Get actual columns from database (only for this specific table)
             try:
-                table_info = toolkit.get_table_info(table_name)
-                db_columns = {col['name'] for col in table_info.get('columns', [])}
+                db_columns = {col['name'] for col in inspector.get_columns(table_name)}
             except Exception as e:
                 warnings.append(f"Failed to introspect table '{table_name}': {e}")
                 continue
