@@ -46,6 +46,7 @@ class TableSummary:
     key_columns: List[str]
     columns: List[Dict[str, str]]
     related_tables: List[str]
+    relationships: List[Dict[str, str]]  # Full FK info: {foreign_key_column, referenced_table, referenced_column}
 
 
 def _resolve_schema_path(schema_path: Optional[str] = None) -> Optional[Path]:
@@ -111,6 +112,16 @@ def _summarize_table(table) -> TableSummary:
 
     related = sorted({rel.referenced_table for rel in table.relationships}) if table.relationships else []
 
+    # Include full relationship info for FK links
+    relationships = []
+    if table.relationships:
+        for rel in table.relationships:
+            relationships.append({
+                "foreign_key_column": rel.foreign_key_column,
+                "referenced_table": rel.referenced_table,
+                "referenced_column": rel.referenced_column
+            })
+
     full_columns = [{"name": col.name, "type": str(col.data_type)} for col in table_columns]
 
     return TableSummary(
@@ -119,6 +130,7 @@ def _summarize_table(table) -> TableSummary:
         key_columns=key_columns,
         columns=full_columns,
         related_tables=related,
+        relationships=relationships,
     )
 
 def _generate_suggestions(tables: List[TableSummary], limit: int = 12) -> List[str]:
@@ -196,6 +208,7 @@ def get_schema_overview(schema_path: Optional[str] = None, database: Optional[st
             "key_columns": summary.key_columns,
             "columns": summary.columns,
             "related_tables": summary.related_tables,
+            "relationships": summary.relationships,
         }
         for summary in table_summaries
     ]
