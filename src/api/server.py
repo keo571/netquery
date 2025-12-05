@@ -507,5 +507,5 @@ if __name__ == "__main__":
         host=args.host,
         port=args.port,
         reload=args.reload,
-        reload_excludes=["data/*", "*.db"] if args.reload else None
+        reload_dirs=["src"] if args.reload else None,  # Only watch src/ directory
     )
