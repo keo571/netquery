@@ -12,24 +12,24 @@ flowchart TD
         A([Natural Language Query])
     end
 
-    A --> IC[Intent Classifier<br/>~200ms]
-    IC -->|General| GA([Direct Answer])
-    IC -->|SQL| CL[Cache Lookup]
-    IC -->|Mixed| SPLIT[Split Query]
+    A --> IC[Stage 0: Intent Classifier<br/>LLM-Powered ~200ms]
+    IC -->|General Question| GA[Direct Answer<br/>Skip SQL Pipeline]
+    IC -->|SQL Query| CL[Stage 1: Cache Lookup<br/>Check SQL Cache]
+    IC -->|Mixed Query| SPLIT[Split Query<br/>Extract Both Parts]
 
-    SPLIT -->|general_answer| STORE[Store Answer]
+    SPLIT -->|general_answer| STORE[Store Answer<br/>For Response]
     SPLIT -->|sql_query| CL
 
-    CL -->|HIT| V[Safety Check]
-    CL -->|MISS| B[Schema Analysis]
+    CL -->|🚀 HIT ~10ms| V[Stage 4: Safety Validation<br/>Read-Only Check]
+    CL -->|❌ MISS ~2.5s| B[Stage 2: Schema Analysis<br/>Semantic Table Selection]
 
-    B --> C[SQL Generation]
+    B --> C[Stage 3: SQL Generation<br/>LLM Call]
     C --> V
-    V -->|Pass| E[Execute Query]
-    V -->|Block| H([Error])
-    E --> F[Interpretation]
+    V -->|✅ Pass| E[Stage 5: Query Execution<br/>Timeout Handling]
+    V -->|❌ Block| H[Error Response]
+    E --> F[Stage 6: Result Interpretation<br/>Chart Generation]
     STORE -.->|prepend| F
-    F --> G([Response])
+    F --> G([Response with Charts])
 
     style A fill:#4FC3F7,color:#000
     style IC fill:#B39DDB,color:#000
