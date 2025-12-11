@@ -7,8 +7,12 @@ An AI-powered assistant that converts natural language queries into SQL. Optimiz
 ### 7-Stage Pipeline with Intent Classification & SQL Caching
 
 ```mermaid
-flowchart LR
-    A([Natural Language Query]) --> IC[Intent Classifier<br/>~200ms]
+flowchart TD
+    subgraph Input[" "]
+        A([Natural Language Query])
+    end
+
+    A --> IC[Intent Classifier<br/>~200ms]
     IC -->|General| GA([Direct Answer])
     IC -->|SQL| CL[Cache Lookup]
     IC -->|Mixed| SPLIT[Split Query]
