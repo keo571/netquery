@@ -27,6 +27,14 @@ flowchart TD
     STORE -.->|prepend| F
     F --> G([Response with Charts])
 
+    DB[(Database)] -.->|schema at startup| SCHEMA_CACHE
+    SCHEMA_CACHE[(Schema Embeddings)] -.->|similarity scoring| B
+    SQL_CACHE[(SQL Cache)] -.->|lookup| CL
+    LLM[Gemini API] --> IC
+    LLM --> C
+    LLM --> F
+    DB --> E
+
     style A fill:#4FC3F7,color:#000
     style IC fill:#B39DDB,color:#000
     style CL fill:#9FA8DA,color:#000
@@ -36,6 +44,8 @@ flowchart TD
     style V fill:#FFB74D,color:#000
     style SPLIT fill:#FFE082,color:#000
     style STORE fill:#FFE082,color:#000
+    style SCHEMA_CACHE fill:#E1BEE7,color:#000
+    style SQL_CACHE fill:#CE93D8,color:#000
 ```
 
 **Performance:**
