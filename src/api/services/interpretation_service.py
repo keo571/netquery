@@ -49,7 +49,7 @@ def process_visualization_data(visualization: Dict[str, Any], data: List[Dict]) 
             for col in first_row.keys()
         )
         if has_agg_column:
-            logger.info(f"[VIZ DEBUG] Data already has aggregated columns, skipping grouping")
+            logger.debug(f"[VIZ] Data already has aggregated columns, skipping grouping")
             return visualization
 
     group_by_column = grouping.get("group_by_column")
@@ -61,8 +61,8 @@ def process_visualization_data(visualization: Dict[str, Any], data: List[Dict]) 
     from collections import defaultdict
 
     # Log the input data to debug
-    logger.info(f"[VIZ DEBUG] Input data for grouping (first 5 rows): {data[:5] if len(data) > 5 else data}")
-    logger.info(f"[VIZ DEBUG] Total rows to group: {len(data)}")
+    logger.debug(f"[VIZ] Input data for grouping (first 5 rows): {data[:5] if len(data) > 5 else data}")
+    logger.debug(f"[VIZ] Total rows to group: {len(data)}")
 
     grouped_data = defaultdict(list)
     for row in data:
@@ -86,8 +86,8 @@ def process_visualization_data(visualization: Dict[str, Any], data: List[Dict]) 
     # Attach processed data to visualization
     visualization["data"] = aggregated_data
 
-    logger.info(f"[VIZ DEBUG] Grouped {len(data)} rows into {len(aggregated_data)} categories")
-    logger.info(f"[VIZ DEBUG] Aggregated data: {aggregated_data}")
+    logger.debug(f"[VIZ] Grouped {len(data)} rows into {len(aggregated_data)} categories")
+    logger.debug(f"[VIZ] Aggregated data: {aggregated_data}")
 
     return visualization
 
@@ -178,11 +178,11 @@ def _select_best_y_column(query: str, numeric_cols: List[str]) -> str:
             for col_pattern in column_patterns:
                 for col in numeric_cols:
                     if col_pattern in col.lower():
-                        logger.info(f"[VIZ DEBUG] Smart column selection: '{col}' (matched query keyword)")
+                        logger.debug(f"[VIZ] Smart column selection: '{col}' (matched query keyword)")
                         return col
 
     # Fallback: return first numeric column
-    logger.info(f"[VIZ DEBUG] No keyword match, using first numeric column: '{numeric_cols[0]}'")
+    logger.debug(f"[VIZ] No keyword match, using first numeric column: '{numeric_cols[0]}'")
     return numeric_cols[0]
 
 
@@ -254,13 +254,13 @@ def select_visualization_fast(
     # Strategy: Examine the result structure to infer the appropriate visualization
 
     # DEBUG LOGGING
-    logger.info(f"[VIZ DEBUG] Full query (first 100 chars): '{query[:100]}...'")
-    logger.info(f"[VIZ DEBUG] Extracted query: '{actual_query}'")
-    logger.info(f"[VIZ DEBUG] Columns: {columns}")
-    logger.info(f"[VIZ DEBUG] Numeric cols: {numeric_cols}")
-    logger.info(f"[VIZ DEBUG] Date-like cols: {date_like_cols}")
-    logger.info(f"[VIZ DEBUG] Low-card cols: {low_card_cols}")
-    logger.info(f"[VIZ DEBUG] Row count: {len(results)}")
+    logger.debug(f"[VIZ] Full query (first 100 chars): '{query[:100]}...'")
+    logger.debug(f"[VIZ] Extracted query: '{actual_query}'")
+    logger.debug(f"[VIZ] Columns: {columns}")
+    logger.debug(f"[VIZ] Numeric cols: {numeric_cols}")
+    logger.debug(f"[VIZ] Date-like cols: {date_like_cols}")
+    logger.debug(f"[VIZ] Low-card cols: {low_card_cols}")
+    logger.debug(f"[VIZ] Row count: {len(results)}")
 
     # 1. TIME SERIES: Detect when query explicitly asks for time-based analysis
     # Match explicit time-series keywords OR time-range patterns (last N days/weeks/months)
@@ -272,7 +272,7 @@ def select_visualization_fast(
         any(kw in query_lower for kw in time_keywords) or
         any(pattern in query_lower for pattern in time_range_patterns)
     )
-    logger.info(f"[VIZ DEBUG] Time keywords check: {has_explicit_time_query}")
+    logger.debug(f"[VIZ] Time keywords check: {has_explicit_time_query}")
 
     # Only use line chart if query explicitly asks for time-based analysis
     if has_explicit_time_query:
@@ -287,7 +287,7 @@ def select_visualization_fast(
         if non_timestamp_numeric_cols:
             # SMART COLUMN SELECTION: Match Y-axis to query intent
             y_col = _select_best_y_column(actual_query, non_timestamp_numeric_cols)
-            logger.info(f"[VIZ DEBUG] RETURNING LINE CHART (time-series): x={x_col}, y={y_col}")
+            logger.debug(f"[VIZ] RETURNING LINE CHART (time-series): x={x_col}, y={y_col}")
             return {
                 "type": "line",
                 "title": f"{y_col} over {x_col}",
@@ -300,21 +300,21 @@ def select_visualization_fast(
             }
         else:
             # No valid numeric column for Y-axis - fall through to other chart types
-            logger.warning(f"[VIZ DEBUG] Time-series query but no numeric Y-axis found. Falling back to other visualizations.")
+            logger.debug(f"[VIZ] Time-series query but no numeric Y-axis found. Falling back to other visualizations.")
 
 
     # 2. PIE CHART: Distribution queries with low cardinality (2-12 items)
     distribution_keywords = ['distribution', 'breakdown', 'proportion', 'percentage', 'share']
     has_distribution_query = any(kw in query_lower for kw in distribution_keywords)
-    logger.info(f"[VIZ DEBUG] Distribution keywords check: {has_distribution_query}")
-    logger.info(f"[VIZ DEBUG] Pie chart condition: has_distribution={has_distribution_query}, low_card_cols={low_card_cols}, row_count={len(results)} (need 2-12)")
+    logger.debug(f"[VIZ] Distribution keywords check: {has_distribution_query}")
+    logger.debug(f"[VIZ] Pie chart condition: has_distribution={has_distribution_query}, low_card_cols={low_card_cols}, row_count={len(results)} (need 2-12)")
 
     if has_distribution_query and low_card_cols and 2 <= len(results) <= 12:
         category_col = low_card_cols[0]
 
         # DEBUG: Log the exact columns we received
-        logger.info(f"[VIZ DEBUG] Available columns in data: {columns}")
-        logger.info(f"[VIZ DEBUG] First row of data: {results[0]}")
+        logger.debug(f"[VIZ] Available columns in data: {columns}")
+        logger.debug(f"[VIZ] First row of data: {results[0]}")
 
         # Check if data already has a count/aggregate column from SQL GROUP BY
         # Look for columns with names like 'count', 'cnt', 'total', 'COUNT(*)', etc.
@@ -324,16 +324,16 @@ def select_visualization_fast(
             # Direct name matches
             if col_lower in ['count', 'cnt', 'total', 'num', 'number', 'quantity']:
                 count_column = col
-                logger.info(f"[VIZ DEBUG] Found count column (direct): '{col}'")
+                logger.debug(f"[VIZ] Found count column (direct): '{col}'")
                 break
             # SQL function patterns like 'COUNT(*)', 'count(*)', 'COUNT(1)', etc.
             # Check if column name contains 'count' anywhere
             if 'count' in col_lower:
                 count_column = col
-                logger.info(f"[VIZ DEBUG] Found count column (pattern): '{col}'")
+                logger.debug(f"[VIZ] Found count column (pattern): '{col}'")
                 break
 
-        logger.info(f"[VIZ DEBUG] Final count_column: {count_column}")
+        logger.debug(f"[VIZ] Final count_column: {count_column}")
 
         # DISABLE Python-side grouping for now - SQL should handle GROUP BY COUNT
         # The SQL generator creates proper GROUP BY queries, so we don't need to re-group
@@ -346,17 +346,17 @@ def select_visualization_fast(
         # Otherwise: No visualization possible
         if 'COUNT(*)' in columns:
             value_col = 'COUNT(*)'
-            logger.info(f"[VIZ DEBUG] Using COUNT(*) column directly")
+            logger.debug(f"[VIZ] Using COUNT(*) column directly")
         elif count_column:
             value_col = count_column  # SQL already did GROUP BY COUNT
-            logger.info(f"[VIZ DEBUG] Using detected count_column: {count_column}")
+            logger.debug(f"[VIZ] Using detected count_column: {count_column}")
         elif numeric_cols:
             value_col = numeric_cols[0]
-            logger.info(f"[VIZ DEBUG] Using first numeric column: {numeric_cols[0]}")
+            logger.debug(f"[VIZ] Using first numeric column: {numeric_cols[0]}")
         else:
             # Data looks like distinct categories without counts - can't visualize
             # SQL should have used GROUP BY with COUNT
-            logger.warning(f"[VIZ DEBUG] Pie chart requested but data has no counts (SQL returned DISTINCT without COUNT)")
+            logger.debug(f"[VIZ] Pie chart requested but data has no counts (SQL returned DISTINCT without COUNT)")
             return {
                 "type": "none",
                 "title": "No Visualization",
@@ -366,7 +366,7 @@ def select_visualization_fast(
                 }
             }
 
-        logger.info(f"[VIZ DEBUG] RETURNING PIE CHART (distribution), y_column={value_col}")
+        logger.debug(f"[VIZ] RETURNING PIE CHART (distribution), y_column={value_col}")
 
         return {
             "type": "pie",
@@ -386,13 +386,13 @@ def select_visualization_fast(
     # 3. SCATTER PLOT: Correlation/relationship queries with 2+ numeric columns
     correlation_keywords = ['correlation', 'relationship', 'vs', 'versus', 'impact']
     has_correlation_query = any(kw in query_lower for kw in correlation_keywords)
-    logger.info(f"[VIZ DEBUG] Scatter plot condition: has_correlation={has_correlation_query}, numeric_cols={len(numeric_cols)}, row_count={len(results)} (need <=100)")
+    logger.debug(f"[VIZ] Scatter plot condition: has_correlation={has_correlation_query}, numeric_cols={len(numeric_cols)}, row_count={len(results)} (need <=100)")
 
     if (has_correlation_query or len(numeric_cols) >= 2) and len(results) <= 100:
         # Use first two numeric columns for scatter plot
         x_col = numeric_cols[0] if len(numeric_cols) > 0 else columns[0]
         y_col = numeric_cols[1] if len(numeric_cols) > 1 else columns[1] if len(columns) > 1 else columns[0]
-        logger.info(f"[VIZ DEBUG] RETURNING SCATTER PLOT")
+        logger.debug(f"[VIZ] RETURNING SCATTER PLOT")
 
         return {
             "type": "scatter",
@@ -407,7 +407,7 @@ def select_visualization_fast(
 
     # 4. BAR CHART: Default for categorical data with numeric values (≤30 rows)
     # This catches most "Show count of X by Y" queries
-    logger.info(f"[VIZ DEBUG] Bar chart condition: row_count={len(results)} (need <=30), categorical_cols={categorical_cols}, low_card_cols={low_card_cols}")
+    logger.debug(f"[VIZ] Bar chart condition: row_count={len(results)} (need <=30), categorical_cols={categorical_cols}, low_card_cols={low_card_cols}")
     if len(results) <= 30 and (categorical_cols or low_card_cols):
         # Pick x-axis (categorical) and y-axis (numeric)
         x_col = categorical_cols[0] if categorical_cols else low_card_cols[0] if low_card_cols else columns[0]
@@ -426,7 +426,7 @@ def select_visualization_fast(
             # Fallback: try to use second column if available, otherwise x_col
             y_col = columns[1] if len(columns) > 1 else x_col
 
-        logger.info(f"[VIZ DEBUG] RETURNING BAR CHART (default categorical)")
+        logger.debug(f"[VIZ] RETURNING BAR CHART (default categorical)")
 
         return {
             "type": "bar",
@@ -444,7 +444,7 @@ def select_visualization_fast(
         }
 
     # DEFAULT: No visualization if too many rows or unclear structure
-    logger.info(f"[VIZ DEBUG] RETURNING NONE (no visualization)")
+    logger.debug(f"[VIZ] RETURNING NONE (no visualization)")
     return {
         "type": "none",
         "title": "Data Table",
