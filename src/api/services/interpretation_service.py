@@ -7,8 +7,35 @@ from typing import Dict, List, Any, Optional
 
 from src.text_to_sql.utils.llm_utils import get_llm
 from src.text_to_sql.utils.query_extraction import extract_current_query
+from src.api.services.data_utils import analyze_data_patterns
 
 logger = logging.getLogger(__name__)
+
+
+def get_visualization_for_data(query: str, data: List[Dict]) -> Dict[str, Any]:
+    """
+    Get visualization config for query results (convenience function).
+
+    Combines pattern analysis, visualization selection, and data processing
+    into a single call. Use this instead of calling the individual functions.
+
+    Args:
+        query: User's natural language query
+        data: Query results (list of dicts)
+
+    Returns:
+        Processed visualization config dict with type, title, config, and data
+    """
+    if not data:
+        return {
+            "type": "none",
+            "title": "No Data",
+            "config": {"reason": "No results to visualize"}
+        }
+
+    patterns = analyze_data_patterns(data)
+    visualization = select_visualization_fast(query, data, patterns)
+    return process_visualization_data(visualization, data)
 
 
 def process_visualization_data(visualization: Dict[str, Any], data: List[Dict]) -> Dict[str, Any]:

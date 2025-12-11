@@ -919,4 +919,375 @@ When validation fails, developers must:
 
 ---
 
-**Last Updated**: 2025-11-28
+## ADR-023: Unified Server Architecture (Chat Adapter Consolidation)
+
+**Date**: 2025-12-11
+**Status**: Implemented ✅
+
+### Context
+
+The original architecture had a **separate chat adapter** (BFF - Backend for Frontend) layer:
+
+**Before**:
+```
+Frontend (React)
+     ↓
+Chat Adapter (netquery-insight-chat/chat_adapter.py)  ← BFF Layer
+     ↓
+Backend API (netquery/src/api/server.py)
+     ↓
+Text-to-SQL Pipeline
+```
+
+Problems with this approach:
+- **Two Python servers** needed for full functionality
+- **Deployment complexity**: Frontend repo needed to run Python code
+- **Code duplication**: Session management in both repos
+- **Maintenance burden**: Changes required syncing between repos
+- **CORS complexity**: Cross-origin requests between BFF and backend
+
+### Decision
+
+**Unified all functionality into a single backend server** (`src/api/server.py`).
+
+**After**:
+```
+Frontend (React - pure JS/static files)
+     ↓
+Unified Backend (netquery/src/api/server.py)
+  ├── Chat endpoints (/chat, SSE streaming)
+  ├── API endpoints (/api/generate-sql, /api/execute, etc.)
+  ├── Session management
+  ├── Feedback handling
+  └── Static file serving (optional)
+     ↓
+Text-to-SQL Pipeline
+```
+
+**Key Changes**:
+
+1. **Moved from frontend to backend**:
+   - Session management (`sessions` dict, `get_or_create_session()`)
+   - Conversation context building (`build_context_prompt()`)
+   - SSE streaming (`/chat` endpoint with `StreamingResponse`)
+   - Feedback endpoint with cache invalidation
+
+2. **Frontend simplified to pure React**:
+   - `api.js` calls backend directly (no Python BFF)
+   - Database switching via backend URL mapping
+   - No Python dependencies in frontend
+
+3. **Single-URL deployment**:
+   - Backend serves both API and static files
+   - One port per database (8000 for sample, 8001 for neila)
+
+### Implementation
+
+**Server structure** (`src/api/server.py`):
+```python
+"""
+FastAPI server for Netquery Text-to-SQL system.
+
+This is the unified server that combines:
+- Core SQL generation and execution (original server.py)
+- Chat adapter functionality (session management, streaming, feedback)
+- Static file serving for React frontend
+
+Single URL deployment: All services from one server.
+"""
+
+# SESSION MANAGEMENT (from chat_adapter)
+sessions: Dict[str, Dict[str, Any]] = {}
+
+# Chat-specific models (from chat_adapter)
+class ChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+    database: str = "sample"
+
+# CHAT ENDPOINTS (from chat_adapter)
+@app.post("/chat")
+async def chat_endpoint(request: ChatRequest):
+    # SSE streaming response
+    return StreamingResponse(
+        stream_response(request),
+        media_type="text/event-stream"
+    )
+```
+
+**Frontend API** (`netquery-insight-chat/src/services/api.js`):
+```javascript
+// Database to backend URL mapping
+const DATABASE_URLS = {
+    'sample': process.env.REACT_APP_SAMPLE_URL || 'http://localhost:8000',
+    'neila': process.env.REACT_APP_NEILA_URL || 'http://localhost:8001',
+};
+
+// Direct calls to unified backend (no BFF layer)
+export const queryAgent = async (query, sessionId, onEvent, database) => {
+    const response = await fetch(`${getApiUrl(database)}/chat`, {
+        method: 'POST',
+        body: JSON.stringify({ message: query, session_id: sessionId, database })
+    });
+    // SSE event handling...
+};
+```
+
+### Consequences
+
+**Positive**:
+- **Simpler deployment**: One Python server (backend only)
+- **Reduced latency**: No extra hop through BFF layer
+- **Easier maintenance**: All Python code in one repo
+- **Better separation**: Frontend is pure React/JS
+- **Consistent state**: Session management in one place
+- **Simpler CORS**: Frontend only talks to one origin per database
+
+**Negative**:
+- **Larger server.py**: ~1000 lines (manageable with good organization)
+- **Backend complexity**: Handles both API and chat logic
+
+**Trade-off**: Slightly larger backend file for much simpler overall architecture.
+
+### Migration Path
+
+1. ✅ Copied session management to `src/api/server.py`
+2. ✅ Added `/chat` endpoint with SSE streaming
+3. ✅ Added feedback endpoint with cache invalidation
+4. ✅ Updated frontend `api.js` to call backend directly
+5. ✅ Removed `chat_adapter.py` from frontend repo
+6. ✅ Frontend repo now contains only React code
+
+**Files**:
+- Modified: `src/api/server.py` (added chat adapter functionality)
+- Modified: `netquery-insight-chat/src/services/api.js` (direct backend calls)
+- Deleted: `netquery-insight-chat/chat_adapter.py` (no longer needed)
+
+---
+
+## ADR-024: Canonical Schema as Single Source of Truth for FK Relationships
+
+**Date**: 2025-12-11
+**Status**: Implemented ✅
+
+### Context
+
+The FK (foreign key) relationship graph was being built from two sources:
+1. **Database introspection**: SQLAlchemy reflecting actual FK constraints
+2. **Canonical schema**: JSON file with defined relationships
+
+This caused issues:
+- **Missing relationships**: Databases without explicit FK constraints showed no relationships
+- **Inconsistency**: Frontend schema visualizer showed different relationships than backend used
+- **Performance**: Full database reflection at startup (~500ms)
+
+### Decision
+
+**Use canonical schema as the single source of truth** for FK relationships.
+
+**Implementation**:
+1. **FK graph pre-built at startup** from canonical schema
+2. **No database reflection** for relationship discovery
+3. **Outbound-only FK expansion** (simplified from bidirectional)
+4. **Frontend receives relationships** from `/api/schema/overview` endpoint
+
+**Code changes**:
+
+```python
+# src/api/app_context.py
+def _prebuild_fk_graph(self):
+    """Pre-build FK relationship graph from canonical schema."""
+    canonical = self._schema_analyzer.canonical_schema
+    for table in canonical.get('tables', []):
+        for rel in table.get('relationships', []):
+            # Build outbound relationships only
+            self._fk_graph[table['name']].add(rel['referenced_table'])
+
+# src/text_to_sql/tools/database_toolkit.py
+def get_outbound_relationships(self) -> Dict[str, set]:
+    """Get FK relationships (outbound only) from canonical schema."""
+    # Returns {table_name: {referenced_tables}}
+```
+
+**Schema overview response** includes relationships:
+```python
+# src/api/server.py
+class SchemaOverviewTable(BaseModel):
+    name: str
+    columns: List[ColumnInfo]
+    relationships: List[TableRelationship]  # From canonical schema
+```
+
+### Consequences
+
+**Positive**:
+- **Consistent relationships**: Same source for backend and frontend
+- **Faster startup**: No FK reflection from database
+- **Works without DB FKs**: Relationships defined in canonical schema work even if database has no FK constraints
+- **Simpler code**: One source of truth, no merging logic
+
+**Negative**:
+- **Manual maintenance**: Relationships must be defined in Excel schema
+- **No auto-discovery**: Database FK changes not auto-detected
+
+**Trade-off**: Manual relationship definition for reliability and consistency.
+
+**Files**:
+- Modified: `src/api/app_context.py` (`_prebuild_fk_graph()`)
+- Modified: `src/text_to_sql/tools/database_toolkit.py` (`get_outbound_relationships()`)
+- Modified: `src/api/server.py` (include relationships in schema overview)
+- Modified: `netquery-insight-chat/src/components/SchemaVisualizer.js` (use `relationships` from API)
+
+---
+
+## ADR-025: Model Warmup at Application Startup
+
+**Date**: 2025-12-11
+**Status**: Implemented ✅
+
+### Context
+
+First query after server start was slow (~5-8 seconds) because:
+- LLM connection not established until first use
+- Embedding model weights not loaded
+- Cold start latency visible to first user
+
+### Decision
+
+**Warmup LLM and embedding model** during application startup (in `AppContext._initialize_resources()`).
+
+**Implementation**:
+```python
+def _warmup_models(self):
+    """Warmup LLM and embedding model with simple requests."""
+    import time
+
+    # Warmup embedding model
+    try:
+        start = time.time()
+        self._embedding_service.embed_query("warmup")
+        logger.info(f"  Embedding model warmed up ({(time.time()-start)*1000:.0f}ms)")
+    except Exception as e:
+        logger.warning(f"  Embedding warmup failed: {e}")
+
+    # Warmup LLM
+    try:
+        start = time.time()
+        self._llm.invoke("Say 'ready' in one word.")
+        logger.info(f"  LLM warmed up ({(time.time()-start)*1000:.0f}ms)")
+    except Exception as e:
+        logger.warning(f"  LLM warmup failed: {e}")
+```
+
+### Consequences
+
+**Positive**:
+- **First query fast**: No cold start latency for first user
+- **Consistent performance**: All queries have similar response times
+- **Fail-fast**: Connection issues caught at startup, not first request
+
+**Negative**:
+- **Slower startup**: +2-3 seconds at application start
+- **API costs**: Small warmup requests cost a few tokens
+
+**Trade-off**: Slightly slower startup for better user experience.
+
+**Files**:
+- Modified: `src/api/app_context.py` (`_warmup_models()` method)
+
+---
+
+## ADR-026: Service Layer Extraction (SQL and Execution Services)
+
+**Date**: 2025-12-11
+**Status**: Implemented ✅
+
+### Context
+
+The `/api/*` REST endpoints and `/chat` SSE endpoint had **duplicate business logic**:
+
+1. **SQL generation**: Same `text_to_sql_graph.ainvoke()` call in both places
+2. **Query execution**: Same count-checking, LIMIT handling, data formatting in both places
+3. **Visualization**: Same pattern analysis and chart selection (already extracted to `interpretation_service.py`)
+
+This duplication meant:
+- Bug fixes needed in multiple places
+- Risk of logic divergence between endpoints
+- Harder to test business logic in isolation
+- `server.py` was growing large (~1000 lines)
+
+### Decision
+
+**Extract shared business logic into service modules**, keeping endpoints as thin HTTP/SSE wrappers.
+
+**New Service Structure**:
+```
+src/api/services/
+├── sql_service.py           # NEW: generate_sql()
+├── execution_service.py     # NEW: execute_sql()
+├── interpretation_service.py # Existing: get_visualization_for_data()
+└── data_utils.py            # Existing: format_data_for_display()
+```
+
+**sql_service.py**:
+```python
+@dataclass
+class SQLGenerationResult:
+    sql: Optional[str]
+    intent: str  # "sql", "general", or "mixed"
+    general_answer: Optional[str]
+    schema_overview: Optional[Dict]
+    error: Optional[str] = None
+
+async def generate_sql(query, text_to_sql_graph, get_schema_overview_fn) -> SQLGenerationResult:
+    """Generate SQL from natural language query."""
+    result = await text_to_sql_graph.ainvoke({...})
+    return SQLGenerationResult(sql=result.get("generated_sql"), ...)
+```
+
+**execution_service.py**:
+```python
+@dataclass
+class ExecutionResult:
+    data: List[Dict]
+    columns: List[str]
+    total_count: Optional[int]
+    error: Optional[str] = None
+
+def execute_sql(sql, engine, max_rows, count_threshold) -> ExecutionResult:
+    """Execute SQL and return formatted results."""
+    # Count checking, LIMIT handling, data formatting
+    return ExecutionResult(data=formatted_data, ...)
+```
+
+**Endpoint usage** (both `/api/generate-sql` and `/chat` now use):
+```python
+from .services.sql_service import generate_sql
+from .services.execution_service import execute_sql
+
+result = await generate_sql(query, text_to_sql_graph, get_schema_overview)
+exec_result = execute_sql(result.sql, engine, MAX_CACHE_ROWS, THRESHOLD)
+```
+
+### Consequences
+
+**Positive**:
+- **Single source of truth**: SQL generation and execution logic in one place
+- **Easier testing**: Services can be unit tested without HTTP layer
+- **Cleaner endpoints**: HTTP handlers focus on request/response, not business logic
+- **Reduced duplication**: ~80 lines of duplicate code removed from `server.py`
+
+**Negative**:
+- **More files**: 2 new service files to maintain
+- **More imports**: Endpoints import from services
+
+**Trade-off**: Slightly more files for better separation of concerns and maintainability.
+
+**Files**:
+- Created: `src/api/services/sql_service.py`
+- Created: `src/api/services/execution_service.py`
+- Modified: `src/api/server.py` (refactored endpoints to use services)
+
+---
+
+**Last Updated**: 2025-12-11

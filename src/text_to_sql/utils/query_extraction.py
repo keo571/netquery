@@ -2,7 +2,7 @@
 Query extraction utilities for handling conversation context.
 
 This module extracts the actual current query from conversation context
-sent by the frontend chat adapter, which includes conversation history.
+which includes conversation history for follow-up question handling.
 """
 import re
 import logging
@@ -14,9 +14,7 @@ def extract_current_query(full_query: str) -> str:
     """
     Extract the actual current query from conversation context.
 
-    The frontend chat adapter (BFF layer) sends queries with conversation history:
-
-    Format from chat_adapter.py build_context_prompt():
+    Conversation context includes history for follow-up questions:
     ```
     CONVERSATION HISTORY - Use this to understand follow-up questions:
 

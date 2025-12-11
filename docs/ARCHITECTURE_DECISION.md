@@ -980,9 +980,107 @@ GEMINI_API_KEY=your_key_here
 - Secure credential management
 - Data access policies
 
+## Architecture Overview
+
+### Unified Server Architecture (ADR-023)
+
+The system uses a **unified backend architecture** where all functionality is consolidated in a single FastAPI server:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    System Architecture                       │
+└─────────────────────────────────────────────────────────────┘
+
+Frontend (React - netquery-insight-chat)
+  │  Pure React/JavaScript application
+  │  Calls backend directly via REST/SSE
+  ↓
+┌─────────────────────────────────────────────────────────────┐
+│           Unified Backend (src/api/server.py)               │
+├─────────────────────────────────────────────────────────────┤
+│  Chat Layer:                                                │
+│    • /chat endpoint (SSE streaming)                         │
+│    • Session management                                     │
+│    • Conversation context building                          │
+│    • Feedback handling with cache invalidation              │
+├─────────────────────────────────────────────────────────────┤
+│  API Layer:                                                 │
+│    • /api/generate-sql (SQL generation)                     │
+│    • /api/execute/{id} (query execution)                    │
+│    • /api/interpret/{id} (LLM interpretation)               │
+│    • /api/schema/overview (schema info)                     │
+│    • /api/download/{id} (CSV export)                        │
+├─────────────────────────────────────────────────────────────┤
+│  Service Layer (src/api/services/):                         │
+│    • sql_service.py - SQL generation logic                  │
+│    • execution_service.py - Query execution & caching       │
+│    • interpretation_service.py - Visualization & insights   │
+│    • data_utils.py - Data formatting & pattern analysis     │
+├─────────────────────────────────────────────────────────────┤
+│  Static Files (optional):                                   │
+│    • Serves React build for single-URL deployment           │
+└─────────────────────────────────────────────────────────────┘
+  ↓
+┌─────────────────────────────────────────────────────────────┐
+│              Text-to-SQL Pipeline (LangGraph)               │
+│  Intent → Cache → Schema → SQL Gen → Validate → Execute     │
+└─────────────────────────────────────────────────────────────┘
+  ↓
+Database (SQLite/PostgreSQL)
+```
+
+**Key Benefits**:
+- **Single deployment**: One Python server handles everything
+- **No BFF layer**: Frontend calls backend directly
+- **Simpler CORS**: One origin per database
+- **Consistent state**: All session management in one place
+
+### Multi-Database Support
+
+Each database runs on its own port with isolated resources:
+
+| Database | Port | Embeddings Cache | SQL Cache |
+|----------|------|------------------|-----------|
+| sample | 8000 | sample_embeddings_cache.db | sample_sql_cache.db |
+| neila | 8001 | neila_embeddings_cache.db | neila_sql_cache.db |
+
+Frontend switches databases by changing the backend URL.
+
 ## Frontend Integration
 
 **Note**: Frontend implementation is in [netquery-insight-chat](https://github.com/keo571/netquery-insight-chat)
+
+### Frontend Architecture
+
+The frontend is a **pure React application** with no Python dependencies:
+
+```
+netquery-insight-chat/
+├── src/
+│   ├── components/          # React components
+│   │   ├── ChatInterface.js # Main chat UI
+│   │   ├── SchemaVisualizer.js # Database diagram (ReactFlow)
+│   │   └── ...
+│   ├── services/
+│   │   └── api.js           # Backend API calls (direct, no BFF)
+│   └── App.js               # Root component with database selector
+└── public/                  # Static assets
+```
+
+**API Service** (`src/services/api.js`):
+```javascript
+// Database to backend URL mapping
+const DATABASE_URLS = {
+    'sample': process.env.REACT_APP_SAMPLE_URL || 'http://localhost:8000',
+    'neila': process.env.REACT_APP_NEILA_URL || 'http://localhost:8001',
+};
+
+// Direct calls to unified backend
+export const queryAgent = async (query, sessionId, onEvent, database) => {
+    const response = await fetch(`${getApiUrl(database)}/chat`, {...});
+    // SSE event handling...
+};
+```
 
 ### Frontend Responsibilities
 
@@ -990,16 +1088,20 @@ GEMINI_API_KEY=your_key_here
 2. **SQL Display**: Show generated SQL with syntax highlighting
 3. **Data Preview**: Table display (PREVIEW_ROWS rows)
 4. **Interpretation Display**: Show insights and findings
-5. **Visualization Rendering**: Render charts from viz specs (Chart.js/Recharts/Plotly)
+5. **Visualization Rendering**: Render charts from viz specs (Recharts)
 6. **Download Handling**: CSV file download button
 7. **Status Indicators**: Loading states, truncation notices
+8. **Schema Visualization**: Interactive database diagram using ReactFlow
+9. **Database Switching**: Dropdown to switch between sample/neila databases
 
 ### Frontend Data Flow
 
 ```
 User Input
   ↓
-Generate SQL → Display SQL
+POST /chat (SSE streaming)
+  ↓
+Display SQL → Show reasoning steps
   ↓
 Execute → Show PREVIEW_ROWS row preview + row count
   ↓
@@ -1150,6 +1252,27 @@ Scope clarity to avoid over-engineering:
 
 ## Recent Updates
 
+### 2025-12-11: Unified Server Architecture, Canonical Schema & Service Layer
+
+- ✅ **Unified Server (ADR-023)**: Consolidated chat adapter into backend server
+  - Moved session management, SSE streaming, feedback from frontend to `src/api/server.py`
+  - Frontend is now pure React/JavaScript (no Python dependencies)
+  - Single backend server per database (port 8000 for sample, 8001 for neila)
+- ✅ **Canonical Schema as FK Source (ADR-024)**: FK relationships from canonical schema only
+  - No database reflection for relationship discovery
+  - Frontend schema visualizer uses `relationships` from API
+  - Works even when database has no FK constraints
+- ✅ **Model Warmup (ADR-025)**: LLM and embedding model warmed up at startup
+  - First query is fast (no cold start latency)
+  - ~2-3 second startup overhead (one-time)
+- ✅ **Service Layer Extraction (ADR-026)**: Extracted shared business logic into services
+  - `sql_service.py`: SQL generation logic shared by `/api/generate-sql` and `/chat`
+  - `execution_service.py`: Query execution logic shared by `/api/execute` and `/chat`
+  - Endpoints are now thin HTTP/SSE wrappers calling service functions
+  - Single source of truth for business logic, easier testing
+- ✅ **Outbound-only FK Expansion**: Simplified from bidirectional to outbound-only
+- ✅ **Pre-built FK Graph**: FK relationships built at startup from canonical schema
+
 ### 2025-01-17: Cache System Improvements & Refactoring
 - ✅ **Two-Tier Caching**: Embedding cache (partial speedup) + SQL cache (full speedup)
 - ✅ **Query Extraction**: Extract current query from conversation context for cache matching
@@ -1180,12 +1303,12 @@ Scope clarity to avoid over-engineering:
 
 ---
 
-**Last Updated**: 2025-11-28
+**Last Updated**: 2025-12-11
 
 ## Architecture Decision Records
 
 For detailed historical decisions and rationale behind architectural choices, see:
-- **[Architecture Decision Records (ADRs)](ARCHITECTURE_DECISION_RECORDS.md)** - Chronological record of all 22 major architectural decisions
+- **[Architecture Decision Records (ADRs)](ARCHITECTURE_DECISION_RECORDS.md)** - Chronological record of all 26 major architectural decisions
 
 Key decisions include:
 - **ADR-009**: SQL-Only Cache (simplified from two-tier)
@@ -1194,3 +1317,7 @@ Key decisions include:
 - **ADR-015**: Dual Backend Implementation (multi-database support)
 - **ADR-020**: Conversational Follow-Up Question Handling
 - **ADR-022**: Schema Drift Validation on Startup
+- **ADR-023**: Unified Server Architecture (chat adapter consolidation)
+- **ADR-024**: Canonical Schema as Single Source of Truth for FK Relationships
+- **ADR-025**: Model Warmup at Application Startup
+- **ADR-026**: Service Layer Extraction (SQL and Execution Services)

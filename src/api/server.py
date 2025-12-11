@@ -1,5 +1,14 @@
 """
-FastAPI server for Netquery Text-to-SQL system.
+Unified FastAPI server for Netquery Text-to-SQL system.
+
+Provides:
+- Chat endpoint with SSE streaming (/chat)
+- SQL generation and execution APIs (/api/*)
+- Session management for conversational queries
+- Feedback handling with cache invalidation
+- Static file serving for React frontend (optional)
+
+Single URL deployment: All services from one server per database.
 """
 
 # ================================
@@ -10,17 +19,19 @@ import uuid
 import logging
 import asyncio
 import os
-from typing import Dict, List, Any, Optional
+import json
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import pandas as pd
 from io import StringIO
-from sqlalchemy import text
 from src.common.env import load_environment
 from pydantic import BaseModel, Field
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import StreamingResponse, Response, FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 # Load environment variables before importing pipeline components
@@ -46,6 +57,19 @@ logger = logging.getLogger(__name__)
 # In-memory cache for query results
 query_cache: Dict[str, Dict[str, Any]] = {}
 
+# ================================
+# SESSION MANAGEMENT
+# ================================
+
+# Session storage (in-memory)
+sessions: Dict[str, Dict[str, Any]] = {}
+
+# Session constants
+SESSION_TIMEOUT = timedelta(hours=1)
+MAX_CONVERSATION_HISTORY = 1
+RECENT_EXCHANGES_FOR_CONTEXT = 3
+DEFAULT_FRONTEND_INITIAL_ROWS = 30
+
 # Import from centralized constants
 from src.common.constants import (
     MAX_CACHE_ROWS,
@@ -61,6 +85,183 @@ def get_cache_entry(query_id: str) -> Dict[str, Any]:
     if query_id not in query_cache:
         raise HTTPException(status_code=404, detail="Query ID not found")
     return query_cache[query_id]
+
+
+# ================================
+# SESSION MANAGEMENT FUNCTIONS
+# ================================
+
+def get_or_create_session(session_id: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+    """Get existing session or create new one, cleaning up expired sessions."""
+    _cleanup_expired_sessions()
+
+    if session_id and session_id in sessions:
+        sessions[session_id]['last_activity'] = datetime.now()
+        return session_id, sessions[session_id]
+
+    # Create new session
+    new_id = str(uuid.uuid4())
+    sessions[new_id] = {
+        'created_at': datetime.now(),
+        'last_activity': datetime.now(),
+        'conversation_history': []
+    }
+    logger.info(f"Created new session: {new_id}")
+    return new_id, sessions[new_id]
+
+
+def _cleanup_expired_sessions():
+    """Remove expired sessions from memory."""
+    now = datetime.now()
+    expired = [sid for sid, sess in sessions.items()
+               if now - sess['last_activity'] > SESSION_TIMEOUT]
+    for sid in expired:
+        del sessions[sid]
+        logger.info(f"Cleaned up expired session: {sid}")
+
+
+def add_to_conversation(session_id: str, user_message: str, sql: Optional[str]):
+    """Add a query to the conversation history, keeping only recent exchanges."""
+    if session_id in sessions:
+        sessions[session_id]['conversation_history'].append({
+            'user_message': user_message,
+            'sql': sql,
+            'timestamp': datetime.now().isoformat()
+        })
+        # Keep only last N exchanges to avoid context length issues
+        history = sessions[session_id]['conversation_history']
+        if len(history) > MAX_CONVERSATION_HISTORY:
+            sessions[session_id]['conversation_history'] = history[-MAX_CONVERSATION_HISTORY:]
+
+
+def build_context_prompt(session: Dict[str, Any], current_message: str) -> str:
+    """Build a contextualized prompt with conversation history."""
+    history = session.get('conversation_history', [])
+    if not history:
+        return current_message
+
+    context_parts = ["CONVERSATION HISTORY - Use this to understand follow-up questions:\n"]
+
+    recent_history = history[-RECENT_EXCHANGES_FOR_CONTEXT:]
+    for i, exchange in enumerate(recent_history, 1):
+        context_parts.append(
+            f"Exchange {i}:"
+            f"\n  User asked: {exchange['user_message']}"
+            f"\n  SQL query: {exchange['sql']}\n"
+        )
+
+    context_parts.append(f"USER'S NEW QUESTION: {current_message}")
+    context_parts.append(_get_context_rules())
+
+    return "\n".join(context_parts)
+
+
+def _get_context_rules() -> str:
+    """Get the context rules for follow-up questions."""
+    return """
+CONTEXT RULES FOR FOLLOW-UP QUESTIONS:
+
+When the user's question builds on previous queries, use the conversation history to:
+
+1. Resolve references to entities, tables, or columns mentioned previously
+   - "the pool", "those servers", "their names" should reference entities from prior queries
+
+2. Preserve the user's intent when modifying queries
+   - "also show X" or "as well" → add columns/joins to previous query while preserving filters
+   - "remove X" or "don't show Y" → exclude specified columns from previous SELECT
+   - "sort by X instead" → keep same data but change ORDER BY clause
+
+3. Maintain consistency with previous query patterns
+   - If previous query returned detail rows, continue returning details unless user requests aggregation
+   - If previous query used specific filters (WHERE) or limits, preserve them unless explicitly changed
+   - If previous query joined certain tables, reuse those relationships when relevant
+
+Generate SQL that naturally continues the conversation based on the context above."""
+
+
+# ================================
+# CHAT HELPER FUNCTIONS
+# ================================
+
+def build_display_info(data: List, total_count: Optional[int]) -> Dict[str, Any]:
+    """Build display info for frontend pagination."""
+    initial_display = int(os.getenv("FRONTEND_INITIAL_ROWS", str(DEFAULT_FRONTEND_INITIAL_ROWS)))
+    return {
+        "total_rows": len(data),
+        "initial_display": initial_display,
+        "has_scroll_data": len(data) > initial_display,
+        "total_in_dataset": total_count if total_count is not None else "1000+"
+    }
+
+
+def build_analysis_explanation(interpretation_data: dict, total_count: Optional[int]) -> str:
+    """Build markdown-formatted analysis from structured interpretation data."""
+    parts = []
+    interp = interpretation_data.get("interpretation", {})
+
+    summary = interp.get("summary", "")
+    if summary:
+        parts.append(f"**Summary:**\n\n{summary}\n\n")
+
+    findings = interp.get("key_findings", [])
+    if findings:
+        parts.append("**Key Findings:**\n\n")
+        for finding in findings:
+            parts.append(f"- {finding}\n")
+        parts.append("\n")
+
+    recommendations = interp.get("recommendations", [])
+    if recommendations:
+        parts.append("**Recommendations:**\n\n")
+        for recommendation in recommendations:
+            parts.append(f"- {recommendation}\n")
+        parts.append("\n")
+
+    if total_count and total_count > 30:
+        parts.append(f"**Analysis Note:**\n\nInsights based on first 30 rows of {total_count} rows. Download full dataset for complete analysis.\n\n")
+    elif total_count is None:
+        parts.append("**Analysis Note:**\n\nInsights based on first 30 rows of more than 1000 rows. Download full dataset for complete analysis.\n\n")
+
+    return "".join(parts)
+
+
+def extract_interpretation_fields(interpretation_data: dict) -> Tuple[Optional[dict], Optional[dict], List[str], bool]:
+    """Extract and validate visualization, schema_overview, suggested_queries, and guidance."""
+    visualization = interpretation_data.get("visualization")
+    schema_overview = interpretation_data.get("schema_overview")
+    suggested_queries = interpretation_data.get("suggested_queries") or []
+    guidance = interpretation_data.get("guidance", False)
+
+    if not any([schema_overview, suggested_queries]):
+        interp_payload = interpretation_data.get("interpretation", {})
+        schema_overview = schema_overview or interp_payload.get("schema_overview")
+        suggested_queries = suggested_queries or interp_payload.get("suggested_queries") or []
+        guidance = guidance or interp_payload.get("guidance", False)
+
+    schema_overview = schema_overview if isinstance(schema_overview, dict) else None
+    suggested_queries = suggested_queries if isinstance(suggested_queries, list) else []
+
+    return visualization, schema_overview, suggested_queries, guidance
+
+
+def build_interpretation_payload(interpretation_data: dict, total_count: Optional[int]) -> dict:
+    """Build complete interpretation payload from backend response."""
+    analysis_explanation = build_analysis_explanation(interpretation_data, total_count)
+    visualization, schema_overview, suggested_queries, _ = extract_interpretation_fields(interpretation_data)
+
+    return {
+        'analysis': analysis_explanation,
+        'visualization': visualization,
+        'schema_overview': schema_overview,
+        'suggested_queries': suggested_queries
+    }
+
+
+def yield_sse_event(event_type: str, data: dict) -> str:
+    """Helper to format Server-Sent Events consistently."""
+    payload = {'type': event_type, **data}
+    return f"data: {json.dumps(payload)}\n\n"
+
 
 # Cleanup task for expired cache entries
 async def cleanup_expired_cache():
@@ -149,6 +350,46 @@ app.add_middleware(
 )
 
 # ================================
+# STATIC FILE SERVING (React build)
+# ================================
+
+# Path to React build directory (configurable via environment)
+STATIC_DIR = Path(os.getenv("STATIC_DIR", "../netquery-insight-chat/build"))
+
+
+def setup_static_files():
+    """Setup static file serving for React frontend if build directory exists."""
+    static_path = STATIC_DIR if STATIC_DIR.is_absolute() else Path(__file__).parent.parent.parent / STATIC_DIR
+
+    if static_path.exists() and (static_path / "index.html").exists():
+        logger.info(f"Serving React frontend from: {static_path}")
+
+        # Serve static assets (JS, CSS, images)
+        app.mount("/static", StaticFiles(directory=str(static_path / "static")), name="static")
+
+        # Catch-all route for SPA - must be added after API routes
+        @app.get("/{full_path:path}")
+        async def serve_spa(request: Request, full_path: str):
+            """Serve React SPA for non-API routes."""
+            # Don't intercept API routes
+            if full_path.startswith("api/") or full_path in ["chat", "health", "schema"]:
+                raise HTTPException(status_code=404, detail="Not found")
+
+            # Check if it's a static file
+            file_path = static_path / full_path
+            if file_path.exists() and file_path.is_file():
+                return FileResponse(str(file_path))
+
+            # Return index.html for SPA routing
+            return FileResponse(str(static_path / "index.html"))
+
+        return True
+    else:
+        logger.info(f"React build not found at {static_path}. API-only mode.")
+        return False
+
+
+# ================================
 # PYDANTIC MODELS
 # ================================
 
@@ -181,6 +422,7 @@ class InterpretationResponse(BaseModel):
     interpretation: InterpretationData = Field(..., description="Structured interpretation data")
     visualization: Optional[Dict[str, Any]] = Field(None, description="Single best chart specification")
     data_truncated: bool = Field(..., description="Whether data was truncated for interpretation")
+    analysis: Optional[str] = Field(None, description="Formatted markdown analysis text")
 
 
 class SchemaOverviewTable(BaseModel):
@@ -196,6 +438,24 @@ class SchemaOverviewResponse(BaseModel):
     schema_id: Optional[str]
     tables: List[SchemaOverviewTable]
     suggested_queries: List[str]
+
+
+# Chat endpoint models
+class ChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+    include_interpretation: bool = False
+
+
+class FeedbackRequest(BaseModel):
+    type: str  # 'thumbs_up' or 'thumbs_down'
+    query_id: Optional[str] = None
+    user_question: Optional[str] = None
+    sql_query: Optional[str] = None
+    description: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    timestamp: str
+
 
 # ================================
 # API ENDPOINTS
@@ -230,73 +490,58 @@ async def schema_overview(database: Optional[str] = None) -> SchemaOverviewRespo
 
 
 @app.post("/api/generate-sql", response_model=GenerateSQLResponse)
-async def generate_sql(request: GenerateSQLRequest) -> GenerateSQLResponse:
+async def generate_sql_endpoint(request: GenerateSQLRequest) -> GenerateSQLResponse:
     """
     Generate SQL from natural language query without execution.
     """
-    try:
-        query_id = str(uuid.uuid4())
+    from .services.sql_service import generate_sql
 
-        # Use the pipeline with execute=False
-        result = await text_to_sql_graph.ainvoke({
-            "original_query": request.query,
-            "execute": False,  # Don't execute the SQL
-            "show_explanation": False
-        })
+    query_id = str(uuid.uuid4())
 
-        generated_sql = result.get("generated_sql")
+    result = await generate_sql(
+        query=request.query,
+        text_to_sql_graph=text_to_sql_graph,
+        get_schema_overview_fn=get_schema_overview
+    )
 
-        intent = result.get("intent")
-        general_answer = result.get("general_answer")
-
-        if not generated_sql:
-            # Check if this was a general question (not needing SQL)
-            if intent == "general":
-                # Return the direct answer for general questions
-                return GenerateSQLResponse(
-                    query_id=query_id,
-                    sql=None,
-                    original_query=request.query,
-                    intent="general",
-                    general_answer=general_answer or result.get("final_response")
-                )
-            else:
-                # Regular SQL generation failure
-                overview = result.get("schema_overview") or get_schema_overview()
-                detail_payload = {
-                    "message": result.get("final_response") or "Failed to generate SQL",
-                    "type": "generation_error",
-                    "schema_overview": overview,
-                    "suggested_queries": overview.get("suggested_queries", []) if overview else [],
-                    "schema_analysis_error": result.get("schema_analysis_error"),
-                    "generation_error": result.get("generation_error"),
-                }
-            raise HTTPException(status_code=422, detail=detail_payload)
-
-        # Store in cache
-        query_cache[query_id] = {
-            "sql": generated_sql,
-            "original_query": request.query,
-            "intent": intent,
-            "general_answer": general_answer,
-            "data": None,  # No data yet
-            "total_count": None,
-            "timestamp": datetime.now()
-        }
-
+    # Handle general questions (no SQL needed)
+    if result.intent == "general":
         return GenerateSQLResponse(
             query_id=query_id,
-            sql=generated_sql,
+            sql=None,
             original_query=request.query,
-            intent=intent or "sql",  # Default to "sql" if not set
-            general_answer=general_answer  # Will be None for pure SQL, set for mixed
+            intent="general",
+            general_answer=result.general_answer
         )
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error generating SQL: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    # Handle generation failure
+    if result.error:
+        overview = result.schema_overview or get_schema_overview()
+        raise HTTPException(status_code=422, detail={
+            "message": result.error,
+            "type": "generation_error",
+            "schema_overview": overview,
+            "suggested_queries": overview.get("suggested_queries", []) if overview else []
+        })
+
+    # Store in cache
+    query_cache[query_id] = {
+        "sql": result.sql,
+        "original_query": request.query,
+        "intent": result.intent,
+        "general_answer": result.general_answer,
+        "data": None,
+        "total_count": None,
+        "timestamp": datetime.now()
+    }
+
+    return GenerateSQLResponse(
+        query_id=query_id,
+        sql=result.sql,
+        original_query=request.query,
+        intent=result.intent or "sql",
+        general_answer=result.general_answer
+    )
 
 @app.get("/api/execute/{query_id}", response_model=PreviewResponse)
 async def execute_and_preview(query_id: str) -> PreviewResponse:
@@ -306,79 +551,49 @@ async def execute_and_preview(query_id: str) -> PreviewResponse:
     - Fetches up to MAX_CACHE_ROWS rows and caches them
     - Returns first PREVIEW_ROWS rows for preview
     """
-    try:
-        # Check cache
-        cache_entry = get_cache_entry(query_id)
+    from .services.execution_service import execute_sql
 
-        # If data already cached, return it
-        if cache_entry["data"] is not None:
-            data = cache_entry["data"]
-            return PreviewResponse(
-                data=data[:PREVIEW_ROWS],
-                total_count=cache_entry["total_count"],
-                columns=list(data[0].keys()) if data else [],
-                truncated=len(data) > PREVIEW_ROWS,
-                intent=cache_entry.get("intent"),
-                general_answer=cache_entry.get("general_answer")
-            )
+    # Check cache
+    cache_entry = get_cache_entry(query_id)
 
-        # Execute the query
-        sql = cache_entry["sql"]
-        # Remove trailing semicolon if present (causes issues in subqueries)
-        sql = sql.rstrip(';')
-        engine = get_engine()
-
-        # Check if there's more data than LARGE_RESULT_SET_THRESHOLD rows for counting
-        # This is MUCH faster than counting all rows
-        check_more_sql = f"SELECT 1 FROM ({sql}) as sq LIMIT {LARGE_RESULT_SET_THRESHOLD + 1}"
-        with engine.connect() as conn:
-            check_results = conn.execute(text(check_more_sql)).fetchall()
-            has_more_than_threshold = len(check_results) > LARGE_RESULT_SET_THRESHOLD
-
-            # Set total_count based on LARGE_RESULT_SET_THRESHOLD
-            if has_more_than_threshold:
-                total_count = None  # We don't know the exact count (>threshold)
-            else:
-                total_count = len(check_results)  # Exact count ≤threshold
-
-        # Fetch up to MAX_CACHE_ROWS rows for actual data
-        # Check if SQL already has a LIMIT clause
-        if 'LIMIT' in sql.upper():
-            # Use the existing SQL as-is if it has LIMIT
-            limited_sql = sql
-        else:
-            limited_sql = f"{sql} LIMIT {MAX_CACHE_ROWS}"
-        with engine.connect() as conn:
-            result = conn.execute(text(limited_sql))
-            rows = result.fetchall()
-            columns = list(result.keys())
-
-        # Convert to list of dicts
-        data = [dict(zip(columns, row)) for row in rows]
-
-        # Format data for better display (import the function)
-        from .services.data_utils import format_data_for_display
-        data = format_data_for_display(data)
-
-        # Update cache
-        cache_entry["data"] = data
-        cache_entry["total_count"] = total_count
-        cache_entry["timestamp"] = datetime.now()
-
+    # If data already cached, return it
+    if cache_entry["data"] is not None:
+        data = cache_entry["data"]
         return PreviewResponse(
             data=data[:PREVIEW_ROWS],
-            total_count=total_count,
-            columns=columns,
+            total_count=cache_entry["total_count"],
+            columns=list(data[0].keys()) if data else [],
             truncated=len(data) > PREVIEW_ROWS,
             intent=cache_entry.get("intent"),
             general_answer=cache_entry.get("general_answer")
         )
 
-    except Exception as e:
-        logger.error(f"Error previewing results: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    # Execute the query using service
+    result = execute_sql(
+        sql=cache_entry["sql"],
+        engine=get_engine(),
+        max_rows=MAX_CACHE_ROWS,
+        count_threshold=LARGE_RESULT_SET_THRESHOLD
+    )
 
-@app.post("/api/interpret/{query_id}", response_model=InterpretationResponse)
+    if result.error:
+        raise HTTPException(status_code=500, detail=result.error)
+
+    # Update cache
+    cache_entry["data"] = result.data
+    cache_entry["total_count"] = result.total_count
+    cache_entry["timestamp"] = datetime.now()
+
+    return PreviewResponse(
+        data=result.data[:PREVIEW_ROWS],
+        total_count=result.total_count,
+        columns=result.columns,
+        truncated=len(result.data) > PREVIEW_ROWS,
+        intent=cache_entry.get("intent"),
+        general_answer=cache_entry.get("general_answer")
+    )
+
+@app.get("/api/interpret/{query_id}", response_model=InterpretationResponse)
 async def interpret_results(query_id: str) -> InterpretationResponse:
     """
     Interpret cached results with FAST visualization + async LLM interpretation.
@@ -407,14 +622,9 @@ async def interpret_results(query_id: str) -> InterpretationResponse:
         general_answer = cache_entry.get("general_answer")
 
         # STEP 1: INSTANT visualization selection (no LLM, 0ms)
-        from src.api.services.interpretation_service import select_visualization_fast, process_visualization_data
-        from src.api.services.data_utils import analyze_data_patterns
+        from src.api.services.interpretation_service import get_visualization_for_data
 
-        patterns = analyze_data_patterns(data) if data else {}
-        visualization = select_visualization_fast(query, data, patterns)
-
-        # Process visualization data (e.g., perform grouping/aggregation if needed)
-        visualization = process_visualization_data(visualization, data)
+        visualization = get_visualization_for_data(query, data)
 
         # STEP 2: LLM interpretation (runs async, slower but higher quality)
         # For mixed queries, this will prepend the general answer
@@ -430,10 +640,14 @@ async def interpret_results(query_id: str) -> InterpretationResponse:
         # Data is truncated if total_count is None (>1000 rows) OR total_count > cache size
         data_truncated = total_count is None or (total_count and total_count > MAX_CACHE_ROWS)
 
+        # Build formatted analysis text for frontend
+        analysis_text = build_analysis_explanation({"interpretation": interpretation}, total_count)
+
         return InterpretationResponse(
             interpretation=interpretation,
             visualization=visualization,
-            data_truncated=data_truncated
+            data_truncated=data_truncated,
+            analysis=analysis_text
         )
 
     except Exception as e:
@@ -482,10 +696,214 @@ async def download_csv(query_id: str):
         logger.error(f"Error downloading CSV: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ================================
+# CHAT ENDPOINTS
+# ================================
+
+@app.post("/chat")
+async def chat_endpoint(request: ChatRequest):
+    """
+    Main chat endpoint - Orchestrates the full chat workflow via SSE streaming.
+
+    This combines session management, SQL generation, execution, and interpretation
+    into a single streaming response.
+    """
+
+    async def event_generator():
+        from .services.sql_service import generate_sql
+        from .services.execution_service import execute_sql
+
+        try:
+            # Get or create session
+            session_id, session = get_or_create_session(request.session_id)
+            logger.info(f"Processing streaming query (session: {session_id}): {request.message[:80]}...")
+
+            # Send session ID immediately
+            yield yield_sse_event('session', {'session_id': session_id})
+
+            # Build context-aware message if we have conversation history
+            contextualized_message = request.message
+            if session and session.get('conversation_history'):
+                contextualized_message = build_context_prompt(session, request.message)
+
+            # Step 1: Generate SQL (or get general answer)
+            query_id = str(uuid.uuid4())
+
+            gen_result = await generate_sql(
+                query=contextualized_message,
+                text_to_sql_graph=text_to_sql_graph,
+                get_schema_overview_fn=get_schema_overview
+            )
+
+            # Handle generation failure
+            if gen_result.error and gen_result.intent != "general":
+                overview = gen_result.schema_overview or get_schema_overview()
+                guidance_payload = {
+                    "message": gen_result.error,
+                    "schema_overview": overview,
+                    "suggested_queries": overview.get("suggested_queries", []) if overview else []
+                }
+                yield yield_sse_event('guidance', guidance_payload)
+                yield yield_sse_event('done', {})
+                return
+
+            generated_sql = gen_result.sql
+            intent = gen_result.intent
+            general_answer = gen_result.general_answer
+
+            # Handle based on intent type
+            if intent == "general":
+                logger.info(f"General question detected: {request.message[:80]}...")
+                yield yield_sse_event('general_answer', {
+                    'answer': general_answer,
+                    'query_id': query_id
+                })
+                add_to_conversation(session_id, request.message, None)
+                yield yield_sse_event('done', {})
+                return
+
+            # For SQL and mixed intents, we need to execute SQL
+            if intent == "mixed" and general_answer:
+                yield yield_sse_event('general_answer', {
+                    'answer': general_answer,
+                    'query_id': query_id
+                })
+
+            # Store in cache for execution
+            query_cache[query_id] = {
+                "sql": generated_sql,
+                "original_query": request.message,
+                "intent": intent,
+                "general_answer": general_answer,
+                "data": None,
+                "total_count": None,
+                "timestamp": datetime.now()
+            }
+
+            # Send SQL
+            sql_explanation = f"**SQL Query:**\n```sql\n{generated_sql}\n```\n\n"
+            yield yield_sse_event('sql', {
+                'sql': generated_sql,
+                'query_id': query_id,
+                'explanation': sql_explanation,
+                'intent': intent
+            })
+
+            # Step 2: Execute and get data
+            exec_result = execute_sql(
+                sql=generated_sql,
+                engine=get_engine(),
+                max_rows=MAX_CACHE_ROWS,
+                count_threshold=LARGE_RESULT_SET_THRESHOLD
+            )
+
+            if exec_result.error:
+                logger.error(f"Query execution error: {exec_result.error}")
+                yield yield_sse_event('error', {'message': f"Query execution failed: {exec_result.error}"})
+                return
+
+            data = exec_result.data
+            total_count = exec_result.total_count
+
+            # Update cache
+            query_cache[query_id]["data"] = data
+            query_cache[query_id]["total_count"] = total_count
+
+            # Send data
+            display_info = build_display_info(data, total_count)
+            yield yield_sse_event('data', {
+                'results': data,
+                'display_info': display_info
+            })
+
+            # Step 3: Get interpretation (only if requested)
+            if request.include_interpretation:
+                try:
+                    from src.api.services.interpretation_service import get_visualization_for_data, get_interpretation_only
+
+                    visualization = get_visualization_for_data(request.message, data)
+
+                    interpretation = await get_interpretation_only(
+                        query=request.message,
+                        results=data,
+                        total_rows=total_count,
+                        general_answer=general_answer
+                    )
+
+                    interpretation_payload = {
+                        'analysis': build_analysis_explanation({"interpretation": interpretation}, total_count),
+                        'visualization': visualization,
+                        'schema_overview': None,
+                        'suggested_queries': []
+                    }
+
+                    yield yield_sse_event('interpretation', interpretation_payload)
+
+                except Exception as interp_error:
+                    logger.error(f"Interpretation error: {interp_error}")
+                    # Non-fatal, continue
+
+            # Add to conversation history
+            add_to_conversation(session_id, request.message, generated_sql)
+
+            # Send completion signal
+            yield yield_sse_event('done', {})
+
+        except Exception as e:
+            logger.error(f"Streaming chat error: {e}")
+            yield yield_sse_event('error', {'message': str(e)})
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+# Feedback file path (configurable via environment)
+FEEDBACK_FILE = Path(os.getenv("FEEDBACK_FILE", "data/feedback.jsonl"))
+
+
+@app.post("/api/feedback")
+async def submit_feedback(request: FeedbackRequest):
+    """
+    User feedback endpoint - Collects thumbs up/down feedback from chat UI.
+    """
+    try:
+        # Resolve feedback file path relative to project root
+        feedback_path = FEEDBACK_FILE if FEEDBACK_FILE.is_absolute() else Path(__file__).parent.parent.parent / FEEDBACK_FILE
+
+        # Ensure parent directory exists
+        feedback_path.parent.mkdir(parents=True, exist_ok=True)
+
+        feedback_data = {
+            "type": request.type,
+            "query_id": request.query_id,
+            "user_question": request.user_question,
+            "sql_query": request.sql_query,
+            "description": request.description,
+            "tags": request.tags,
+            "timestamp": request.timestamp
+        }
+
+        with open(feedback_path, "a") as f:
+            f.write(json.dumps(feedback_data) + "\n")
+
+        logger.info(f"Feedback saved: {request.type} for query_id: {request.query_id}")
+
+        return {"status": "success", "message": "Feedback submitted successfully"}
+
+    except Exception as e:
+        logger.error(f"Failed to save feedback: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save feedback: {str(e)}")
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "cache_size": len(query_cache)}
+    return {"status": "healthy", "cache_size": len(query_cache), "session_count": len(sessions)}
+
+
+# Setup static file serving (must be after all API routes are defined)
+# This adds the catch-all route for React SPA
+setup_static_files()
+
 
 if __name__ == "__main__":
     import argparse

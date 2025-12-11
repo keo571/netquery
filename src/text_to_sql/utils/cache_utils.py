@@ -1,8 +1,8 @@
 """
 Utility functions for cache management.
 
-These functions provide convenient access to the SQL cache for
-external use (e.g., by the chat adapter BFF layer).
+Provides convenient access to the SQL cache for feedback handling
+and cache invalidation (e.g., when user clicks thumbs down).
 """
 import logging
 from ...api.app_context import AppContext
@@ -30,7 +30,6 @@ def invalidate_query_cache(user_question: str) -> bool:
 
     Example:
         # User clicks thumbs down in chat UI
-        # Chat adapter calls this function
         from src.text_to_sql.utils.cache_utils import invalidate_query_cache
 
         invalidated = invalidate_query_cache("Show me unhealthy servers")

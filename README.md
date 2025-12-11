@@ -198,11 +198,55 @@ For more CLI examples, see [docs/SAMPLE_QUERIES.md](docs/SAMPLE_QUERIES.md).
 python -m src.text_to_sql.mcp_server
 ```
 
-## Optional Integrations
+## Frontend Integration
 
-**Frontend Application:**
-- **[netquery-insight-chat](https://github.com/keo571/netquery-insight-chat)** - TypeScript/React web interface for the text-to-SQL workflow with data visualization and insights.
-  - Supports multiple database switching via dual backend instances (see [Multi-Database Setup](docs/GETTING_STARTED.md#multi-database-setup-advanced))
+The backend can serve the React frontend directly for production deployments.
+
+### Development Mode (Separate Servers)
+
+Run frontend and backend separately for hot reload and database switching:
+
+```bash
+# Terminal 1: Start dual backends
+./start-dual-backends.sh --dev    # sample:8000 + neila:8001
+
+# Terminal 2: Start frontend dev server (in netquery-insight-chat repo)
+cd ../netquery-insight-chat
+npm start                          # Frontend on :3000
+```
+
+**Access:** http://localhost:3000
+- ✅ Database switching enabled
+- ✅ Hot reload on frontend changes
+
+### Production Mode (Single URL)
+
+Backend serves the React build directly - single URL for users:
+
+```bash
+# 1. Build frontend (in netquery-insight-chat repo)
+cd ../netquery-insight-chat
+npm run build
+
+# 2. Start backend (serves frontend + API)
+cd ../netquery
+SCHEMA_ID=neila python -m src.api.server --port 8001
+```
+
+**Access:** http://localhost:8001 (or your server IP/domain)
+- ❌ Database switching disabled (single DB per URL)
+- ✅ Zero-config deployment
+- ✅ No CORS configuration needed
+
+The backend looks for the React build at `../netquery-insight-chat/build/` by default. Override with `STATIC_DIR` environment variable.
+
+### Frontend Repository
+
+- **[netquery-insight-chat](https://github.com/keo571/netquery-insight-chat)** - React web interface
+  - Pure React/JavaScript (no Python dependencies)
+  - Same-origin detection for automatic API routing
+  - Schema visualization using ReactFlow
+  - See the frontend README for detailed setup
 
 ## Direct Python API
 ```python
@@ -286,7 +330,14 @@ See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for startup scripts and m
 │   ├── create_sample_data.py
 │   └── add_sample_values_to_excel.py
 ├── src/                         # Application code
-│   ├── api/                     # FastAPI server
+│   ├── api/                     # Unified FastAPI server (chat + API + static files)
+│   │   ├── server.py            # Main server with all endpoints
+│   │   ├── app_context.py       # Singleton resource manager
+│   │   └── services/            # Business logic services
+│   │       ├── sql_service.py           # SQL generation logic
+│   │       ├── execution_service.py     # Query execution logic
+│   │       ├── interpretation_service.py # Visualization & insights
+│   │       └── data_utils.py            # Data formatting
 │   ├── common/                  # Shared utilities
 │   ├── schema_ingestion/        # Schema building
 │   └── text_to_sql/             # Query pipeline
