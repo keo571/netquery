@@ -9,8 +9,12 @@ An AI-powered assistant that converts natural language queries into SQL. Optimiz
 ```mermaid
 flowchart TD
     A([Natural Language Query]) --> IC[Stage 0: Intent Classifier<br/>LLM-Powered ~200ms]
-    IC -->|General Question| GA[Direct Answer<br/>Skip SQL Pipeline]
-    IC -->|SQL/Mixed Query| CL[Stage 1: Cache Lookup<br/>Check SQL Cache]
+    IC -->|General| GA[Direct Answer<br/>Skip SQL Pipeline]
+    IC -->|SQL| CL[Stage 1: Cache Lookup<br/>Check SQL Cache]
+    IC -->|Mixed| SPLIT[Split Query]
+
+    SPLIT -->|general_answer| STORE[Store Answer<br/>for Final Response]
+    SPLIT -->|sql_query| CL
 
     CL -->|🚀 HIT ~10ms| V[Stage 4: Safety Validation<br/>Read-Only Check]
     CL -->|❌ MISS ~2.5s| B[Stage 2: Schema Analysis<br/>Semantic Table Selection]
@@ -20,6 +24,7 @@ flowchart TD
     V -->|✅ Pass| E[Stage 5: Query Execution<br/>Timeout Handling]
     V -->|❌ Block| H[Error Response]
     E --> F[Stage 6: Result Interpretation<br/>Chart Generation]
+    STORE -.->|prepend to summary| F
     F --> G([Response with Charts])
 
     DB[(Database)] -.->|schema at startup| SCHEMA_CACHE
@@ -39,6 +44,8 @@ flowchart TD
     style V fill:#FFB74D,color:#000
     style SCHEMA_CACHE fill:#E1BEE7,color:#000
     style SQL_CACHE fill:#CE93D8,color:#000
+    style SPLIT fill:#FFE082,color:#000
+    style STORE fill:#FFE082,color:#000
 ```
 
 **Performance:**
