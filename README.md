@@ -8,11 +8,7 @@ An AI-powered assistant that converts natural language queries into SQL. Optimiz
 
 ```mermaid
 flowchart TD
-    subgraph Input[" "]
-        A([Natural Language Query])
-    end
-
-    A --> IC[Stage 0: Intent Classifier<br/>LLM-Powered ~200ms]
+    A([Natural Language Query]) --> IC[Stage 0: Intent Classifier<br/>LLM-Powered ~200ms]
     IC -->|General Question| GA[Direct Answer<br/>Skip SQL Pipeline]
     IC -->|SQL Query| CL[Stage 1: Cache Lookup<br/>Check SQL Cache]
     IC -->|Mixed Query| SPLIT[Split Query<br/>Extract Both Parts]
