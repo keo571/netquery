@@ -7,33 +7,25 @@ An AI-powered assistant that converts natural language queries into SQL. Optimiz
 ### 7-Stage Pipeline with Intent Classification & SQL Caching
 
 ```mermaid
-flowchart TD
-    A([Natural Language Query]) --> IC[Stage 0: Intent Classifier<br/>LLM-Powered ~200ms]
-    IC -->|General| GA[Direct Answer<br/>Skip SQL Pipeline]
-    IC -->|SQL| CL[Stage 1: Cache Lookup<br/>Check SQL Cache]
+flowchart LR
+    A([Natural Language Query]) --> IC[Intent Classifier<br/>~200ms]
+    IC -->|General| GA([Direct Answer])
+    IC -->|SQL| CL[Cache Lookup]
     IC -->|Mixed| SPLIT[Split Query]
 
-    SPLIT -->|general_answer| STORE[Store Answer<br/>for Final Response]
+    SPLIT -->|general_answer| STORE[Store Answer]
     SPLIT -->|sql_query| CL
 
-    CL -->|🚀 HIT ~10ms| V[Stage 4: Safety Validation<br/>Read-Only Check]
-    CL -->|❌ MISS ~2.5s| B[Stage 2: Schema Analysis<br/>Semantic Table Selection]
+    CL -->|HIT| V[Safety Check]
+    CL -->|MISS| B[Schema Analysis]
 
-    B --> C[Stage 3: SQL Generation<br/>LLM Call]
+    B --> C[SQL Generation]
     C --> V
-    V -->|✅ Pass| E[Stage 5: Query Execution<br/>Timeout Handling]
-    V -->|❌ Block| H[Error Response]
-    E --> F[Stage 6: Result Interpretation<br/>Chart Generation]
-    STORE -.->|prepend to summary| F
-    F --> G([Response with Charts])
-
-    DB[(Database)] -.->|schema at startup| SCHEMA_CACHE
-    SCHEMA_CACHE[(Schema Embeddings)] -.->|similarity scoring| B
-    SQL_CACHE[(SQL Cache)] -.->|lookup| CL
-    LLM[Gemini API] --> IC
-    LLM[Gemini API] --> C
-    LLM[Gemini API] --> F
-    DB --> E
+    V -->|Pass| E[Execute Query]
+    V -->|Block| H([Error])
+    E --> F[Interpretation]
+    STORE -.->|prepend| F
+    F --> G([Response])
 
     style A fill:#4FC3F7,color:#000
     style IC fill:#B39DDB,color:#000
@@ -42,8 +34,6 @@ flowchart TD
     style GA fill:#81C784,color:#000
     style H fill:#FF8A65,color:#000
     style V fill:#FFB74D,color:#000
-    style SCHEMA_CACHE fill:#E1BEE7,color:#000
-    style SQL_CACHE fill:#CE93D8,color:#000
     style SPLIT fill:#FFE082,color:#000
     style STORE fill:#FFE082,color:#000
 ```
