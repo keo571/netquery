@@ -467,13 +467,18 @@ async def schema_overview(database: Optional[str] = None) -> SchemaOverviewRespo
     """
     Return a high-level overview of available tables and sample prompts.
 
-    Args:
-        database: Database name (e.g., 'sample', 'neila') - defaults to current backend's schema
+    In multi-database mode (dual backends): uses frontend's database parameter
+    In single-database mode (production): always uses backend's SCHEMA_ID
     """
-    # If no database specified, use the current backend's schema ID
-    if database is None:
-        database = os.getenv("SCHEMA_ID")
-    overview = get_schema_overview(database=database)
+    # Check if multi-database mode is enabled (dual backends)
+    multi_db_mode = os.getenv("MULTI_DATABASE_MODE", "false").lower() == "true"
+
+    if multi_db_mode and database:
+        schema_id = database
+    else:
+        schema_id = os.getenv("SCHEMA_ID")
+
+    overview = get_schema_overview(database=schema_id)
     tables = overview.get("tables", [])
     if not tables:
         detail = overview.get("error") or {

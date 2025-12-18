@@ -91,7 +91,7 @@ if [ "$DEV_MODE" = true ]; then
     echo ""
 
     # Start sample in background with clean environment
-    SCHEMA_ID=sample python3 -m src.api.server --port 8000 --reload &
+    SCHEMA_ID=sample MULTI_DATABASE_MODE=true python3 -m src.api.server --port 8000 --reload &
     SAMPLE_PID=$!
 
     sleep 2
@@ -103,7 +103,7 @@ if [ "$DEV_MODE" = true ]; then
         echo -e "${YELLOW}Neila logs will appear below:${NC}"
         echo ""
 
-        SCHEMA_ID=neila python3 -m src.api.server --port 8001 --reload &
+        SCHEMA_ID=neila MULTI_DATABASE_MODE=true python3 -m src.api.server --port 8001 --reload &
         NEILA_PID=$!
     else
         echo -e "${YELLOW}Neila database or schema not found - skipping Neila backend${NC}"
@@ -129,7 +129,7 @@ if [ "$DEV_MODE" = true ]; then
 else
     # Production mode: Run in background
     echo -e "${GREEN}Starting Sample Database Backend (port 8000)...${NC}"
-    SCHEMA_ID=sample python3 -m src.api.server --port 8000 > /tmp/netquery_sample.log 2>&1 &
+    SCHEMA_ID=sample MULTI_DATABASE_MODE=true python3 -m src.api.server --port 8000 > /tmp/netquery_sample.log 2>&1 &
     SAMPLE_PID=$!
     echo -e "Sample backend PID: ${SAMPLE_PID}"
     echo -e "Sample logs: /tmp/netquery_sample.log"
@@ -141,7 +141,7 @@ else
     # Check if neila database and schema exist before starting
     if [ -f "data/neila.db" ] && [ -f "schema_files/neila_schema.json" ]; then
         echo -e "${GREEN}Starting Neila Database Backend (port 8001)...${NC}"
-        SCHEMA_ID=neila python3 -m src.api.server --port 8001 > /tmp/netquery_neila.log 2>&1 &
+        SCHEMA_ID=neila MULTI_DATABASE_MODE=true python3 -m src.api.server --port 8001 > /tmp/netquery_neila.log 2>&1 &
         NEILA_PID=$!
         echo -e "Neila backend PID: ${NEILA_PID}"
         echo -e "Neila logs: /tmp/netquery_neila.log"
